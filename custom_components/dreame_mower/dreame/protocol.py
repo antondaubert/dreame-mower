@@ -466,9 +466,15 @@ class DreameMowerDreameHomeCloudProtocol:
             return None
 
         if api_response is None or "data" not in api_response or "result" not in api_response["data"]:
-            _LOGGER.warning(
-                "DreameMowerDreameHomeCloudProtocol.send failed: %s", api_response)
+            if api_response["code"] != 0:
+                # Print a warning only in case response reports an error.
+                _LOGGER.warning(
+                    "DreameMowerDreameHomeCloudProtocol.send failed: %s", api_response)
+
+            # Seems like sometimes the response can be successful (code == 0), but data
+            # still empty. In this case don't print any errors, but return None.
             return None
+        
         return api_response["data"]["result"]
 
     def get_file(self, url: str, retry_count: int = 4) -> Any:
