@@ -52,10 +52,12 @@ DREAME_MODELS = [
 ]
 
 model_map = {
-    "dreame.mower.p2255": "A1",
-    "dreame.mower.g2422": "A1 Pro",
-    "dreame.mower.g2408": "A2",
+    "dreame.mower.p2255": "DREAME A1",
+    "dreame.mower.g2422": "DREAME A1 Pro",
+    "dreame.mower.g2408": "DREAME A2",
     "dreame.mower.g3255": "unknown",
+    "mova.mower.g2405b": "MOVA 600",
+    "mova.mower.g2405c": "MOVA 1000",
 }
 
 DREAMEHOME: Final = "Dreamehome Account"
