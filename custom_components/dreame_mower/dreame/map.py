@@ -284,11 +284,11 @@ class DreameMapMowerMapManager:
         ]
 
         try:
-            _LOGGER.info("Request map from device %s", payload)
+            _LOGGER.debug("DreameMapMowerMapManager._request_map %s", payload)
             mapping = DreameMowerActionMapping[DreameMowerAction.REQUEST_MAP]
             return self._protocol.action(mapping["siid"], mapping["aiid"], payload, 0)
         except Exception as ex:
-            _LOGGER.warning("Send request map failed: %s", ex)
+            _LOGGER.warning("DreameMapMowerMapManager._request_map failed: %s", ex)
         return None
 
     def _request_i_map(self, start_time: int = None) -> bool:
@@ -307,7 +307,7 @@ class DreameMapMowerMapManager:
         result = self._request_map(parameters)
         if result and result[MAP_PARAMETER_CODE] == 0:
             out = result[MAP_PARAMETER_OUT]
-            _LOGGER.info("Response from device %s", out)
+            _LOGGER.debug("Response from device %s", out)
             has_map = False
             object_name = None
             raw_map_data = None
@@ -439,7 +439,7 @@ class DreameMapMowerMapManager:
             mapping = DreameMowerActionMapping[DreameMowerAction.WIFI_MAP]
             return self._protocol.action(mapping["siid"], mapping["aiid"], None, 0)
         except Exception as ex:
-            _LOGGER.warning("Send request map failed: %s", ex)
+            _LOGGER.warning("Send _request_w_map failed: %s", ex)
         return None
 
     def _request_current_map(self, map_request_time: int = None) -> bool:

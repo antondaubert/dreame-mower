@@ -44,6 +44,14 @@
         },
         "description": "Log in to the Dreamehome cloud."
       },
+      "mova": {
+        "data": {
+          "username": "Username",
+          "password": "Password",
+          "country": "Server country"
+        },
+        "description": "Log in to the MOVAhome cloud."
+      },
       "devices": {
         "data": {
           "devices": "Supported Devices"

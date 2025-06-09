@@ -158,6 +158,9 @@ ATTR_SIZE_TYPE: Final = "size_type"
 ATTR_ANGLE: Final = "angle"
 ATTR_SCALE: Final = "scale"
 ATTR_COMPLETED: Final = "completed"
+ATTR_FIRMWARE_VERSION: Final = "firmware_version"
+ATTR_AP: Final = "ap"
+ATTR_COLOR_SCHEME: Final = "color_scheme"
 
 
 class DreameMowerChargingStatus(IntEnum):
@@ -400,6 +403,7 @@ class DreameMowerCleaningRoute(IntEnum):
     INTENSIVE = 2
     DEEP = 3
     QUICK = 4
+
 
 class DreameMowerWiderCornerCoverage(IntEnum):
     """Dreame Mower wider corner coverage"""
@@ -1231,29 +1235,43 @@ class DreameMowerDeviceCapability:
         self._device = device
 
     def refresh(self, device_capabilities):
-        self.lidar_navigation = bool(self._device.get_property(DreameMowerProperty.MAP_SAVING) is None)
+        self.lidar_navigation = bool(self._device.get_property(
+            DreameMowerProperty.MAP_SAVING) is None)
         self.multi_floor_map = bool(
-            self._device.get_property(DreameMowerProperty.MULTI_FLOOR_MAP) is not None and self.lidar_navigation
+            self._device.get_property(
+                DreameMowerProperty.MULTI_FLOOR_MAP) is not None and self.lidar_navigation
         )
-        self.ai_detection = bool(self._device.get_property(DreameMowerProperty.AI_DETECTION) is not None)
+        self.ai_detection = bool(self._device.get_property(
+            DreameMowerProperty.AI_DETECTION) is not None)
         self.customized_cleaning = bool(
-            self._device.get_property(DreameMowerProperty.CUSTOMIZED_CLEANING) is not None
+            self._device.get_property(
+                DreameMowerProperty.CUSTOMIZED_CLEANING) is not None
         )
         self.auto_switch_settings = bool(
-            self._device.get_property(DreameMowerProperty.AUTO_SWITCH_SETTINGS) is not None
+            self._device.get_property(
+                DreameMowerProperty.AUTO_SWITCH_SETTINGS) is not None
         )
-        self.wifi_map = bool(self._device.get_property(DreameMowerProperty.WIFI_MAP) is not None)
-        self.backup_map = bool(self._device.get_property(DreameMowerProperty.MAP_BACKUP_STATUS) is not None)
-        self.dnd_task = bool(self._device.get_property(DreameMowerProperty.DND_TASK) is not None)
-        self.dnd = bool(self.dnd_task or self._device.get_property(DreameMowerProperty.DND) is not None)
-        self.shortcuts = bool(self._device.get_property(DreameMowerProperty.SHORTCUTS) is not None)
-        self.off_peak_charging = bool(self._device.get_property(DreameMowerProperty.OFF_PEAK_CHARGING) is not None)
-        camera_light = self._device.get_property(DreameMowerProperty.CAMERA_LIGHT_BRIGHTNESS)
-        self.voice_assistant = bool(self._device.get_property(DreameMowerProperty.VOICE_ASSISTANT) is not None)
+        self.wifi_map = bool(self._device.get_property(
+            DreameMowerProperty.WIFI_MAP) is not None)
+        self.backup_map = bool(self._device.get_property(
+            DreameMowerProperty.MAP_BACKUP_STATUS) is not None)
+        self.dnd_task = bool(self._device.get_property(
+            DreameMowerProperty.DND_TASK) is not None)
+        self.dnd = bool(self.dnd_task or self._device.get_property(
+            DreameMowerProperty.DND) is not None)
+        self.shortcuts = bool(self._device.get_property(
+            DreameMowerProperty.SHORTCUTS) is not None)
+        self.off_peak_charging = bool(self._device.get_property(
+            DreameMowerProperty.OFF_PEAK_CHARGING) is not None)
+        camera_light = self._device.get_property(
+            DreameMowerProperty.CAMERA_LIGHT_BRIGHTNESS)
+        self.voice_assistant = bool(self._device.get_property(
+            DreameMowerProperty.VOICE_ASSISTANT) is not None)
 
         model = ""
         if self._device.info and self._device.info.model:
-            model = self._device.info.model.replace("mower.", "").replace("dreame.", "").replace("xiaomi.", "")
+            model = self._device.info.model.replace("mower.", "").replace(
+                "dreame.", "").replace("xiaomi.", "")
             device_capability = device_capabilities.get(model)
             while device_capability and isinstance(device_capability, str):
                 device_capability = device_capabilities.get(device_capability)
@@ -1270,7 +1288,8 @@ class DreameMowerDeviceCapability:
         # self.camera_streaming = bool(
         #    self.camera_streaming and (camera_light is not None or self._device.get_property(DreameMowerProperty.CRUISE_SCHEDULE) is not None)
         # )
-        self.lensbrush = bool(self.lensbrush or self._device.get_property(DreameMowerProperty.LENSBRUSH_LEFT))
+        self.lensbrush = bool(self.lensbrush or self._device.get_property(
+            DreameMowerProperty.LENSBRUSH_LEFT))
         self.fill_light = bool(
             self.camera_streaming
             and camera_light is not None
@@ -1278,9 +1297,11 @@ class DreameMowerDeviceCapability:
             and str(camera_light).isnumeric()
         )
         self.pet_detective = bool(
-            self.pet_detective and self._device.get_property(DreameMowerProperty.PET_DETECTIVE) is not None
+            self.pet_detective and self._device.get_property(
+                DreameMowerProperty.PET_DETECTIVE) is not None
         )
-        self.task_type = bool(self.task_type and self._device.get_property(DreameMowerProperty.TASK_TYPE) is not None)
+        self.task_type = bool(self.task_type and self._device.get_property(
+            DreameMowerProperty.TASK_TYPE) is not None)
         if not self.cleaning_route:
             self.segment_slow_clean_route = False
         self.disable_sensor_cleaning = (
@@ -1431,7 +1452,8 @@ class Obstacle(Point):
         ignore_status: int = 0,
     ) -> None:
         super().__init__(x, y)
-        self.type = ObstacleType(type) if type in ObstacleType._value2member_map_ else ObstacleType.UNKNOWN
+        self.type = ObstacleType(
+            type) if type in ObstacleType._value2member_map_ else ObstacleType.UNKNOWN
         self.possibility = possibility
         self.object_id = object_id
         self.key = key
@@ -1451,7 +1473,8 @@ class Obstacle(Point):
             if ignore_status in ObstacleIgnoreStatus._value2member_map_
             else ObstacleIgnoreStatus.UNKNOWN
         )
-        self.id = str(self.object_id) if self.object_id else f"0{int(self.x)}0{int(self.y)}"
+        self.id = str(
+            self.object_id) if self.object_id else f"0{int(self.x)}0{int(self.y)}"
 
         if file_name and "/" in file_name:
             self.object_name = file_name.split("/")[-1]
@@ -1464,8 +1487,10 @@ class Obstacle(Point):
 
     def set_segment(self, map_data):
         if map_data and map_data.segments and map_data.pixel_type is not None:
-            x = int((self.x - map_data.dimensions.left) / map_data.dimensions.grid_size)
-            y = int((self.y - map_data.dimensions.top) / map_data.dimensions.grid_size)
+            x = int((self.x - map_data.dimensions.left) /
+                    map_data.dimensions.grid_size)
+            y = int((self.y - map_data.dimensions.top) /
+                    map_data.dimensions.grid_size)
             if x >= 0 and x < map_data.dimensions.width and y >= 0 and y < map_data.dimensions.height:
                 obstacle_pixel = map_data.pixel_type[x, y]
 
@@ -1483,9 +1508,11 @@ class Obstacle(Point):
         if self.possibility is not None:
             attributes[ATTR_POSSIBILTY] = self.possibility
         if self.picture_status is not None:
-            attributes[ATTR_PICTURE_STATUS] = self.picture_status.name.replace("_", " ").title()
+            attributes[ATTR_PICTURE_STATUS] = self.picture_status.name.replace(
+                "_", " ").title()
         if self.ignore_status is not None:
-            attributes[ATTR_IGNORE_STATUS] = self.ignore_status.name.replace("_", " ").title()
+            attributes[ATTR_IGNORE_STATUS] = self.ignore_status.name.replace(
+                "_", " ").title()
         if self.segment is not None:
             attributes[ATTR_ZONE] = self.segment
         return attributes
@@ -1623,7 +1650,8 @@ class Segment(Zone):
             self.name = self.custom_name
         else:
             self.name = f"Zone {self.segment_id}"
-        self.icon = SEGMENT_TYPE_CODE_TO_HA_ICON.get(self.type, "mdi:home-outline")
+        self.icon = SEGMENT_TYPE_CODE_TO_HA_ICON.get(
+            self.type, "mdi:home-outline")
 
     def next_type_index(self, type, segments) -> int:
         index = 0
@@ -1685,7 +1713,8 @@ class Segment(Zone):
                 self.floor_material_rotated_direction
             ).name.title()
         if self.visibility is not None:
-            attributes[ATTR_VISIBILITY] = DreameMowerSegmentVisibility(int(self.visibility)).name.title()
+            attributes[ATTR_VISIBILITY] = DreameMowerSegmentVisibility(
+                int(self.visibility)).name.title()
         if self.x is not None and self.y is not None:
             attributes[ATTR_X] = self.x
             attributes[ATTR_Y] = self.y
@@ -1951,6 +1980,7 @@ class Coordinate(Point):
             or self.completed != other.completed
         )
 
+
 class MapImageDimensions:
     def __init__(self, top: int, left: int, height: int, width: int, grid_size: int) -> None:
         self.top = top
@@ -1971,8 +2001,10 @@ class MapImageDimensions:
             top = top - (self.grid_size / 2)
 
         return Point(
-            ((point.x - left) / self.grid_size) * self.scale + self.padding[0] - self.crop[0],
-            (((self.height - 1) * self.grid_size - (point.y - top)) / self.grid_size) * self.scale
+            ((point.x - left) / self.grid_size) *
+            self.scale + self.padding[0] - self.crop[0],
+            (((self.height - 1) * self.grid_size -
+             (point.y - top)) / self.grid_size) * self.scale
             + self.padding[1]
             - self.crop[1],
         )
@@ -2058,7 +2090,8 @@ class CleaningHistory:
                 if "cmc" in props:
                     value = props["cmc"]
                     self.cleanup_method = (
-                        CleanupMethod(value) if value in CleanupMethod._value2member_map_ else CleanupMethod.OTHER
+                        CleanupMethod(
+                            value) if value in CleanupMethod._value2member_map_ else CleanupMethod.OTHER
                     )
                 if "abnormal_end" in props:
                     values = json.loads(props["abnormal_end"])
@@ -2094,7 +2127,8 @@ class RecoveryMapInfo:
 
         map_type = map_info.get("first", -1)
         self.map_type = (
-            RecoveryMapType(map_type) if map_type in RecoveryMapType._value2member_map_ else RecoveryMapType.UNKNOWN
+            RecoveryMapType(
+                map_type) if map_type in RecoveryMapType._value2member_map_ else RecoveryMapType.UNKNOWN
         )
 
         if self.date:
@@ -2208,7 +2242,8 @@ class MapData:
         self.frame_map: Optional[bool] = None  # Data json: fsm
         self.docked: Optional[bool] = None  # Data json: oc
         self.clean_log: Optional[bool] = None  # Data json: iscleanlog
-        self.cleanset: Optional[Dict[str, List[int]]] = None  # Data json: cleanset
+        self.cleanset: Optional[Dict[str, List[int]]
+                                ] = None  # Data json: cleanset
         self.line_to_robot: Optional[bool] = None  # Data json: l2r
         self.temporary_map: Optional[int] = None  # Data json: suw
         self.cleaned_area: Optional[int] = None  # Data json: cs
@@ -2216,19 +2251,26 @@ class MapData:
         self.completed: Optional[bool] = None  # Data json: cf
         self.neglected_segments: Optional[List[int]] = None  #
         self.second_cleaning: Optional[bool] = None  #
-        self.remaining_battery: Optional[int] = None  # Data json: clean_finish_remain_electricity
+        # Data json: clean_finish_remain_electricity
+        self.remaining_battery: Optional[int] = None
         self.work_status: Optional[int] = None  # Data json: wm
         self.recovery_map: Optional[bool] = None  # Data json: us
-        self.recovery_map_type: Optional[RecoveryMapType] = None  # Generated from recovery map list json
-        self.obstacles: Optional[Dict[int, Obstacle]] = None  # Data json: ai_obstacle
-        self.furnitures: Optional[Dict[int, Furniture]] = None  # Data json: ai_furniture
-        self.saved_furnitures: Optional[Dict[int, Furniture]] = None  # Data json: furniture_info
+        # Generated from recovery map list json
+        self.recovery_map_type: Optional[RecoveryMapType] = None
+        self.obstacles: Optional[Dict[int, Obstacle]
+                                 ] = None  # Data json: ai_obstacle
+        # Data json: ai_furniture
+        self.furnitures: Optional[Dict[int, Furniture]] = None
+        # Data json: furniture_info
+        self.saved_furnitures: Optional[Dict[int, Furniture]] = None
         self.new_map: Optional[bool] = None  # Data json: risp
         self.startup_method: Optional[StartupMethod] = None  # Data json: smd
         self.task_end_type: Optional[TaskEndType] = None  # Data json: ctyi
         self.cleanup_method: Optional[CleanupMethod] = None  #
-        self.customized_cleaning: Optional[int] = None  # Data json: customeclean
-        self.cleaned_segments: Optional[List[Any]] = None  # Data json: CleanArea (from dirty map data)
+        # Data json: customeclean
+        self.customized_cleaning: Optional[int] = None
+        # Data json: CleanArea (from dirty map data)
+        self.cleaned_segments: Optional[List[Any]] = None
         self.multiple_cleaning_time: Optional[int] = None  # Data json: multime
         self.dos: Optional[int] = None  # Data json: dos
         # Generated
@@ -2241,21 +2283,27 @@ class MapData:
         self.combined_pixel_type: Optional[Any] = None
         # Generated segments from pixel_type
         self.segments: Optional[Dict[int, Segment]] = None
-        self.floor_material: Optional[Dict[int, int]] = None  # Generated from seg_inf.material
+        # Generated from seg_inf.material
+        self.floor_material: Optional[Dict[int, int]] = None
         self.saved_map: Optional[bool] = None  # Generated for rism map
         self.empty_map: Optional[bool] = None  # Generated from pixel_type
         self.wifi_map_data: Optional[MapData] = None  # Generated from whm
         self.wifi_map: Optional[bool] = None  #
-        self.cleaning_map_data: Optional[MapData] = None  # Generated from decmap
+        # Generated from decmap
+        self.cleaning_map_data: Optional[MapData] = None
         self.cleaning_map: Optional[bool] = None  #
         self.has_cleaned_area: Optional[bool] = None  #
         self.has_dirty_area: Optional[bool] = None  #
         self.history_map: Optional[bool] = None  #
         self.furniture_version: Optional[bool] = None  #
-        self.recovery_map_list: Optional[List[RecoveryMapInfo]] = None  # Generated from recovery map list
-        self.active_cruise_points: Optional[List[Coordinate]] = None  # Data json: pointinfo.tpoint
-        self.predefined_points: Optional[Dict[int, Coordinate]] = None  # Data json: pointinfo.spoint
-        self.task_cruise_points: Optional[List[Coordinate]] = None  # Data json: tpointinfo
+        # Generated from recovery map list
+        self.recovery_map_list: Optional[List[RecoveryMapInfo]] = None
+        # Data json: pointinfo.tpoint
+        self.active_cruise_points: Optional[List[Coordinate]] = None
+        # Data json: pointinfo.spoint
+        self.predefined_points: Optional[Dict[int, Coordinate]] = None
+        # Data json: tpointinfo
+        self.task_cruise_points: Optional[List[Coordinate]] = None
         # Generated from pixel_type and robot poisiton
         self.hidden_segments: Optional[int] = None  # Data json: delsr
         self.robot_segment: Optional[int] = None
@@ -2371,7 +2419,8 @@ class MapData:
                 else self.charger_position
             )
         if self.segments is not None and (self.saved_map or self.saved_map_status == 2 or self.restored_map):
-            attributes_list[ATTR_ZONES] = {k: v.as_dict() for k, v in sorted(self.segments.items())}
+            attributes_list[ATTR_ZONES] = {
+                k: v.as_dict() for k, v in sorted(self.segments.items())}
         if not self.saved_map and self.robot_position is not None:
             attributes_list[ATTR_ROBOT_POSITION] = self.robot_position
         if self.map_id:
@@ -2381,7 +2430,8 @@ class MapData:
         if self.rotation is not None:
             attributes_list[ATTR_ROTATION] = self.rotation
         if self.last_updated is not None:
-            attributes_list[ATTR_UPDATED] = datetime.fromtimestamp(self.last_updated)
+            attributes_list[ATTR_UPDATED] = datetime.fromtimestamp(
+                self.last_updated)
         if not self.saved_map and self.active_areas is not None:
             attributes_list[ATTR_ACTIVE_AREAS] = self.active_areas
         if not self.saved_map and self.active_segments is not None:
@@ -2391,7 +2441,8 @@ class MapData:
         if not self.saved_map and self.active_cruise_points is not None:
             attributes_list[ATTR_ACTIVE_CRUISE_POINTS] = self.active_cruise_points
         if self.predefined_points:
-            attributes_list[ATTR_PREDEFINED_POINTS] = list(self.predefined_points.values())
+            attributes_list[ATTR_PREDEFINED_POINTS] = list(
+                self.predefined_points.values())
         if self.virtual_walls is not None:
             attributes_list[ATTR_VIRTUAL_WALLS] = self.virtual_walls
         if self.pathways is not None:
@@ -2407,15 +2458,18 @@ class MapData:
         if self.obstacles:
             attributes_list[ATTR_OBSTACLES] = self.obstacles
         if self.saved_furnitures and self.saved_map:
-            attributes_list[ATTR_FURNITURES] = list(self.saved_furnitures.values())
+            attributes_list[ATTR_FURNITURES] = list(
+                self.saved_furnitures.values())
         elif self.furnitures:
             attributes_list[ATTR_FURNITURES] = list(self.furnitures.values())
         if self.router_position:
             attributes_list[ATTR_ROUTER_POSITION] = self.router_position
         if self.startup_method:
-            attributes_list[ATTR_STARTUP_METHOD] = self.startup_method.name.replace("_", " ").title()
+            attributes_list[ATTR_STARTUP_METHOD] = self.startup_method.name.replace(
+                "_", " ").title()
         if self.recovery_map_list:
-            attributes_list[ATTR_RECOVERY_MAP_LIST] = [v.as_dict() for v in reversed(self.recovery_map_list)]
+            attributes_list[ATTR_RECOVERY_MAP_LIST] = [
+                v.as_dict() for v in reversed(self.recovery_map_list)]
         return attributes_list
 
     def check_point(self, x, y, absolute=False) -> bool:
@@ -2514,9 +2568,11 @@ class MapRendererColorScheme:
     virtual_wall: tuple[int] = (199, 0, 0, 200)
     pathway: tuple[int] = (23, 111, 244, 200)
     active_area: tuple[int] = (255, 255, 255, 80)
-    active_area_outline: tuple[int] = (34, 109, 242, 255)  # (103, 156, 244, 200)
+    active_area_outline: tuple[int] = (
+        34, 109, 242, 255)  # (103, 156, 244, 200)
     active_point: tuple[int] = (255, 255, 255, 80)
-    active_point_outline: tuple[int] = (34, 109, 242, 255)  # (103, 156, 244, 200)
+    active_point_outline: tuple[int] = (
+        34, 109, 242, 255)  # (103, 156, 244, 200)
     path: tuple[int] = (255, 255, 255, 255)
     segment: tuple[list[tuple[int]]] = (
         [(171, 199, 248, 255), (121, 170, 255, 255)],
@@ -2646,7 +2702,8 @@ MAP_COLOR_SCHEME_LIST: Final = {
     ),
 }
 
-MAP_ICON_SET_LIST: Final = {"Dreame": 0, "Dreame Old": 1, "Mijia": 2, "Material": 3}
+MAP_ICON_SET_LIST: Final = {"Dreame": 0,
+                            "Dreame Old": 1, "Mijia": 2, "Material": 3}
 
 
 class MapRendererLayer(IntEnum):

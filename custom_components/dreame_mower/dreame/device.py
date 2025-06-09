@@ -156,8 +156,8 @@ class DreameMowerDevice:
         username: str = None,
         password: str = None,
         country: str = None,
-        prefer_cloud: bool = False,
-        account_type: str = "mi",
+        prefer_cloud: bool = True,
+        account_type: str = "dreame",
         device_id: str = None,
     ) -> None:
         # Used for easy filtering the device from cloud device list and generating unique ids
@@ -211,59 +211,13 @@ class DreameMowerDevice:
         self.capability = DreameMowerDeviceCapability(self)
 
         # Remove write only and response only properties from default list
-        self._default_properties = list(
-            set([prop for prop in DreameMowerProperty])
-            - set(
-                [
-                    DreameMowerProperty.SCHEDULE_ID,
-                    DreameMowerProperty.REMOTE_CONTROL,
-                    DreameMowerProperty.VOICE_CHANGE,
-                    DreameMowerProperty.VOICE_CHANGE_STATUS,
-                    DreameMowerProperty.MAP_RECOVERY,
-                    DreameMowerProperty.CLEANING_START_TIME,
-                    DreameMowerProperty.CLEAN_LOG_FILE_NAME,
-                    DreameMowerProperty.CLEANING_PROPERTIES,
-                    DreameMowerProperty.CLEAN_LOG_STATUS,
-                    DreameMowerProperty.MAP_INDEX,
-                    DreameMowerProperty.MAP_NAME,
-                    DreameMowerProperty.CRUISE_TYPE,
-                    DreameMowerProperty.MAP_DATA,
-                    DreameMowerProperty.FRAME_INFO,
-                    DreameMowerProperty.OBJECT_NAME,
-                    DreameMowerProperty.MAP_EXTEND_DATA,
-                    DreameMowerProperty.ROBOT_TIME,
-                    DreameMowerProperty.RESULT_CODE,
-                    DreameMowerProperty.OLD_MAP_DATA,
-                    DreameMowerProperty.FACTORY_TEST_STATUS,
-                    DreameMowerProperty.FACTORY_TEST_RESULT,
-                    DreameMowerProperty.SELF_TEST_STATUS,
-                    DreameMowerProperty.LSD_TEST_STATUS,
-                    DreameMowerProperty.DEBUG_SWITCH,
-                    DreameMowerProperty.SERIAL,
-                    DreameMowerProperty.CALIBRATION_STATUS,
-                    DreameMowerProperty.VERSION,
-                    DreameMowerProperty.PERFORMANCE_SWITCH,
-                    DreameMowerProperty.AI_TEST_STATUS,
-                    DreameMowerProperty.PUBLIC_KEY,
-                    DreameMowerProperty.AUTO_PAIR,
-                    DreameMowerProperty.MCU_VERSION,
-                    DreameMowerProperty.PLATFORM_NETWORK,
-                    DreameMowerProperty.TAKE_PHOTO,
-                    DreameMowerProperty.STEAM_HUMAN_FOLLOW,
-                    DreameMowerProperty.STREAM_KEEP_ALIVE,
-                    DreameMowerProperty.STREAM_UPLOAD,
-                    DreameMowerProperty.STREAM_AUDIO,
-                    DreameMowerProperty.STREAM_RECORD,
-                    DreameMowerProperty.STREAM_CODE,
-                    DreameMowerProperty.STREAM_SET_CODE,
-                    DreameMowerProperty.STREAM_VERIFY_CODE,
-                    DreameMowerProperty.STREAM_RESET_CODE,
-                    DreameMowerProperty.STREAM_CRUISE_POINT,
-                    DreameMowerProperty.STREAM_FAULT,
-                    DreameMowerProperty.STREAM_TASK,
-                ]
-            )
-        )
+        self._default_properties = [
+            DreameMowerProperty.STATE,
+            DreameMowerProperty.ERROR,
+            DreameMowerProperty.BATTERY_LEVEL,
+            DreameMowerProperty.CHARGING_STATUS,
+            DreameMowerProperty.STATUS,
+        ]
         self._discarded_properties = [
             DreameMowerProperty.ERROR,
             DreameMowerProperty.STATE,
@@ -443,14 +397,14 @@ class DreameMowerDevice:
                     )
                     if not custom_property:
                         if current_value is not None:
-                            _LOGGER.info(
+                            _LOGGER.debug(
                                 "Property %s Changed: %s -> %s",
                                 DreameMowerProperty(did).name,
                                 current_value,
                                 value,
                             )
                         else:
-                            _LOGGER.info(
+                            _LOGGER.debug(
                                 "Property %s Added: %s",
                                 DreameMowerProperty(did).name,
                                 value,
@@ -502,7 +456,7 @@ class DreameMowerDevice:
                 if not p.startswith("__") and not callable(getattr(self.capability, p)):
                     val = getattr(self.capability, p)
                     if isinstance(val, bool) and val:
-                        _LOGGER.info("Capability %s", p.upper())
+                        _LOGGER.debug("Capability %s", p.upper())
 
         return changed
 
@@ -519,14 +473,7 @@ class DreameMowerDevice:
                 if "aiid" not in mapping and (not self._ready or prop.value in self.data):
                     property_list.append({"did": str(prop.value), **mapping})
 
-        props = property_list.copy()
-        results = []
-        while props:
-            result = self._protocol.get_properties(props[:15])
-            if result is not None:
-                results.extend(result)
-                props[:] = props[15:]
-
+        results = self._protocol.get_properties(property_list)
         return self._handle_properties(results)
 
     def _update_status(self, task_status: DreameMowerTaskStatus, status: DreameMowerStatus) -> None:
@@ -1079,106 +1026,6 @@ class DreameMowerDevice:
         if self._map_manager and previous_battery_level is not None and self.status.battery_level == 100:
             self._map_manager.editor.refresh_map()
 
-    def _request_cleaning_history(self) -> None:
-        """Get and parse the cleaning history from cloud event data and set it to memory"""
-        if (
-            self.cloud_connected
-            and self._cleaning_history_update != 0
-            and (
-                self._cleaning_history_update == -1
-                or self.status._cleaning_history is None
-                or (
-                    time.time() - self._cleaning_history_update >= 5
-                    and self.status.task_status is DreameMowerTaskStatus.COMPLETED
-                )
-            )
-        ):
-            self._cleaning_history_update = 0
-
-            _LOGGER.info("Get Cleaning History")
-            try:
-                # Limit the results
-                start = None
-                max = 25
-                total = self.get_property(DreameMowerProperty.CLEANING_COUNT)
-                if total > 0:
-                    start = self.get_property(DreameMowerProperty.FIRST_CLEANING_DATE)
-
-                if start is None:
-                    start = int(time.time())
-                if total is None:
-                    total = 5
-                limit = 40
-                if total < max:
-                    limit = total + max
-
-                changed = False
-                # Cleaning history is generated from events of status property that has been sent to cloud by the device when it changed
-                result = self._protocol.cloud.get_device_event(
-                    DIID(DreameMowerProperty.STATUS, self.property_mapping),
-                    limit,
-                    start,
-                )
-                if result:
-                    cleaning_history = []
-                    history_size = 0
-                    for data in result:
-                        history = CleaningHistory(
-                            json.loads(data["history"] if "history" in data else data["value"]),
-                            self.property_mapping,
-                        )
-                        if history_size > 0 and cleaning_history[-1].date == history.date:
-                            continue
-
-                        if history.cleanup_method == CleanupMethod.CUSTOMIZED_CLEANING and self.capability.cleangenius:
-                            history.cleanup_method = CleanupMethod.DEFAULT_MODE
-
-                        cleaning_history.append(history)
-                        history_size = history_size + 1
-                        if history_size >= max or history_size >= total:
-                            break
-
-                    if self.status._cleaning_history != cleaning_history:
-                        _LOGGER.info("Cleaning History Changed")
-                        self.status._cleaning_history = cleaning_history
-                        self.status._cleaning_history_attrs = None
-                        if cleaning_history:
-                            self.status._last_cleaning_time = cleaning_history[0].date.replace(
-                                tzinfo=datetime.now().astimezone().tzinfo
-                            )
-                        changed = True
-
-                if changed:
-                    if self._ready:
-                        for k, v in copy.deepcopy(self.status._history_map_data).items():
-                            found = False
-                            if self.status._cleaning_history:
-                                for item in self.status._cleaning_history:
-                                    if k in item.file_name:
-                                        found = True
-                                        break
-
-                            if found:
-                                continue
-
-                            if self.status._cruising_history:
-                                for item in self.status._cruising_history:
-                                    if k in item.file_name:
-                                        found = True
-                                        break
-
-                            if found:
-                                continue
-
-                            del self.status._history_map_data[k]
-
-                        if self._map_manager:
-                            self._map_manager.editor.refresh_map()
-                        self._property_changed()
-
-            except Exception as ex:
-                _LOGGER.warning("Get Cleaning History failed!: %s", ex)
-
     def _property_changed(self) -> None:
         """Call external listener when a property changed"""
         if self._update_callback:
@@ -1331,7 +1178,7 @@ class DreameMowerDevice:
 
     def connect_device(self) -> None:
         """Connect to the device api."""
-        _LOGGER.info("Connecting to device")
+        _LOGGER.debug("Connecting to device")
         info = self._protocol.connect(self._message_callback, self._connected_callback)
         if info:
             self.info = DreameMowerDeviceInfo(info)
@@ -1381,7 +1228,6 @@ class DreameMowerDevice:
 
                 if self.cloud_connected:
                     self._cleaning_history_update = -1
-                    self._request_cleaning_history()
                     if (self.capability.ai_detection and not self.status.ai_policy_accepted) or True:
                         try:
                             prop = "prop.s_ai_config"
@@ -2012,14 +1858,7 @@ class DreameMowerDevice:
 
         if not self.cloud_connected:
             self.connect_cloud()
-
-        if not self.device_connected:
             self.connect_device()
-
-        if not self.device_connected:
-            raise DeviceUpdateFailedException("Device cannot be reached") from None
-
-        # self._update_running = True
 
         # Read-only properties
         properties = [
@@ -2180,9 +2019,6 @@ class DreameMowerDevice:
         if self._map_manager:
             self._map_manager.set_update_interval(self._map_update_interval)
             self._map_manager.set_device_running(self.status.running, self.status.docked and not self.status.started)
-
-        if self.cloud_connected:
-            self._request_cleaning_history()
 
         self._update_running = False
 
@@ -4133,7 +3969,6 @@ class DreameMowerDevice:
         return (
             self._protocol.cloud
             and self._protocol.cloud.connected
-            and (not self._protocol.prefer_cloud or self.device_connected)
         )
 
 
