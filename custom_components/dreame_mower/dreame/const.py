@@ -171,6 +171,7 @@ ERROR_LEFT_WHEEL_MOTOR: Final = "left_wheel_motor"
 ERROR_RIGHT_WHEEL_MOTOR: Final = "right_wheel_motor"
 ERROR_TURN_SUFFOCATE: Final = "turn_suffocate"
 ERROR_FORWARD_SUFFOCATE: Final = "forward_suffocate"
+ERROR_EMERGENCY_STOP: Final = "emergency_stop"
 ERROR_CHARGER_GET: Final = "charger_get"
 ERROR_BATTERY_LOW: Final = "battery_low"
 ERROR_CHARGE_FAULT: Final = "charge_fault"
@@ -686,6 +687,7 @@ ERROR_CODE_TO_ERROR_NAME: Final = {
     DreameMowerErrorCode.RIGHT_WHEEL_MOTOR: ERROR_RIGHT_WHEEL_MOTOR,
     DreameMowerErrorCode.TURN_SUFFOCATE: ERROR_TURN_SUFFOCATE,
     DreameMowerErrorCode.FORWARD_SUFFOCATE: ERROR_FORWARD_SUFFOCATE,
+    DreameMowerErrorCode.EMERGENCY_STOP: ERROR_EMERGENCY_STOP,
     DreameMowerErrorCode.CHARGER_GET: ERROR_CHARGER_GET,
     DreameMowerErrorCode.BATTERY_LOW: ERROR_BATTERY_LOW,
     DreameMowerErrorCode.CHARGE_FAULT: ERROR_CHARGE_FAULT,
@@ -893,6 +895,10 @@ ERROR_CODE_TO_ERROR_DESCRIPTION: Final = {
     DreameMowerErrorCode.FORWARD_SUFFOCATE: [
         "The robot is stuck, or cannot go forward",
         "The robot may be blocked or stuck.",
+    ],
+    DreameMowerErrorCode.EMERGENCY_STOP: [
+        "Emergency stop is activated",
+        "Enter PIN code on the robot to unlock it",
     ],
     DreameMowerErrorCode.CHARGER_GET: [
         "Cannot find base",
