@@ -449,6 +449,10 @@ class DreameMowerCameraEntity(DreameMowerEntity, Camera):
         self.access_tokens = collections.deque([], 2)
         self.async_update_token()
         self._rtsp_to_webrtc = False
+        self._webrtc_provider = None
+        self._legacy_webrtc_provider = None
+        self._supports_native_sync_webrtc = False
+        self._supports_native_async_webrtc = False
         self._should_poll = True
         self._last_updated = -1
         self._frame_id = -1
