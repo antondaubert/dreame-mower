@@ -1,6 +1,7 @@
 """Service 5 property handling for Dreame Mower Implementation.
 
 This module provides parsing and handling for Service 5 properties:
+- 5:100 - Unknown property (discovered in issue report)
 - 5:104 - Task status (task completion status codes)
 - 5:105 - Unknown property (possible capability/feature flag)
 - 5:106 - BMS charging micro-phases (fine-grained charging state)
@@ -15,11 +16,12 @@ from __future__ import annotations
 import logging
 from typing import Dict, Any
 from enum import Enum
-from ..const import TASK_STATUS_PROPERTY, SERVICE5_PROPERTY_105, SERVICE5_PROPERTY_106, SERVICE5_ENERGY_INDEX_PROPERTY, SERVICE5_PROPERTY_108
+from ..const import TASK_STATUS_PROPERTY, SERVICE5_PROPERTY_100, SERVICE5_PROPERTY_105, SERVICE5_PROPERTY_106, SERVICE5_ENERGY_INDEX_PROPERTY, SERVICE5_PROPERTY_108
 
 _LOGGER = logging.getLogger(__name__)
 
 # Property name constants for notifications
+SERVICE5_PROPERTY_100_PROPERTY_NAME = SERVICE5_PROPERTY_100.name
 TASK_STATUS_PROPERTY_NAME = TASK_STATUS_PROPERTY.name
 SERVICE5_PROPERTY_105_PROPERTY_NAME = SERVICE5_PROPERTY_105.name
 SERVICE5_PROPERTY_106_PROPERTY_NAME = SERVICE5_PROPERTY_106.name
@@ -29,6 +31,7 @@ SERVICE5_PROPERTY_108_PROPERTY_NAME = SERVICE5_PROPERTY_108.name
 # Property field constants
 TASK_STATUS_CODE_FIELD = "status_code"
 TASK_STATUS_DESCRIPTION_FIELD = "status_description"
+PROPERTY_100_VALUE_FIELD = "value_100"
 PROPERTY_105_VALUE_FIELD = "value_105"
 PROPERTY_106_VALUE_FIELD = "value_106"
 ENERGY_INDEX_VALUE_FIELD = "energy_index"
@@ -42,10 +45,13 @@ TASK_STATUS_MAPPING: dict[int, str] = {
 }
 
 class Service5PropertyHandler:
-    """Combined handler for Service 5 properties (5:104, 5:105, 5:106, 5:107, 5:108) with state management."""
+    """Combined handler for Service 5 properties (5:100, 5:104, 5:105, 5:106, 5:107, 5:108) with state management."""
     
     def __init__(self) -> None:
         """Initialize Service 5 property handler."""
+        
+        # Property 5:100 state
+        self._property_100_value: int | None = None
         
         # Property 5:104 state
         self._task_status_code: int | None = None
@@ -65,7 +71,7 @@ class Service5PropertyHandler:
     def handle_property_update(self, siid: int, piid: int, value: Any, notify_callback) -> bool:
         """Handle Service 5 property update.
         
-        This is the main entry point for Service 5 properties (5:104, 5:105, 5:106, 5:107, 5:108).
+        This is the main entry point for Service 5 properties (5:100, 5:104, 5:105, 5:106, 5:107, 5:108).
         
         Args:
             siid: Service instance ID
@@ -77,8 +83,12 @@ class Service5PropertyHandler:
             True if property was handled successfully, False otherwise
         """        
         try:
+            # Handle property 5:100
+            if SERVICE5_PROPERTY_100.matches(siid, piid):
+                return self._handle_property_100(value, notify_callback)
+            
             # Handle task status property (5:104)
-            if TASK_STATUS_PROPERTY.matches(siid, piid):
+            elif TASK_STATUS_PROPERTY.matches(siid, piid):
                 return self._handle_task_status_property(value, notify_callback)
             
             # Handle property 5:105
@@ -105,6 +115,26 @@ class Service5PropertyHandler:
             _LOGGER.error("Failed to handle Service 5 property %d:%d: %s", siid, piid, ex)
             return False
     
+    def _handle_property_100(self, value: Any, notify_callback) -> bool:
+        """Handle Service 5 property 100 (purpose currently unknown, discovered via issue report)."""
+        try:
+            old_value = self._property_100_value
+            self._property_100_value = int(value)
+
+            property_100_data = {
+                PROPERTY_100_VALUE_FIELD: self._property_100_value,
+            }
+            notify_callback(SERVICE5_PROPERTY_100_PROPERTY_NAME, property_100_data)
+
+            if old_value != self._property_100_value:
+                notify_callback("service5_property_100_value", self._property_100_value)
+
+            return True
+
+        except (ValueError, TypeError) as ex:
+            _LOGGER.error("Failed to parse Service 5 property 100 value: %s - %s", value, ex)
+            return False
+
     def _handle_task_status_property(self, value: Any, notify_callback) -> bool:
         """Handle task status property (5:104)."""
         try:
@@ -249,6 +279,11 @@ class Service5PropertyHandler:
             return False
 
     # Device state properties - single source of truth
+    @property
+    def property_100_value(self) -> int | None:
+        """Return Service 5 property 100 value."""
+        return self._property_100_value
+
     @property
     def task_status_code(self) -> int | None:
         """Return task status code."""

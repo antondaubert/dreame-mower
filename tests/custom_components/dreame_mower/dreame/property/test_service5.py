@@ -8,11 +8,13 @@ from custom_components.dreame_mower.dreame.property.service5 import (
     TASK_STATUS_PROPERTY_NAME,
     TASK_STATUS_DESCRIPTION_FIELD,
     TASK_STATUS_MAPPING,
+    SERVICE5_PROPERTY_100_PROPERTY_NAME,
     SERVICE5_PROPERTY_105_PROPERTY_NAME,
     SERVICE5_PROPERTY_106_PROPERTY_NAME,
     SERVICE5_ENERGY_INDEX_PROPERTY_NAME,
     SERVICE5_PROPERTY_108_PROPERTY_NAME,
     TASK_STATUS_CODE_FIELD,
+    PROPERTY_100_VALUE_FIELD,
     PROPERTY_105_VALUE_FIELD,
     PROPERTY_106_VALUE_FIELD,
     ENERGY_INDEX_VALUE_FIELD,
@@ -108,6 +110,60 @@ class TestService5PropertyHandler:
         """Test that task status mapping contains expected values."""
         assert 7 in TASK_STATUS_MAPPING
         assert TASK_STATUS_MAPPING[7] == "Task incomplete - spot mowing"
+
+    def test_handle_property_100_integer_value(self):
+        """Test handling property 5:100 with integer value (from issue report, value=5)."""
+        result = self.handler.handle_property_update(5, 100, 5, self.notify_callback)
+
+        assert result is True
+        assert self.handler.property_100_value == 5
+
+        assert len(self.notifications) == 2
+        assert self.notifications[0][0] == SERVICE5_PROPERTY_100_PROPERTY_NAME
+        assert self.notifications[0][1][PROPERTY_100_VALUE_FIELD] == 5
+        assert self.notifications[1][0] == "service5_property_100_value"
+        assert self.notifications[1][1] == 5
+
+    def test_handle_property_100_string_value(self):
+        """Test handling property 5:100 with string value that can be converted to int."""
+        result = self.handler.handle_property_update(5, 100, "3", self.notify_callback)
+
+        assert result is True
+        assert self.handler.property_100_value == 3
+
+    def test_handle_property_100_invalid_value(self):
+        """Test handling property 5:100 with invalid value."""
+        result = self.handler.handle_property_update(5, 100, "invalid", self.notify_callback)
+
+        assert result is False
+        assert self.handler.property_100_value is None
+
+    def test_handle_property_100_same_value_no_individual_notification(self):
+        """Test that same value doesn't trigger individual notification for 5:100."""
+        self.handler.handle_property_update(5, 100, 5, self.notify_callback)
+        self.notifications.clear()
+
+        result = self.handler.handle_property_update(5, 100, 5, self.notify_callback)
+
+        assert result is True
+        assert len(self.notifications) == 1  # Only main notification, no individual state change
+        assert self.notifications[0][0] == SERVICE5_PROPERTY_100_PROPERTY_NAME
+
+    def test_handle_property_100_from_issue_report(self):
+        """Test handling property 5:100 with the exact message from the issue report.
+
+        Issue message:
+        {'id': 122, 'method': 'properties_changed',
+         'params': [{'did': '-1******34', 'piid': 100, 'siid': 5, 'value': 5}]}
+        """
+        result = self.handler.handle_property_update(5, 100, 5, self.notify_callback)
+
+        assert result is True
+        assert self.handler.property_100_value == 5
+
+        notification_names = [notif[0] for notif in self.notifications]
+        assert SERVICE5_PROPERTY_100_PROPERTY_NAME in notification_names
+        assert "service5_property_100_value" in notification_names
 
     def test_handle_property_105_integer_value(self):
         """Test handling property 5:105 with integer value."""
@@ -277,6 +333,7 @@ class TestService5PropertyHandler:
 
     def test_initial_state(self):
         """Test initial state of handler."""
+        assert self.handler.property_100_value is None
         assert self.handler.task_status_code is None
         assert self.handler.property_105_value is None
         assert self.handler.property_106_value is None

@@ -71,6 +71,7 @@ SERVICE2_PROPERTY_67 = PropertyIdentifier(siid=2, piid=67, name="service2_proper
 BATTERY_PROPERTY = PropertyIdentifier(siid=3, piid=1, name="battery_percent")
 CHARGING_STATUS_PROPERTY = PropertyIdentifier(siid=3, piid=2, name="charging_status")
 
+SERVICE5_PROPERTY_100 = PropertyIdentifier(siid=5, piid=100, name="service5_property_100")
 TASK_STATUS_PROPERTY = PropertyIdentifier(siid=5, piid=104, name="task_status")
 SERVICE5_PROPERTY_105 = PropertyIdentifier(siid=5, piid=105, name="service5_property_105")
 SERVICE5_PROPERTY_106 = PropertyIdentifier(siid=5, piid=106, name="service5_property_106")
