@@ -8,7 +8,20 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch, PropertyMock
 
 from custom_components.dreame_mower.dreame.device import DreameMowerDevice, MowingMode
-from custom_components.dreame_mower.dreame.const import DeviceStatus
+from custom_components.dreame_mower.dreame.const import (
+    DeviceStatus,
+    ONLINE_OFFLINE_DEBOUNCE_POLLS,
+)
+
+
+def _run_online_polls(device, times):
+    """Run async_update_online_status ``times`` times, returning the last result."""
+    result = None
+    for _ in range(times):
+        result = asyncio.get_event_loop().run_until_complete(
+            device.async_update_online_status()
+        )
+    return result
 
 
 class MockCloudDevice:
@@ -25,6 +38,8 @@ class MockCloudDevice:
         self.set_property_calls = []
         self.batch_device_datas_result = None
         self.check_device_version_result = None
+        # get_properties returns a value, or raises when set to an Exception.
+        self.get_properties_result = None
     
     @property
     def connected(self) -> bool:
@@ -91,6 +106,12 @@ class MockCloudDevice:
     def check_device_version(self):
         """Mock cloud OTA firmware-availability check."""
         return self.check_device_version_result
+
+    def get_properties(self, parameters=None, retry_count: int = 1):
+        """Mock get_properties used by the online heartbeat poll."""
+        if isinstance(self.get_properties_result, Exception):
+            raise self.get_properties_result
+        return self.get_properties_result
 
     def execute_action(self, action) -> bool:
         """Mock execute_action method that uses action internally."""
@@ -1757,3 +1778,108 @@ def test_fetch_firmware_status_notifies_on_change(device):
 
     assert ("firmware_update_available", True) in notified
 
+
+
+def _heartbeat_props(byte17: int, byte18: int, code: int = 0):
+    """Build a get_properties response for property 1:1 with the given bytes."""
+    value = [0] * 22
+    value[17] = byte17
+    value[18] = byte18
+    return [{"siid": 1, "piid": 1, "code": code, "value": value}]
+
+
+def test_online_defaults_to_true(device):
+    """A freshly created device is considered online until a poll proves otherwise."""
+    assert device.online is True
+
+
+def test_update_online_status_online_from_heartbeat(device):
+    """A heartbeat with an active uplink byte keeps the device online."""
+    device._cloud_device.get_properties_result = _heartbeat_props(byte17=1, byte18=0)
+    result = asyncio.get_event_loop().run_until_complete(device.async_update_online_status())
+    assert result is True
+    assert device.online is True
+
+
+def test_update_online_status_online_from_high_bit(device):
+    """Byte 18 with its high bit set also indicates an online device."""
+    device._cloud_device.get_properties_result = _heartbeat_props(byte17=0, byte18=128)
+    result = asyncio.get_event_loop().run_until_complete(device.async_update_online_status())
+    assert result is True
+    assert device.online is True
+
+
+def test_update_online_status_offline_when_bytes_clear(device):
+    """Stale connectivity bytes mark the device offline and notify listeners."""
+    notified: list[tuple[str, object]] = []
+    device.register_property_callback(lambda name, value: notified.append((name, value)))
+
+    device._cloud_device.get_properties_result = _heartbeat_props(byte17=0, byte18=0)
+    result = _run_online_polls(device, ONLINE_OFFLINE_DEBOUNCE_POLLS)
+
+    assert result is False
+    assert device.online is False
+    assert ("online", False) in notified
+
+
+def test_update_online_status_offline_when_call_fails(device):
+    """Repeated cloud failures (device offline) flip the device offline."""
+    device._cloud_device.get_properties_result = TimeoutError("Device offline")
+    result = _run_online_polls(device, ONLINE_OFFLINE_DEBOUNCE_POLLS)
+    assert result is False
+    assert device.online is False
+
+
+def test_update_online_status_offline_is_debounced(device):
+    """A single offline poll must not flip the device offline (debounce)."""
+    notified: list[tuple[str, object]] = []
+    device.register_property_callback(lambda name, value: notified.append((name, value)))
+
+    device._cloud_device.get_properties_result = _heartbeat_props(byte17=0, byte18=0)
+
+    # Fewer than the debounce threshold: still considered online.
+    for _ in range(ONLINE_OFFLINE_DEBOUNCE_POLLS - 1):
+        result = asyncio.get_event_loop().run_until_complete(
+            device.async_update_online_status()
+        )
+        assert result is False
+        assert device.online is True
+
+    # The threshold-th consecutive offline poll finally flips it offline.
+    result = asyncio.get_event_loop().run_until_complete(
+        device.async_update_online_status()
+    )
+    assert result is False
+    assert device.online is False
+    assert ("online", False) in notified
+
+
+def test_update_online_status_debounce_resets_on_online(device):
+    """An intervening online poll resets the debounce so the count restarts."""
+    # Rack up offline polls just short of the threshold.
+    device._cloud_device.get_properties_result = _heartbeat_props(byte17=0, byte18=0)
+    for _ in range(ONLINE_OFFLINE_DEBOUNCE_POLLS - 1):
+        asyncio.get_event_loop().run_until_complete(device.async_update_online_status())
+    assert device.online is True
+
+    # A single online heartbeat clears the accumulated offline count.
+    device._cloud_device.get_properties_result = _heartbeat_props(byte17=1, byte18=0)
+    asyncio.get_event_loop().run_until_complete(device.async_update_online_status())
+    assert device.online is True
+
+    # One more offline poll must not be enough on its own to flip offline.
+    device._cloud_device.get_properties_result = _heartbeat_props(byte17=0, byte18=0)
+    asyncio.get_event_loop().run_until_complete(device.async_update_online_status())
+    assert device.online is True
+
+
+def test_incoming_message_restores_online(device):
+    """Any inbound MQTT message immediately marks the device back online."""
+    device._online = False
+    notified: list[tuple[str, object]] = []
+    device.register_property_callback(lambda name, value: notified.append((name, value)))
+
+    device._handle_message({"method": "properties_changed", "params": []})
+
+    assert device.online is True
+    assert ("online", True) in notified

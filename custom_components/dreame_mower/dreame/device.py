@@ -86,6 +86,7 @@ from .const import (
     TASK_PAYLOAD_RESUME,
     DEVICE_CODE_PROPERTY,
     PROPERTY_1_1,
+    ONLINE_OFFLINE_DEBOUNCE_POLLS,
     DeviceStatus,
 )
 
@@ -165,7 +166,17 @@ class DreameMowerDevice:
         self._last_update = datetime.now()
         self._battery_percent = 0
         self._status_code = 0
-        
+
+        # Whether the device itself is reachable via the cloud. The MQTT link the
+        # integration keeps open stays connected even when the robot drops off the
+        # cloud, so this is tracked separately from the transport connection and
+        # refreshed by the connectivity heartbeat poll. Defaults to online so
+        # entities are available until the first poll proves otherwise.
+        self._online = True
+        # Consecutive offline heartbeat polls seen so far; the device is only
+        # flipped offline once this reaches ONLINE_OFFLINE_DEBOUNCE_POLLS.
+        self._offline_poll_count = 0
+
         # MQTT properties
         self._bluetooth_connected: bool | None = None
         self._charging_status: str | None = None
@@ -208,6 +219,11 @@ class DreameMowerDevice:
     def device_reachable(self) -> bool:
         """Return True if device is reachable via cloud API."""
         return self._cloud_device.device_reachable
+
+    @property
+    def online(self) -> bool:
+        """Return True if the device itself is online per the cloud heartbeat."""
+        return self._online
 
     @property
     def firmware(self) -> str:
@@ -546,6 +562,77 @@ class DreameMowerDevice:
             )
         return True
 
+    def _set_online(self, online: bool) -> None:
+        """Update the cached online flag and notify listeners on change."""
+        if online:
+            # Any online signal clears the offline debounce immediately.
+            self._offline_poll_count = 0
+        if self._online == online:
+            return
+        self._online = online
+        if online:
+            _LOGGER.info("Device %s is back online", self._device_id)
+        else:
+            _LOGGER.info("Device %s reported offline by the cloud", self._device_id)
+        self._notify_property_change("online", online)
+
+    @staticmethod
+    def _online_from_heartbeat(props: Any) -> bool | None:
+        """Derive online state from a 1:1 connectivity heartbeat response.
+
+        The connectivity uplink is encoded in the heartbeat byte array: the
+        device is considered online while either byte 17 is non-zero or byte 18
+        has its high bit set. Returns None when the response is malformed so the
+        caller can retry instead of assuming the device is offline.
+        """
+        if not isinstance(props, list) or not props:
+            return None
+        entry = props[0]
+        if not isinstance(entry, dict) or entry.get("code", -1) != 0:
+            return None
+        value = entry.get("value")
+        if not isinstance(value, (list, tuple)) or len(value) <= 18:
+            return None
+        return int(value[17]) != 0 or int(value[18]) >= 128
+
+    async def async_update_online_status(self) -> bool:
+        """Poll the cloud connectivity heartbeat and update the online flag.
+
+        Reads property 1:1 and inspects its connectivity bytes. A device that has
+        dropped off the cloud either returns an offline error or reports stale
+        connectivity bytes. Any online result marks the device back online at
+        once; an offline result only flips the device offline after
+        ONLINE_OFFLINE_DEBOUNCE_POLLS consecutive offline polls, so a single
+        missed heartbeat does not flap entities to unavailable.
+        """
+        loop = asyncio.get_event_loop()
+        online: bool | None = None
+        for _attempt in range(3):
+            try:
+                props = await loop.run_in_executor(
+                    None,
+                    lambda: self._cloud_device.get_properties(
+                        [{"siid": PROPERTY_1_1.siid, "piid": PROPERTY_1_1.piid}]
+                    ),
+                )
+            except (TimeoutError, ConnectionError, RuntimeError) as ex:
+                _LOGGER.debug("Online heartbeat attempt failed: %s", ex)
+                continue
+            online = self._online_from_heartbeat(props)
+            if online is not None:
+                break
+
+        if online:
+            self._set_online(True)
+            return True
+
+        # Offline determination: debounce across consecutive polls so a
+        # transient cloud hiccup doesn't briefly mark the device unavailable.
+        self._offline_poll_count += 1
+        if self._offline_poll_count >= ONLINE_OFFLINE_DEBOUNCE_POLLS:
+            self._set_online(False)
+        return False
+
     @property
     def device_id(self) -> str:
         """Return device ID."""
@@ -648,6 +735,10 @@ class DreameMowerDevice:
         """Handle incoming MQTT messages from cloud device."""
         # Update last update timestamp
         self._last_update = datetime.now()
+
+        # Any inbound message is proof the device is talking to the cloud, so
+        # treat it as online immediately without waiting for the next poll.
+        self._set_online(True)
         
         # Handle properties_changed method with params array
         if message.get("method") == "properties_changed" and "params" in message:

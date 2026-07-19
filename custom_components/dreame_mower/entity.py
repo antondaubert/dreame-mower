@@ -49,8 +49,10 @@ class DreameMowerEntity(CoordinatorEntity[DreameMowerCoordinator]):
     def available(self) -> bool:
         """Return True if entity is available."""
         # For real-time updates via MQTT, we only need device connection
-        # last_update_success is not reliable since we don't use polling
-        return self.coordinator.device_connected
+        # last_update_success is not reliable since we don't use polling.
+        # The transport link stays up even when the robot drops off the cloud,
+        # so also require the device to be reported online by the heartbeat.
+        return self.coordinator.device_connected and self.coordinator.device_online
 
     @property
     def unique_id(self) -> str:

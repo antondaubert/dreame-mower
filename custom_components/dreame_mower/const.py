@@ -18,3 +18,9 @@ DATA_PLATFORMS = "platforms"
 
 # How often to poll the cloud for firmware update availability.
 FIRMWARE_POLL_INTERVAL_HOURS = 24
+
+# How often to poll the cloud connectivity heartbeat to detect whether the
+# device itself is online. The cloud MQTT link the integration uses stays up
+# even when the robot loses its own connection, so this poll is what flips
+# entities to unavailable while the device is offline.
+ONLINE_POLL_INTERVAL_SECONDS = 60

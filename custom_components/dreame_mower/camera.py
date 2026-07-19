@@ -514,4 +514,4 @@ class DreameMowerCameraEntity(DreameMowerEntity, Camera):
     @property
     def available(self) -> bool:
         """Return True if the camera is available."""
-        return self.coordinator.device.connected
+        return self.coordinator.device_connected and self.coordinator.device_online

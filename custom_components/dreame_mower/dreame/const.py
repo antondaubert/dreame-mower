@@ -42,6 +42,11 @@ class EventIdentifier(NamedTuple):
         return self.siid == siid and self.eiid == eiid
 
 
+# Number of consecutive offline heartbeat polls required before the device is
+# flipped to offline. Debounces a transient cloud hiccup so entities don't flap
+# to unavailable and back on a single missed poll.
+ONLINE_OFFLINE_DEBOUNCE_POLLS = 3
+
 # Device property identifiers
 PROPERTY_1_1 = PropertyIdentifier(siid=1, piid=1, name="property_1_1")
 FIRMWARE_INSTALL_STATE_PROPERTY = PropertyIdentifier(siid=1, piid=2, name="firmware_install_state")

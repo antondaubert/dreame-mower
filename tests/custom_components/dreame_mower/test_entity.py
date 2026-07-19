@@ -16,6 +16,7 @@ def _make_coordinator(
     manufacturer="Dreametech™",
     firmware="1.0.0",
     connected=True,
+    online=True,
 ):
     coordinator = MagicMock()
     coordinator.device_mac = mac
@@ -25,6 +26,7 @@ def _make_coordinator(
     coordinator.device_manufacturer = manufacturer
     coordinator.device_firmware = firmware
     coordinator.device_connected = connected
+    coordinator.device_online = online
     return coordinator
 
 
@@ -54,6 +56,12 @@ def test_available_true_when_connected():
 
 def test_available_false_when_disconnected():
     entity = _make_entity(_make_coordinator(connected=False))
+    assert entity.available is False
+
+
+def test_available_false_when_offline():
+    # The transport link may be up while the robot itself is offline.
+    entity = _make_entity(_make_coordinator(connected=True, online=False))
     assert entity.available is False
 
 

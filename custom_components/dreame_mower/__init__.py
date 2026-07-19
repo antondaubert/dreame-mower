@@ -22,6 +22,7 @@ from .const import (
     DATA_PLATFORMS,
     DOMAIN,
     FIRMWARE_POLL_INTERVAL_HOURS,
+    ONLINE_POLL_INTERVAL_SECONDS,
 )
 from .coordinator import DreameMowerCoordinator
 from .config_flow import DEVICE_TYPE_SWBOT
@@ -100,6 +101,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 hass,
                 _async_poll_firmware,
                 timedelta(hours=FIRMWARE_POLL_INTERVAL_HOURS),
+                cancel_on_shutdown=True,
+            )
+        )
+
+        # Periodically poll the cloud connectivity heartbeat so entities go
+        # unavailable when the robot itself drops off the cloud. The integration's
+        # own MQTT link stays connected in that case, so it cannot detect the
+        # device going offline on its own.
+        async def _async_poll_online(now=None) -> None:
+            try:
+                await coordinator.async_update_online_status()
+            except Exception as ex:
+                _LOGGER.warning("Online status poll failed: %s", ex)
+
+        await _async_poll_online()
+        entry.async_on_unload(
+            async_track_time_interval(
+                hass,
+                _async_poll_online,
+                timedelta(seconds=ONLINE_POLL_INTERVAL_SECONDS),
                 cancel_on_shutdown=True,
             )
         )

@@ -32,6 +32,7 @@ def mock_coordinator():
     """Create a mock coordinator for testing."""
     coordinator = MagicMock(spec=DreameMowerCoordinator)
     coordinator.device_connected = True
+    coordinator.device_online = True
     coordinator.last_update_success = True
     coordinator.device_mac = "aa:bb:cc:dd:ee:ff"
     coordinator.device_battery_percent = 85  # Default battery level

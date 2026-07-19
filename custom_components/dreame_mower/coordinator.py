@@ -91,6 +91,7 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return {
             "name": self.device_name,
             "connected": self.device_connected,
+            "online": self.device_online,
             "last_update": self.last_update,
             "mac": self.device_mac,
             "model": self.device_model,
@@ -126,6 +127,11 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def device_connected(self) -> bool:
         """Return device connection status."""
         return self.device.connected
+
+    @property
+    def device_online(self) -> bool:
+        """Return whether the device itself is online per the cloud heartbeat."""
+        return self.device.online
 
     @property
     def device_name(self) -> str:
@@ -511,6 +517,10 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         await self.device.fetch_firmware_status()
         data = await self._async_update_data()
         self.async_set_updated_data(data)
+
+    async def async_update_online_status(self) -> None:
+        """Poll the cloud connectivity heartbeat to detect if the device is offline."""
+        await self.device.async_update_online_status()
 
     async def async_connect_device(self) -> bool:
         return await self.device.connect()
