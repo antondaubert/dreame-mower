@@ -400,7 +400,7 @@ class DreameMowerOptionsFlow(OptionsFlow):
             step_id="init",
             data_schema=vol.Schema({
                 vol.Required(CONF_NOTIFY, default=current_notify): cv.multi_select(NOTIFICATION),
-                vol.Required(CONF_MAP_ROTATION, default=current_rotation): vol.In([0, 90, 180, 270]),
+                vol.Required(CONF_MAP_ROTATION, default=current_rotation): vol.All(vol.Coerce(int), vol.In([0, 90, 180, 270])),
                 vol.Required(CONF_MAP_SHOW_TITLE, default=current_show_title): bool,
                 vol.Required(CONF_MAP_SHOW_LEGEND, default=current_show_legend): bool,
                 vol.Required(CONF_MAP_PADDING, default=current_padding): vol.All(int, vol.Range(min=0, max=200)),

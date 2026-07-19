@@ -64,3 +64,26 @@ class TestOptionsFlow:
         assert NOTIFICATION_WARNING in default_notify
         assert NOTIFICATION_ERROR in default_notify
         assert len(default_notify) == 2
+
+    @pytest.mark.asyncio
+    async def test_rotation_accepts_string_values(self):
+        """The frontend submits radio values as strings; the schema must coerce them."""
+        mock_config_entry = Mock()
+        mock_config_entry.options = {CONF_MAP_ROTATION: 0}
+
+        options_flow = DreameMowerOptionsFlow()
+        with patch.object(
+            type(options_flow), 'config_entry', new_callable=PropertyMock, return_value=mock_config_entry
+        ):
+            result = await options_flow.async_step_init(user_input=None)
+
+        schema = result["data_schema"]
+        for value in ("0", "90", "180", "270"):
+            validated = schema({
+                CONF_NOTIFY: [],
+                CONF_MAP_ROTATION: value,
+                "map_show_title": True,
+                "map_show_legend": True,
+                "map_padding": 50,
+            })
+            assert validated[CONF_MAP_ROTATION] == int(value)
