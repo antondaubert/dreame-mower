@@ -83,7 +83,13 @@ class TestProperty11Handler:
         # 24-byte variant (mova.mower.g2405c firmware 4.3.6_0062, issue #18) - silently acknowledged
         result = handler.parse_value([1] + [0] * 22 + [0])
         assert result is True
-        
+
+        # 22-byte variant (dreame.mower.a3-awd-pro, issue #178) - silently acknowledged
+        result = handler.parse_value(
+            [206, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100, 193, 255, 0, 0, 128, 184, 196, 0, 0, 206]
+        )
+        assert result is True
+
         # Unknown sizes return False to surface new firmware variants
         result = handler.parse_value([206, 1, 2, 3])  # 4 bytes
         assert result is False

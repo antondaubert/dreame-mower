@@ -84,6 +84,9 @@ class Property11Handler:
             elif len(value) == 24:
                 # 24-byte variant seen on mova.mower.g2405c firmware 4.3.6_0062 (issue #18)
                 _LOGGER.debug("Property 1:1 received (24-byte variant): %s", value)
+            elif len(value) == 22:
+                # 22-byte variant seen on dreame.mower.a3-awd-pro (issue #178)
+                _LOGGER.debug("Property 1:1 received (22-byte variant): %s", value)
             elif len(value) == 20:
                 # 20-byte variant with non-CE sentinels seen on dreame.swbot.g2509 fw 4.3.6_0603
                 _LOGGER.debug("Property 1:1 received (20-byte alt-sentinel variant): %s", value)
