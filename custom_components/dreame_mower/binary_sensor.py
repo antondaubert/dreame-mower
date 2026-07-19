@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -32,7 +33,7 @@ async def async_setup_entry(
 
 
 class DreameMowerFirmwareUpdateSensor(DreameMowerEntity, BinarySensorEntity):
-    """Reports whether a firmware update is available (1:2)."""
+    """Reports whether a newer firmware than the installed one is available."""
 
     def __init__(self, coordinator: DreameMowerCoordinator) -> None:
         """Initialize the firmware update binary sensor."""
@@ -45,3 +46,12 @@ class DreameMowerFirmwareUpdateSensor(DreameMowerEntity, BinarySensorEntity):
     def is_on(self) -> bool:
         """Return True if a firmware update is available."""
         return self.coordinator.device_update_available
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Expose the installed and latest available firmware versions."""
+        attrs: dict[str, Any] = {"installed_version": self.coordinator.device_firmware}
+        latest = self.coordinator.device_latest_firmware
+        if latest:
+            attrs["latest_version"] = latest
+        return attrs

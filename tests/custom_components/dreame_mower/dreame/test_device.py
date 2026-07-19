@@ -24,6 +24,7 @@ class MockCloudDevice:
         self.action_result = True
         self.set_property_calls = []
         self.batch_device_datas_result = None
+        self.check_device_version_result = None
     
     @property
     def connected(self) -> bool:
@@ -86,6 +87,10 @@ class MockCloudDevice:
     def get_batch_device_datas(self, props):
         """Mock batch device data getter used by vector map refresh."""
         return self.batch_device_datas_result
+
+    def check_device_version(self):
+        """Mock cloud OTA firmware-availability check."""
+        return self.check_device_version_result
 
     def execute_action(self, action) -> bool:
         """Mock execute_action method that uses action internally."""
@@ -1678,81 +1683,77 @@ async def test_full_mission_lifecycle_workflow(device):
 
 
 def test_fetch_firmware_status_up_to_date(device):
-    """OTA_INFO [1, 0] means firmware is up to date (idle, no update)."""
+    """hasNewFirmware=False means firmware is up to date (no update)."""
     device._cloud_device.set_connected_state(True)
-    device._cloud_device.batch_device_datas_result = {"OTA_INFO.0": "[1,0]"}
+    device._cloud_device.check_device_version_result = {
+        "curVersion": "4.3.6_0550",
+        "hasNewFirmware": False,
+    }
 
     result = asyncio.get_event_loop().run_until_complete(device.fetch_firmware_status())
 
     assert result is True
-    assert device.firmware_install_state == 1
+    assert device.firmware_update_available is False
+    assert device.firmware_latest_version is None
 
 
 def test_fetch_firmware_status_update_available(device):
-    """OTA_INFO state 2 means a new firmware update is available."""
+    """hasNewFirmware=True surfaces the available newVersion."""
     device._cloud_device.set_connected_state(True)
-    device._cloud_device.batch_device_datas_result = {"OTA_INFO.0": "[2,0]"}
+    device._cloud_device.check_device_version_result = {
+        "curVersion": "4.3.6_0550",
+        "newVersion": "4.3.6_0625",
+        "hasNewFirmware": True,
+    }
 
     result = asyncio.get_event_loop().run_until_complete(device.fetch_firmware_status())
 
     assert result is True
-    assert device.firmware_install_state == 2
+    assert device.firmware_update_available is True
+    assert device.firmware_latest_version == "4.3.6_0625"
 
 
-def test_fetch_firmware_status_accepts_list_payload(device):
-    """OTA_INFO payload may arrive already decoded as a list."""
+def test_fetch_firmware_status_clears_stale_availability(device):
+    """A subsequent up-to-date response clears a previously-available update."""
     device._cloud_device.set_connected_state(True)
-    device._cloud_device.batch_device_datas_result = {"OTA_INFO.0": [3, 42]}
+    device._firmware_new_available = True
+    device._firmware_latest_version = "4.3.6_0625"
+    device._cloud_device.check_device_version_result = {
+        "curVersion": "4.3.6_0625",
+        "hasNewFirmware": False,
+    }
 
     result = asyncio.get_event_loop().run_until_complete(device.fetch_firmware_status())
 
     assert result is True
-    assert device.firmware_install_state == 3
+    assert device.firmware_update_available is False
+    assert device.firmware_latest_version is None
 
 
-def test_fetch_firmware_status_missing_key(device):
-    """A response without the OTA_INFO key should be a no-op failure."""
+def test_fetch_firmware_status_no_data(device):
+    """A response without data should be a no-op failure."""
     device._cloud_device.set_connected_state(True)
-    device._cloud_device.batch_device_datas_result = {"MAP.info": "2"}
+    device._cloud_device.check_device_version_result = None
 
     result = asyncio.get_event_loop().run_until_complete(device.fetch_firmware_status())
 
     assert result is False
-    assert device.firmware_install_state is None
-
-
-def test_fetch_firmware_status_malformed_payload(device):
-    """A malformed OTA_INFO payload should fail gracefully without raising."""
-    device._cloud_device.set_connected_state(True)
-    device._cloud_device.batch_device_datas_result = {"OTA_INFO.0": "not-json"}
-
-    result = asyncio.get_event_loop().run_until_complete(device.fetch_firmware_status())
-
-    assert result is False
-    assert device.firmware_install_state is None
-
-
-def test_fetch_firmware_status_rejects_unknown_state(device):
-    """An unrecognized install state must not overwrite a known one."""
-    device._cloud_device.set_connected_state(True)
-    device._firmware_install_state = 1  # previously-known good state
-    device._cloud_device.batch_device_datas_result = {"OTA_INFO.0": "[99,0]"}
-
-    result = asyncio.get_event_loop().run_until_complete(device.fetch_firmware_status())
-
-    assert result is False
-    assert device.firmware_install_state == 1
+    assert device.firmware_update_available is False
 
 
 def test_fetch_firmware_status_notifies_on_change(device):
-    """A changed install state should fire a property-change callback."""
+    """A newly-available update should fire a property-change callback."""
     device._cloud_device.set_connected_state(True)
-    device._cloud_device.batch_device_datas_result = {"OTA_INFO.0": "[2,0]"}
+    device._cloud_device.check_device_version_result = {
+        "curVersion": "4.3.6_0550",
+        "newVersion": "4.3.6_0625",
+        "hasNewFirmware": True,
+    }
 
     notified: list[tuple[str, object]] = []
     device.register_property_callback(lambda name, value: notified.append((name, value)))
 
     asyncio.get_event_loop().run_until_complete(device.fetch_firmware_status())
 
-    assert ("firmware_install_state", 2) in notified
+    assert ("firmware_update_available", True) in notified
 

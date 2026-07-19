@@ -444,6 +444,31 @@ class DreameMowerCloudDevice:
             return None
         return api_response["data"]
 
+    def check_device_version(self) -> Any:
+        """Query the cloud OTA service for firmware update availability.
+
+        POSTs to iotuserbind/checkDeviceVersion and returns the ``data`` object,
+        which reports the installed version (``curVersion``), whether a newer
+        firmware exists (``hasNewFirmware``), the available ``newVersion`` and
+        its release notes (``description``). The service compares against the
+        latest published firmware for the model; the device's own 1:2 property
+        only flips once an OTA has actually been assigned to the device.
+        """
+        if not self._cloud_base.connected:
+            _LOGGER.info("check_device_version: Not connected. Attempting to connect.")
+            self._cloud_base.connect()
+
+        if not self._cloud_base.connected:
+            raise ConnectionError("check_device_version: Unable to connect. Connection failed.")
+
+        api_response = self._cloud_base._api_call(
+            f"{self._cloud_base._api_strings[23]}/{self._cloud_base._api_strings[24]}/checkDeviceVersion",
+            {"did": self._device_id},
+        )
+        if api_response is None or "data" not in api_response:
+            return None
+        return api_response["data"]
+
     def set_batch_device_datas(self, props) -> Any:
         if not self._cloud_base.connected:
             raise ConnectionError("set_batch_device_datas: Not connected. Call login() first.")

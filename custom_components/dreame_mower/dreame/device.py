@@ -67,7 +67,6 @@ from .const import (
     CHARGING_STATUS_MAPPING,
     TASK_STATUS_PROPERTY,
     FIRMWARE_INSTALL_STATE_MAPPING,
-    OTA_INFO_DATA_KEY,
     SERVICE5_PROPERTY_100,
     SERVICE5_PROPERTY_101,
     SERVICE5_PROPERTY_105,
@@ -175,6 +174,8 @@ class DreameMowerDevice:
         self._device_file_path: str | None = None
         self._firmware_install_state: int | None = None
         self._firmware_download_progress: int | None = None
+        self._firmware_new_available: bool = False
+        self._firmware_latest_version: str | None = None
         self._service1_property_50: bool = False
         self._service1_property_51: bool = False
         self._service1_completion_flag: bool = False
@@ -257,6 +258,16 @@ class DreameMowerDevice:
     def firmware_download_progress(self) -> int | None:
         """Return firmware download progress in percent (1:3)."""
         return self._firmware_download_progress
+
+    @property
+    def firmware_update_available(self) -> bool:
+        """Return whether the cloud reports a newer firmware than installed."""
+        return self._firmware_new_available
+
+    @property
+    def firmware_latest_version(self) -> str | None:
+        """Return the latest available firmware version, if any."""
+        return self._firmware_latest_version
     
     @property
     def service1_property_50(self) -> bool:
@@ -495,51 +506,43 @@ class DreameMowerDevice:
             return False
 
     async def fetch_firmware_status(self) -> bool:
-        """Fetch the firmware/OTA state from the OTA_INFO device-data record.
+        """Fetch firmware update availability from the cloud OTA service.
 
-        OTA_INFO holds a [install_state, download_progress] array, where
-        install_state follows FIRMWARE_INSTALL_STATE_MAPPING (1 = up to date,
-        2 = new firmware available, 3 = installing, 4 = download failed).
-        Polling this over REST surfaces update availability without having to
-        wait for the device to push a property change over MQTT.
+        Queries checkDeviceVersion, which compares the installed firmware
+        against the latest published version for the model and reports
+        ``hasNewFirmware`` plus the available ``newVersion``. This is the
+        authoritative source of update availability: the device's own 1:2
+        property only flips once an OTA has actually been assigned to it, so it
+        cannot surface a pending update on its own.
 
         Returns:
-            True if the firmware state was fetched and applied, False otherwise.
+            True if the firmware status was fetched and applied, False otherwise.
         """
         try:
-            batch_data = await asyncio.get_event_loop().run_in_executor(
+            data = await asyncio.get_event_loop().run_in_executor(
                 None,
-                lambda: self._cloud_device.get_batch_device_datas([OTA_INFO_DATA_KEY]),
+                self._cloud_device.check_device_version,
             )
         except Exception as ex:
             _LOGGER.warning("Failed to fetch firmware status: %s", ex)
             return False
 
-        if not batch_data or OTA_INFO_DATA_KEY not in batch_data:
-            _LOGGER.debug("No %s in batch data response", OTA_INFO_DATA_KEY)
+        if not isinstance(data, dict):
+            _LOGGER.debug("checkDeviceVersion returned no data: %r", data)
             return False
 
-        raw = batch_data[OTA_INFO_DATA_KEY]
-        try:
-            parsed = json.loads(raw) if isinstance(raw, str) else raw
-            state = int(parsed[0])
-        except (ValueError, TypeError, IndexError, KeyError, json.JSONDecodeError) as ex:
-            _LOGGER.warning("Unexpected %s payload %r: %s", OTA_INFO_DATA_KEY, raw, ex)
-            return False
+        available = bool(data.get("hasNewFirmware"))
+        latest = str(data["newVersion"]) if available and data.get("newVersion") else None
 
-        if state not in FIRMWARE_INSTALL_STATE_MAPPING:
-            # Match the MQTT handler: do not let an unrecognized value overwrite
-            # a previously-known state.
-            _LOGGER.warning("Unknown firmware installation state value: %s", state)
-            return False
-
-        if self._firmware_install_state != state:
-            self._firmware_install_state = state
-            self._notify_property_change(FIRMWARE_INSTALL_STATE_PROPERTY.name, state)
+        self._firmware_latest_version = latest
+        if self._firmware_new_available != available:
+            self._firmware_new_available = available
+            self._notify_property_change("firmware_update_available", available)
             _LOGGER.debug(
-                "Firmware installation state (OTA_INFO): %s (%s)",
-                state,
-                FIRMWARE_INSTALL_STATE_MAPPING[state],
+                "Firmware update available: %s (installed=%s, latest=%s)",
+                available,
+                data.get("curVersion"),
+                latest,
             )
         return True
 

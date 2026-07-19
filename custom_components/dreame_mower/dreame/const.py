@@ -200,11 +200,6 @@ FIRMWARE_INSTALL_STATE_MAPPING: dict[int, str] = {
     4: "firmware_download_failed",  # Observed in issues #98, #134
 }
 
-# Device-data key holding the firmware/OTA record as a [install_state, download_progress]
-# array. Can be polled over REST (get_batch_device_datas) without waiting for the
-# device to push a property update over MQTT.
-OTA_INFO_DATA_KEY = "OTA_INFO.0"
-
 # Individual property names
 PROPERTY_FIRMWARE = "firmware"
 PROPERTY_TEMPERATURE = "temperature"

@@ -35,7 +35,6 @@ from .dreame.property import (
     NOTIFICATION_DESCRIPTION_FIELD,
 )
 from .dreame.const import (
-    FIRMWARE_INSTALL_STATE_NEW_AVAILABLE,
     POWER_STATE_PROPERTY,
     DeviceStatus,
     STATUS_PROPERTY,
@@ -151,7 +150,12 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     @property
     def device_update_available(self) -> bool:
         """Return whether a firmware update is available."""
-        return self.device.firmware_install_state == FIRMWARE_INSTALL_STATE_NEW_AVAILABLE
+        return self.device.firmware_update_available
+
+    @property
+    def device_latest_firmware(self) -> str | None:
+        """Return the latest available firmware version, if any."""
+        return self.device.firmware_latest_version
 
     @property
     def device_manufacturer(self) -> str:
