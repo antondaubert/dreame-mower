@@ -36,6 +36,7 @@ _MOWER_PLATFORMS = (
     Platform.CAMERA,
     Platform.SELECT,
     Platform.BUTTON,
+    Platform.NUMBER,
 )
 _SWBOT_PLATFORMS = (
     Platform.SENSOR,
@@ -79,6 +80,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             await coordinator.async_fetch_consumable_data()
         except Exception as ex:
             _LOGGER.warning("Initial consumable data fetch failed: %s", ex)
+
+    if coordinator.device_type != DEVICE_TYPE_SWBOT and coordinator.supports_cutting_height:
+        try:
+            await coordinator.async_fetch_cutting_heights()
+        except Exception as ex:
+            _LOGGER.warning("Initial cutting height fetch failed: %s", ex)
 
     # Store coordinator in hass data
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {

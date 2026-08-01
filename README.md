@@ -19,6 +19,7 @@ Provided "as-is" under the MIT License for personal, non-commercial use with dev
 - **Session History** - Keep track of past mowing activities
 - **Remote Control** - Start, pause, stop, and dock your mower
 - **Map Awareness** - Inspect known maps, zones, contours, and active task metadata
+- **Cutting Height** - Read and set the cutting height of the active map
 - **Battery Status** - Current battery level and charging info
 - **Mowing Progress** - Coverage percentage and session duration
 - **Do Not Disturb** - View quiet hours settings
@@ -29,6 +30,16 @@ Provided "as-is" under the MIT License for personal, non-commercial use with dev
 ## UI Elements
 
 The current release exposes map, zone, and edge selection as select entities in Home Assistant. Selecting **multiple zones or areas** at once is not yet available in the UI — use the service actions below for that.
+
+### Cutting Height
+
+The **Cutting height** number entity sets the cutting height of the **active map**, in 0.5 cm steps. The entity is only created for models whose cutting height is adjustable from software; on models with a manual height dial (for example the MOVA 600 and MOVA 1000) it is omitted.
+
+The selectable range depends on the model: most mowers go from 3 cm to 7 cm, while models with an extended range go up to 10 cm.
+
+The entity always sets the height for the whole map. To set a height for a single zone, use the `dreame_mower.set_cutting_height` service action with a `zone_id`.
+
+The mower entity exposes `cutting_height`, `zone_cutting_heights` and `mowing_preference_mode` as attributes, so automations can read back the current values and see which of the two is in effect.
 
 ### TODO: Hierarchical Mowing UI
 
@@ -87,6 +98,48 @@ target:
 data:
   spot_area_ids: [2, 4]
 ```
+
+### `dreame_mower.set_cutting_height`
+
+Set the cutting height for a whole map. Use this instead of the **Cutting height** number entity when you want to change a map that is not currently active.
+
+```yaml
+action: dreame_mower.set_cutting_height
+target:
+  entity_id: lawn_mower.your_mower
+data:
+  height: 5.5
+  map_id: 2
+```
+
+`height` is in centimeters and is rounded to the nearest 0.5 cm. `map_id` is optional and defaults to the active map; available map IDs are exposed in the mower entity's `maps` attribute.
+
+To set the height for a single zone, add `zone_id`:
+
+```yaml
+action: dreame_mower.set_cutting_height
+target:
+  entity_id: lawn_mower.your_mower
+data:
+  height: 5
+  zone_id: 3
+```
+
+Setting a zone height also switches that map to **per-zone** mowing settings, because a zone height has no effect while the map is applying one setting to everything. Every other zone keeps whatever it already had, and the map-wide height stops applying until you switch back.
+
+### `dreame_mower.set_mowing_preference_mode`
+
+Switch a map between one map-wide setting and per-zone settings. Use this to go back to a single cutting height after setting one for an individual zone.
+
+```yaml
+action: dreame_mower.set_mowing_preference_mode
+target:
+  entity_id: lawn_mower.your_mower
+data:
+  mode: map_wide
+```
+
+`mode` is `map_wide` or `per_zone`, and `map_id` is optional. The mode governs the other mowing settings as well, not only the cutting height. The mower entity's `mowing_preference_mode` attribute shows the current value.
 
 ## Installation
 

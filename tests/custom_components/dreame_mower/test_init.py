@@ -39,18 +39,34 @@ def _make_entry() -> MockConfigEntry:
     )
 
 
-async def test_async_setup_entry_fetches_vector_map_for_mowers(hass):
-    """Mower setup should preload vector map data before entity setup."""
-    entry = _make_entry()
-    entry.add_to_hass(hass)
+def _make_coordinator() -> MagicMock:
+    """Build a mower coordinator stub whose awaited calls are real coroutines.
 
+    Every method setup awaits has to be an AsyncMock: a bare MagicMock would
+    raise TypeError, which setup swallows, so the assertions below would pass
+    without the call ever having happened.
+    """
     coordinator = MagicMock()
     coordinator.device_type = "mower"
+    coordinator.supports_cutting_height = True
     coordinator.device = MagicMock()
     coordinator.device.fetch_vector_map = MagicMock(return_value=True)
     coordinator.async_connect_device = AsyncMock(return_value=True)
     coordinator.async_config_entry_first_refresh = AsyncMock(return_value=None)
     coordinator.async_request_refresh = AsyncMock(return_value=None)
+    coordinator.async_fetch_consumable_data = AsyncMock(return_value=None)
+    coordinator.async_fetch_cutting_heights = AsyncMock(return_value=None)
+    coordinator.async_fetch_firmware_status = AsyncMock(return_value=None)
+    coordinator.async_update_online_status = AsyncMock(return_value=None)
+    return coordinator
+
+
+async def test_async_setup_entry_fetches_vector_map_for_mowers(hass):
+    """Mower setup should preload vector map data before entity setup."""
+    entry = _make_entry()
+    entry.add_to_hass(hass)
+
+    coordinator = _make_coordinator()
 
     with patch("custom_components.dreame_mower.DreameMowerCoordinator", return_value=coordinator), patch.object(
         hass.config_entries,
@@ -63,8 +79,27 @@ async def test_async_setup_entry_fetches_vector_map_for_mowers(hass):
     coordinator.device.fetch_vector_map.assert_called_once_with()
     coordinator.async_config_entry_first_refresh.assert_awaited_once()
     coordinator.async_request_refresh.assert_awaited_once()
+    coordinator.async_fetch_cutting_heights.assert_awaited_once()
     forward_entry_setups.assert_awaited_once()
     assert hass.data[DOMAIN][entry.entry_id][DATA_COORDINATOR] is coordinator
+
+
+async def test_async_setup_entry_skips_the_cutting_height_for_fixed_height_models(hass):
+    """Models with a manual height dial must not be queried for one."""
+    entry = _make_entry()
+    entry.add_to_hass(hass)
+
+    coordinator = _make_coordinator()
+    coordinator.supports_cutting_height = False
+
+    with patch("custom_components.dreame_mower.DreameMowerCoordinator", return_value=coordinator), patch.object(
+        hass.config_entries,
+        "async_forward_entry_setups",
+        AsyncMock(return_value=None),
+    ):
+        assert await async_setup_entry(hass, entry) is True
+
+    coordinator.async_fetch_cutting_heights.assert_not_awaited()
 
 
 async def test_async_setup_entry_raises_not_ready_on_connect_failure(hass):

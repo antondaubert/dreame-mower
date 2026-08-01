@@ -42,3 +42,72 @@ start_spot_mowing:
       description: List of spot area IDs to mow, for example [2, 4].
       required: true
       example: [2, 4]
+
+set_cutting_height:
+  name: Set cutting height
+  description: >-
+    Set the cutting height for a whole map, or for a single zone of it. Not
+    every model supports adjusting the cutting height, and the range depends on
+    the model.
+  target:
+    entity:
+      integration: dreame_mower
+      domain: lawn_mower
+  fields:
+    height:
+      name: Cutting height
+      description: Cutting height in centimeters, in steps of 0.5 cm.
+      required: true
+      example: 5
+      selector:
+        number:
+          min: 3
+          max: 10
+          step: 0.5
+          unit_of_measurement: cm
+    map_id:
+      name: Map ID
+      description: >-
+        Map to change. Defaults to the active map. Available map IDs are exposed
+        in the mower entity's maps attribute once the map has been fetched.
+      required: false
+      example: 2
+    zone_id:
+      name: Zone ID
+      description: >-
+        Zone to change instead of the whole map. Setting a zone also switches
+        the map to per-zone mowing settings, so the other zones keep their own
+        heights and the map-wide height stops applying. Available zone IDs are
+        exposed in the mower entity's zones attribute.
+      required: false
+      example: 3
+
+set_mowing_preference_mode:
+  name: Set mowing preference mode
+  description: >-
+    Choose whether a map applies one set of mowing settings or per-zone
+    settings. Use this to return to a single map-wide cutting height after
+    setting one for an individual zone. The mode covers the other mowing
+    settings too, not only the cutting height.
+  target:
+    entity:
+      integration: dreame_mower
+      domain: lawn_mower
+  fields:
+    mode:
+      name: Mode
+      description: Whether the map follows its map-wide or its per-zone settings.
+      required: true
+      example: map_wide
+      selector:
+        select:
+          options:
+            - label: One setting for the whole map
+              value: map_wide
+            - label: A setting per zone
+              value: per_zone
+    map_id:
+      name: Map ID
+      description: Map to change. Defaults to the active map.
+      required: false
+      example: 2

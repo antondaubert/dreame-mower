@@ -162,6 +162,11 @@
       "dock_without_stopping": {
         "name": "Dokkolás feladat leállítása nélkül"
       }
+    },
+    "number": {
+      "cutting_height": {
+        "name": "Vágási magasság"
+      }
     }
   }
 }

@@ -35,9 +35,12 @@ from .dreame.property import (
     NOTIFICATION_DESCRIPTION_FIELD,
 )
 from .dreame.const import (
+    CURRENT_MAP_ID_PROPERTY_NAME,
     POWER_STATE_PROPERTY,
     DeviceStatus,
+    MowingPreferenceMode,
     STATUS_PROPERTY,
+    supports_cutting_height,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -294,6 +297,64 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return self.device.current_map_id
 
     @property
+    def supports_cutting_height(self) -> bool:
+        """Return whether this model's cutting height can be set from software."""
+        return supports_cutting_height(self.device_model)
+
+    @property
+    def cutting_height(self) -> float | None:
+        """Return the current map's cutting height in cm, if known."""
+        return self.device.cutting_height
+
+    @property
+    def zone_cutting_heights(self) -> dict[int, float]:
+        """Return the per-zone cutting heights in cm known for the current map."""
+        return self.device.zone_cutting_heights
+
+    @property
+    def mowing_preference_mode(self) -> MowingPreferenceMode | None:
+        """Return whether the current map applies map-wide or per-zone preferences."""
+        return self.device.mowing_preference_mode
+
+    async def async_fetch_cutting_height(self) -> None:
+        """Read the current map's cutting height from the device."""
+        await self.device.refresh_cutting_height()
+        self.async_update_listeners()
+
+    async def async_fetch_zone_cutting_heights(self) -> dict[int, float]:
+        """Read the current map's per-zone cutting heights from the device."""
+        zone_heights = await self.device.refresh_zone_cutting_heights()
+        self.async_update_listeners()
+        return zone_heights
+
+    async def async_fetch_cutting_heights(self) -> None:
+        """Read the current map's map-wide and per-zone cutting heights."""
+        await self.device.refresh_cutting_height()
+        await self.device.refresh_zone_cutting_heights()
+        self.async_update_listeners()
+
+    async def async_set_cutting_height(
+        self,
+        height_cm: float,
+        map_id: int | None = None,
+        zone_id: int | None = None,
+    ) -> bool:
+        """Set a cutting height, defaulting to the current map and its map-wide record."""
+        updated = await self.device.set_cutting_height(height_cm, map_id, zone_id)
+        self.async_update_listeners()
+        return updated
+
+    async def async_set_mowing_preference_mode(
+        self,
+        mode: MowingPreferenceMode,
+        map_id: int | None = None,
+    ) -> bool:
+        """Choose whether a map follows its map-wide or its per-zone preferences."""
+        updated = await self.device.set_mowing_preference_mode(mode, map_id)
+        self.async_update_listeners()
+        return updated
+
+    @property
     def task_target_map_id(self) -> int | None:
         """Return the map targeted by the active task, if known."""
         return self.device.task_target_map_id
@@ -417,6 +478,10 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Handle device property updates and notify Home Assistant."""
         if property_name == STATUS_PROPERTY.name and int(value) == DeviceStatus.CHARGING:
             self.hass.create_task(self._async_refresh_consumables_on_charging())
+        if property_name == CURRENT_MAP_ID_PROPERTY_NAME and self.supports_cutting_height:
+            # The cutting height is stored per map, so it has to be re-read
+            # whenever the active map changes.
+            self.hass.create_task(self._async_refresh_cutting_height_on_map_change())
         self._normalize_selection_state()
 
         # Handle device code error notifications
@@ -473,6 +538,13 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "persistent_notification", "create",
             {"notification_id": notification_id, "title": title, "message": message},
         )
+
+    async def _async_refresh_cutting_height_on_map_change(self) -> None:
+        """Re-read the cutting heights after the active map changed."""
+        try:
+            await self.async_fetch_cutting_heights()
+        except Exception as ex:
+            _LOGGER.warning("Cutting height refresh on map change failed: %s", ex)
 
     async def _async_refresh_consumables_on_charging(self) -> None:
         """Fetch updated CMS counters when the device transitions to charging."""

@@ -162,6 +162,11 @@
       "dock_without_stopping": {
         "name": "Повернутися на базу без зупинки завдання"
       }
+    },
+    "number": {
+      "cutting_height": {
+        "name": "Висота скошування"
+      }
     }
   }
 }

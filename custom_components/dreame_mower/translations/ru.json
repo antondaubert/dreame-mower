@@ -162,6 +162,11 @@
       "dock_without_stopping": {
         "name": "Вернуться на базу без остановки задачи"
       }
+    },
+    "number": {
+      "cutting_height": {
+        "name": "Высота скашивания"
+      }
     }
   }
 }

@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, Mock, patch, PropertyMock
 from custom_components.dreame_mower.dreame.device import DreameMowerDevice, MowingMode
 from custom_components.dreame_mower.dreame.const import (
     DeviceStatus,
+    MowingPreferenceMode,
     ONLINE_OFFLINE_DEBOUNCE_POLLS,
 )
 
@@ -1883,3 +1884,487 @@ def test_incoming_message_restores_online(device):
 
     assert device.online is True
     assert ("online", True) in notified
+
+
+# A full mowing preference record as reported for a map-wide (area 0) entry.
+# Slot 4 carries the cutting height in millimeters, so this record is 6 cm.
+_MOWING_PREFERENCE_RECORD = [3, 0, 0, 1, 60, 0, 180, 1, 0, 1, 1, 1, 1, 20, 20, 7, 1]
+
+
+def _mowing_preference_responder(record=None, *, reject_full_record=False):
+    """Build an action responder that serves mowing preference reads and writes."""
+    served_record = list(_MOWING_PREFERENCE_RECORD if record is None else record)
+    writes: list[list[int]] = []
+
+    def responder(siid, aiid, parameters, retry_count):
+        payload = parameters[0]
+        if payload["m"] == "g":
+            return {"code": 0, "out": [{"r": 0, "d": list(served_record)}]}
+
+        writes.append(list(payload["d"]))
+        if reject_full_record and len(writes) == 1:
+            return {"code": 0, "out": [{"r": -3}]}
+        return {"code": 0, "out": [{"r": 0}]}
+
+    return responder, writes
+
+
+def _load_two_map_vector_map(device):
+    """Attach a two-map vector map and make map 1 the current map."""
+    device._vector_map = SimpleNamespace(
+        available_maps=[
+            SimpleNamespace(map_id=1, map_index=0, name="Front", total_area=25.0),
+            SimpleNamespace(map_id=2, map_index=1, name="Back", total_area=30.5),
+        ]
+    )
+    device._current_map_id = 1
+
+
+@pytest.mark.asyncio
+async def test_refresh_cutting_height_reads_the_map_wide_record(device):
+    """Reading the height should query area 0 of the current map's record."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_vector_map(device)
+    device._cloud_device.action_result, _ = _mowing_preference_responder()
+
+    height = await device.refresh_cutting_height()
+
+    assert height == 6.0
+    assert device.cutting_height == 6.0
+    _, _, parameters, _ = device._cloud_device.action_calls[0]
+    assert parameters == [{"m": "g", "t": "PRE", "d": {"idx": 0, "region": 0}}]
+
+
+@pytest.mark.asyncio
+async def test_set_cutting_height_writes_back_the_record_with_only_the_height_changed(device):
+    """Setting the height must preserve every other slot of the record."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_vector_map(device)
+    device._cloud_device.action_result, writes = _mowing_preference_responder()
+
+    result = await device.set_cutting_height(4.5)
+
+    assert result is True
+    assert len(writes) == 1
+    expected_record = list(_MOWING_PREFERENCE_RECORD)
+    expected_record[0] = 0  # version is zeroed on write
+    expected_record[1] = 0  # map index of map ID 1
+    expected_record[2] = 0  # map-wide area ID
+    expected_record[4] = 45
+    assert writes[0] == expected_record
+    assert device.cutting_height == 4.5
+
+
+@pytest.mark.asyncio
+async def test_set_cutting_height_targets_the_requested_map(device):
+    """An explicit map ID should address that map without touching the cached height."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_vector_map(device)
+    device._cloud_device.action_result, writes = _mowing_preference_responder()
+
+    result = await device.set_cutting_height(7, map_id=2)
+
+    assert result is True
+    _, _, read_parameters, _ = device._cloud_device.action_calls[0]
+    assert read_parameters == [{"m": "g", "t": "PRE", "d": {"idx": 1, "region": 0}}]
+    assert writes[0][1] == 1
+    assert writes[0][4] == 70
+    assert device.cutting_height is None
+
+
+@pytest.mark.asyncio
+async def test_set_cutting_height_retries_with_the_short_record(device):
+    """A record the firmware rejects should be retried without its trailing slots."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_vector_map(device)
+    device._cloud_device.action_result, writes = _mowing_preference_responder(reject_full_record=True)
+
+    result = await device.set_cutting_height(5)
+
+    assert result is True
+    assert len(writes) == 2
+    assert len(writes[0]) == 17
+    assert writes[1] == writes[0][:16]
+    assert device.cutting_height == 5.0
+
+
+@pytest.mark.asyncio
+async def test_set_cutting_height_fails_when_the_record_cannot_be_read(device):
+    """Without the current record there is nothing safe to write back."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_vector_map(device)
+    device._cloud_device.action_result = {"code": 0, "out": [{"r": -1}]}
+
+    result = await device.set_cutting_height(5)
+
+    assert result is False
+    assert len(device._cloud_device.action_calls) == 1
+    assert device.cutting_height is None
+
+
+@pytest.mark.asyncio
+async def test_set_cutting_height_rejects_heights_outside_the_supported_range(device):
+    """Heights the protocol cannot carry should be rejected before any request."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_vector_map(device)
+    device._cloud_device.action_result, _ = _mowing_preference_responder()
+
+    with pytest.raises(ValueError):
+        await device.set_cutting_height(2.5)
+    with pytest.raises(ValueError):
+        await device.set_cutting_height(12)
+
+    assert len(device._cloud_device.action_calls) == 0
+
+
+@pytest.mark.asyncio
+async def test_set_cutting_height_rejects_unknown_map_ids(device):
+    """An unknown map ID should be rejected instead of writing to another map."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_vector_map(device)
+    device._cloud_device.action_result, _ = _mowing_preference_responder()
+
+    result = await device.set_cutting_height(5, map_id=9)
+
+    assert result is False
+    assert len(device._cloud_device.action_calls) == 0
+
+
+@pytest.mark.asyncio
+async def test_set_cutting_height_snaps_to_half_centimeter_steps(device):
+    """Heights between steps should snap to the nearest settable value."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_vector_map(device)
+    device._cloud_device.action_result, writes = _mowing_preference_responder()
+
+    result = await device.set_cutting_height(5.3)
+
+    assert result is True
+    assert writes[0][4] == 55
+    assert device.cutting_height == 5.5
+
+
+@pytest.mark.asyncio
+async def test_cutting_height_change_notifies_property_callbacks(device):
+    """A changed height should be pushed to registered property callbacks."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_vector_map(device)
+    device._cloud_device.action_result, _ = _mowing_preference_responder()
+    notified = []
+    device.register_property_callback(lambda name, value: notified.append((name, value)))
+
+    await device.refresh_cutting_height()
+
+    assert ("cutting_height", 6.0) in notified
+
+
+def _preference_responder(
+    *,
+    mode=0,
+    configured_area_ids=(0,),
+    records=None,
+    reject_full_record=False,
+):
+    """Build an action responder that serves the full preference protocol.
+
+    Reads of an area without a record fail the way the device reports a missing
+    record, and writes are collected so tests can assert on them.
+    """
+    stored_records = {0: list(_MOWING_PREFERENCE_RECORD)}
+    stored_records.update({int(k): list(v) for k, v in (records or {}).items()})
+    available_area_ids = set(configured_area_ids)
+    calls: dict[str, list] = {"writes": [], "modes": []}
+
+    def responder(siid, aiid, parameters, retry_count):
+        payload = parameters[0]
+        if payload.get("t") not in ("PRE", "PREI", "PREP"):
+            return {"code": 0, "out": [{"r": 0}]}
+
+        if payload["t"] == "PREI":
+            return {
+                "code": 0,
+                "out": [{"r": 0, "d": {"type": mode, "ver": [[area_id, 1] for area_id in sorted(available_area_ids)]}}],
+            }
+
+        if payload["t"] == "PREP":
+            calls["modes"].append(payload["d"])
+            return {"code": 0, "out": [{"r": 0}]}
+
+        if payload["m"] == "g":
+            area_id = payload["d"]["region"]
+            if area_id not in available_area_ids:
+                return {"code": 0, "out": [{"r": -1}]}
+            return {"code": 0, "out": [{"r": 0, "d": list(stored_records[area_id])}]}
+
+        record = list(payload["d"])
+        calls["writes"].append(record)
+        if reject_full_record and len(calls["writes"]) == 1:
+            return {"code": 0, "out": [{"r": -3}]}
+        stored_records[record[2]] = record
+        available_area_ids.add(record[2])
+        return {"code": 0, "out": [{"r": 0}]}
+
+    return responder, calls
+
+
+def _load_zoned_vector_map(device):
+    """Attach a vector map with two maps, the current one carrying three zones."""
+    device._vector_map = SimpleNamespace(
+        available_maps=[
+            SimpleNamespace(map_id=1, map_index=0, name="Front", total_area=25.0),
+            SimpleNamespace(map_id=2, map_index=1, name="Back", total_area=30.5),
+        ],
+        zones=[
+            SimpleNamespace(zone_id=1, name="Lawn", area=12.5),
+            SimpleNamespace(zone_id=2, name="Orchard", area=8.0),
+            SimpleNamespace(zone_id=3, name="Slope", area=5.0),
+        ],
+    )
+    device._current_map_id = 1
+
+
+@pytest.mark.asyncio
+async def test_set_zone_cutting_height_writes_a_record_for_that_zone(device):
+    """A zone height should be written to the zone's own record."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_zoned_vector_map(device)
+    device._cloud_device.action_result, calls = _preference_responder()
+
+    result = await device.set_cutting_height(4.0, zone_id=2)
+
+    assert result is True
+    zone_write = next(write for write in calls["writes"] if write[2] == 2)
+    assert zone_write[4] == 40
+    assert zone_write[1] == 0  # map index of the current map
+    assert device.zone_cutting_heights == {2: 4.0}
+    assert device.cutting_height is None
+
+
+@pytest.mark.asyncio
+async def test_set_zone_cutting_height_starts_from_the_zone_record_when_it_exists(device):
+    """An existing zone record must be preserved rather than replaced wholesale."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_zoned_vector_map(device)
+    zone_record = list(_MOWING_PREFERENCE_RECORD)
+    zone_record[3] = 0  # a zone-specific efficiency mode
+    zone_record[13] = 5  # a zone-specific obstacle setting
+    device._cloud_device.action_result, calls = _preference_responder(
+        mode=1,
+        configured_area_ids=(0, 2),
+        records={2: zone_record},
+    )
+
+    result = await device.set_cutting_height(6.5, zone_id=2)
+
+    assert result is True
+    assert len(calls["writes"]) == 1
+    assert calls["writes"][0][3] == 0
+    assert calls["writes"][0][13] == 5
+    assert calls["writes"][0][4] == 65
+
+
+@pytest.mark.asyncio
+async def test_set_zone_cutting_height_switches_the_map_to_per_zone_preferences(device):
+    """A zone height has no effect while the map applies its map-wide record."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_zoned_vector_map(device)
+    device._cloud_device.action_result, calls = _preference_responder(mode=0)
+
+    result = await device.set_cutting_height(4.0, zone_id=2)
+
+    assert result is True
+    assert calls["modes"] == [{"idx": 0, "value": 1}]
+    assert device.mowing_preference_mode == MowingPreferenceMode.PER_ZONE
+
+
+@pytest.mark.asyncio
+async def test_switching_to_per_zone_preferences_seeds_untouched_zones(device):
+    """Zones without a record of their own must keep the map-wide settings."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_zoned_vector_map(device)
+    device._cloud_device.action_result, calls = _preference_responder(mode=0)
+
+    await device.set_cutting_height(4.0, zone_id=2)
+
+    seeded_area_ids = {write[2] for write in calls["writes"]}
+    assert seeded_area_ids == {1, 2, 3}
+    for write in calls["writes"]:
+        if write[2] == 2:
+            continue
+        assert write[4] == _MOWING_PREFERENCE_RECORD[4]
+
+
+@pytest.mark.asyncio
+async def test_set_zone_cutting_height_leaves_an_already_per_zone_map_alone(device):
+    """A map already using its per-zone records needs no mode change or seeding."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_zoned_vector_map(device)
+    device._cloud_device.action_result, calls = _preference_responder(mode=1)
+
+    result = await device.set_cutting_height(4.0, zone_id=2)
+
+    assert result is True
+    assert calls["modes"] == []
+    assert [write[2] for write in calls["writes"]] == [2]
+
+
+@pytest.mark.asyncio
+async def test_set_zone_cutting_height_rejects_unknown_zone_ids(device):
+    """An unknown zone should be rejected instead of creating a stray record."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_zoned_vector_map(device)
+    device._cloud_device.action_result, calls = _preference_responder()
+
+    result = await device.set_cutting_height(4.0, zone_id=9)
+
+    assert result is False
+    assert calls["writes"] == []
+
+
+@pytest.mark.asyncio
+async def test_refresh_zone_cutting_heights_reads_every_configured_zone(device):
+    """Reading should report the height of each zone that has its own record."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_zoned_vector_map(device)
+    zone_one = list(_MOWING_PREFERENCE_RECORD)
+    zone_one[4] = 35
+    zone_three = list(_MOWING_PREFERENCE_RECORD)
+    zone_three[4] = 70
+    device._cloud_device.action_result, _ = _preference_responder(
+        mode=1,
+        configured_area_ids=(0, 1, 3),
+        records={1: zone_one, 3: zone_three},
+    )
+
+    zone_heights = await device.refresh_zone_cutting_heights()
+
+    assert zone_heights == {1: 3.5, 3: 7.0}
+    assert device.zone_cutting_heights == {1: 3.5, 3: 7.0}
+    assert device.mowing_preference_mode == MowingPreferenceMode.PER_ZONE
+
+
+@pytest.mark.asyncio
+async def test_set_mowing_preference_mode_switches_back_to_the_map_wide_record(device):
+    """Switching back should send the mode command and cache the new mode."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_zoned_vector_map(device)
+    device._cloud_device.action_result, calls = _preference_responder(mode=1)
+
+    result = await device.set_mowing_preference_mode(MowingPreferenceMode.MAP_WIDE)
+
+    assert result is True
+    assert calls["modes"] == [{"idx": 0, "value": 0}]
+    assert device.mowing_preference_mode == MowingPreferenceMode.MAP_WIDE
+
+
+@pytest.mark.asyncio
+async def test_switching_the_current_map_drops_the_cached_heights(device):
+    """The cached heights describe one map, so a map switch must clear them."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_zoned_vector_map(device)
+    device._cloud_device.action_result, _ = _preference_responder(mode=1)
+    await device.refresh_cutting_height()
+    await device.set_cutting_height(4.0, zone_id=2)
+    assert device.cutting_height is not None
+    assert device.zone_cutting_heights
+
+    await device.set_current_map(2)
+
+    assert device.cutting_height is None
+    assert device.zone_cutting_heights == {}
+    assert device.mowing_preference_mode is None
+
+
+def _load_multi_zone_vector_map(device):
+    """Attach geometry where each map carries its own distinct set of zones."""
+    map_one = SimpleNamespace(zones=[SimpleNamespace(zone_id=1, name="Lawn", area=12.5)])
+    map_two = SimpleNamespace(zones=[SimpleNamespace(zone_id=7, name="Cellar", area=4.0)])
+    device._vector_map = SimpleNamespace(
+        available_maps=[
+            SimpleNamespace(map_id=1, map_index=0, name="Front", total_area=25.0),
+            SimpleNamespace(map_id=2, map_index=1, name="Back", total_area=30.5),
+        ],
+        zones=map_one.zones,
+        maps={1: map_one, 2: map_two},
+    )
+    device._current_map_id = 1
+
+
+@pytest.mark.asyncio
+async def test_refresh_mowing_preference_mode_reads_and_caches_the_mode(device):
+    """The mode decides which heights apply, so it must be readable on its own."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_zoned_vector_map(device)
+    device._cloud_device.action_result, _ = _preference_responder(mode=1)
+
+    mode = await device.refresh_mowing_preference_mode()
+
+    assert mode == MowingPreferenceMode.PER_ZONE
+    assert device.mowing_preference_mode == MowingPreferenceMode.PER_ZONE
+    _, _, parameters, _ = device._cloud_device.action_calls[0]
+    assert parameters == [{"m": "g", "t": "PREI", "d": {"idx": 0}}]
+
+
+@pytest.mark.asyncio
+async def test_refresh_mowing_preference_mode_does_not_cache_another_map(device):
+    """The cache describes the current map, so another map's mode must not land in it."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_zoned_vector_map(device)
+    device._cloud_device.action_result, _ = _preference_responder(mode=1)
+
+    mode = await device.refresh_mowing_preference_mode(map_id=2)
+
+    assert mode == MowingPreferenceMode.PER_ZONE
+    assert device.mowing_preference_mode is None
+    _, _, parameters, _ = device._cloud_device.action_calls[0]
+    assert parameters == [{"m": "g", "t": "PREI", "d": {"idx": 1}}]
+
+
+@pytest.mark.asyncio
+async def test_set_zone_cutting_height_validates_against_the_targeted_map(device):
+    """Zone validation must use the target map's zones, not the active map's."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_multi_zone_vector_map(device)
+    device._cloud_device.action_result, calls = _preference_responder(mode=1)
+
+    assert await device.set_cutting_height(4.0, map_id=2, zone_id=7) is True
+    assert [write[2] for write in calls["writes"]] == [7]
+    assert calls["writes"][0][1] == 1  # map index of map ID 2
+
+    # Zone 1 exists on the active map but not on map 2.
+    assert await device.set_cutting_height(4.0, map_id=2, zone_id=1) is False
+    assert len(calls["writes"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_set_zone_cutting_height_defers_when_the_map_geometry_is_unknown(device):
+    """Without geometry for a map the device has to be the one to reject the zone."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_multi_zone_vector_map(device)
+    del device._vector_map.maps[2]
+    device._cloud_device.action_result, calls = _preference_responder(mode=1)
+
+    assert await device.set_cutting_height(4.0, map_id=2, zone_id=99) is True
+    assert [write[2] for write in calls["writes"]] == [99]
