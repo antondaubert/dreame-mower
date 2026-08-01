@@ -11,6 +11,10 @@ Examples:
   .venv/bin/python dev/device_cli.py set-map --map-id 2 --watch-seconds 5
   .venv/bin/python dev/device_cli.py start-mode --mode zone --zone-id 3
     .venv/bin/python dev/device_cli.py start-mode --mode spot --spot-area-id 2
+  .venv/bin/python dev/device_cli.py cutting-height
+    .venv/bin/python dev/device_cli.py cutting-height --set 5.5 --map-id 2
+    .venv/bin/python dev/device_cli.py cutting-height --set 4 --zone-id 3
+    .venv/bin/python dev/device_cli.py cutting-height --mode map_wide
 """
 
 from __future__ import annotations
@@ -30,6 +34,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+from custom_components.dreame_mower.dreame.const import MowingPreferenceMode
 from custom_components.dreame_mower.dreame.device import DreameMowerDevice, MowingMode
 
 VALID_COUNTRIES = ["eu", "cn", "us", "ru", "sg"]
@@ -181,6 +186,8 @@ def build_device_snapshot(
         "status_code": device.status_code,
         "bluetooth_connected": device.bluetooth_connected,
         "current_map_id": device.current_map_id,
+        "cutting_height_cm": device.cutting_height,
+        "zone_cutting_heights_cm": device.zone_cutting_heights,
         "task_target_map_id": device.task_target_map_id,
         "maps": device.available_maps,
         "task_data": device.current_task_data,
@@ -260,6 +267,37 @@ def build_parser() -> argparse.ArgumentParser:
     start_mode_parser.add_argument("--zone-id", type=int, action="append", default=[])
     start_mode_parser.add_argument("--contour-id", type=parse_contour_id, action="append", default=[])
     start_mode_parser.add_argument("--spot-area-id", type=int, action="append", default=[])
+
+    cutting_height_parser = subparsers.add_parser(
+        "cutting-height",
+        help="Read or set the map-wide cutting height",
+    )
+    add_common_args(cutting_height_parser)
+    cutting_height_parser.add_argument(
+        "--set",
+        dest="height",
+        type=float,
+        default=None,
+        help="Cutting height in cm to write; omit to only read the current value",
+    )
+    cutting_height_parser.add_argument("--map-id", type=int, default=None)
+    cutting_height_parser.add_argument(
+        "--zone-id",
+        type=int,
+        default=None,
+        help="Target a single zone instead of the whole map",
+    )
+    cutting_height_parser.add_argument(
+        "--mode",
+        choices=[mode.name.lower() for mode in MowingPreferenceMode],
+        default=None,
+        help="Switch the map between its map-wide and per-zone preferences",
+    )
+    cutting_height_parser.add_argument(
+        "--skip-map-fetch",
+        action="store_true",
+        help="Do not load vector map metadata before addressing the map",
+    )
 
     pause_parser = subparsers.add_parser("pause", help="Pause the mower")
     add_common_args(pause_parser)
@@ -357,6 +395,31 @@ async def run_command(device: DreameMowerDevice, args: argparse.Namespace) -> di
             "ok": success,
             "command": args.command,
             "mode": args.mode,
+            "state": build_device_snapshot(device),
+        }
+
+    if args.command == "cutting-height":
+        fetched_before = None if args.skip_map_fetch else await fetch_vector_map_async(device)
+        applied = None
+        if args.mode is not None:
+            applied = await device.set_mowing_preference_mode(
+                MowingPreferenceMode[args.mode.upper()], args.map_id
+            )
+        if args.height is not None:
+            applied = await device.set_cutting_height(args.height, args.map_id, args.zone_id)
+        current_height = await device.refresh_cutting_height(args.map_id)
+        zone_heights = await device.refresh_zone_cutting_heights(args.map_id)
+        mode = device.mowing_preference_mode
+        return {
+            "ok": applied if applied is not None else current_height is not None,
+            "command": args.command,
+            "map_fetched_before": fetched_before,
+            "requested_map_id": args.map_id,
+            "requested_zone_id": args.zone_id,
+            "requested_height_cm": args.height,
+            "cutting_height_cm": current_height,
+            "zone_cutting_heights_cm": zone_heights,
+            "mowing_preference_mode": mode.name.lower() if mode is not None else None,
             "state": build_device_snapshot(device),
         }
 

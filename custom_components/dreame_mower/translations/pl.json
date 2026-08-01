@@ -162,6 +162,11 @@
       "dock_without_stopping": {
         "name": "Dokowanie bez zatrzymywania zadania"
       }
+    },
+    "number": {
+      "cutting_height": {
+        "name": "Wysokość koszenia"
+      }
     }
   }
 }

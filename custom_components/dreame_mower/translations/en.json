@@ -162,6 +162,11 @@
       "map_camera": {
         "name": "Map"
       }
+    },
+    "number": {
+      "cutting_height": {
+        "name": "Cutting Height"
+      }
     }
   }
 }

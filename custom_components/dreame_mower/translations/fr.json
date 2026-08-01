@@ -162,6 +162,11 @@
       "dock_without_stopping": {
         "name": "Revenir à la base sans arrêter la tâche"
       }
+    },
+    "number": {
+      "cutting_height": {
+        "name": "Hauteur de coupe"
+      }
     }
   }
 }

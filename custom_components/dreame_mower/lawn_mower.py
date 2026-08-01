@@ -21,9 +21,18 @@ from .const import DATA_COORDINATOR, DOMAIN
 from .coordinator import DreameMowerCoordinator
 from .dreame.device import MowingMode
 from .entity import DreameMowerEntity
-from .dreame.const import STATUS_PROPERTY, map_status_to_activity
+from .dreame.const import (
+    CUTTING_HEIGHT_ABSOLUTE_MAX_CM,
+    CUTTING_HEIGHT_MIN_CM,
+    MowingPreferenceMode,
+    STATUS_PROPERTY,
+    map_status_to_activity,
+)
 
 _LOGGER = logging.getLogger(__name__)
+
+# Service-facing names for the mowing preference modes, e.g. "map_wide".
+_MOWING_PREFERENCE_MODES = {mode.name.lower(): mode for mode in MowingPreferenceMode}
 
 # Basic feature support for minimal implementation
 MINIMAL_SUPPORT_FEATURES = (
@@ -55,6 +64,26 @@ async def async_setup_entry(
         "start_spot_mowing",
         {vol.Required("spot_area_ids"): [vol.Coerce(int)]},
         "async_start_spot_mowing",
+    )
+    platform.async_register_entity_service(
+        "set_cutting_height",
+        {
+            vol.Required("height"): vol.All(
+                vol.Coerce(float),
+                vol.Range(min=CUTTING_HEIGHT_MIN_CM, max=CUTTING_HEIGHT_ABSOLUTE_MAX_CM),
+            ),
+            vol.Optional("map_id"): vol.Coerce(int),
+            vol.Optional("zone_id"): vol.Coerce(int),
+        },
+        "async_set_cutting_height",
+    )
+    platform.async_register_entity_service(
+        "set_mowing_preference_mode",
+        {
+            vol.Required("mode"): vol.In(_MOWING_PREFERENCE_MODES),
+            vol.Optional("map_id"): vol.Coerce(int),
+        },
+        "async_set_mowing_preference_mode",
     )
 
     entity = DreameMowerLawnMower(coordinator)
@@ -178,6 +207,40 @@ class DreameMowerLawnMower(DreameMowerEntity, LawnMowerEntity):
         if not await self.coordinator.device.start_mowing_spots(spot_area_ids):
             raise HomeAssistantError(f"Failed to start spot mowing for spot IDs: {spot_area_ids}")
 
+    async def async_set_cutting_height(
+        self,
+        height: float,
+        map_id: int | None = None,
+        zone_id: int | None = None,
+    ) -> None:
+        """Set the cutting height for a map, or for a single zone of it."""
+        self._assert_cutting_height_supported()
+
+        try:
+            updated = await self.coordinator.async_set_cutting_height(height, map_id, zone_id)
+        except ValueError as ex:
+            raise HomeAssistantError(str(ex)) from ex
+
+        if not updated:
+            target = "the map" if zone_id is None else f"zone {zone_id}"
+            raise HomeAssistantError(f"Failed to set the cutting height of {target} to {height} cm")
+
+    async def async_set_mowing_preference_mode(self, mode: str, map_id: int | None = None) -> None:
+        """Choose whether a map follows one set of mowing settings or per-zone ones."""
+        self._assert_cutting_height_supported()
+
+        if not await self.coordinator.async_set_mowing_preference_mode(
+            _MOWING_PREFERENCE_MODES[mode], map_id
+        ):
+            raise HomeAssistantError(f"Failed to switch the mowing preferences to {mode}")
+
+    def _assert_cutting_height_supported(self) -> None:
+        """Raise when the model has no software-adjustable cutting height."""
+        if not self.coordinator.supports_cutting_height:
+            raise HomeAssistantError(
+                f"{self.coordinator.device_model} has no software-adjustable cutting height"
+            )
+
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return extra state attributes including available zones and contours."""
@@ -197,6 +260,15 @@ class DreameMowerLawnMower(DreameMowerEntity, LawnMowerEntity):
             attributes["current_map_id"] = current_map_id
         if task_target_map_id is not None:
             attributes["task_target_map_id"] = task_target_map_id
+        if self.coordinator.supports_cutting_height:
+            # Exposed so automations can read back what set_cutting_height did and
+            # tell whether the map-wide height is the one currently in effect.
+            attributes["cutting_height"] = self.coordinator.cutting_height
+            attributes["zone_cutting_heights"] = self.coordinator.zone_cutting_heights
+            mowing_preference_mode = self.coordinator.mowing_preference_mode
+            attributes["mowing_preference_mode"] = (
+                None if mowing_preference_mode is None else mowing_preference_mode.name.lower()
+            )
         attributes["selected_mowing_mode"] = self.coordinator.selected_mowing_mode.value
         if self.coordinator.selected_contour_id is not None:
             attributes["selected_contour_id"] = self.coordinator.selected_contour_id

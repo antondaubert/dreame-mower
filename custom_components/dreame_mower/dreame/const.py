@@ -112,6 +112,80 @@ ACTION_PAUSE = ActionIdentifier(siid=5, aiid=4, name="pause")
 # Format: {m: 'a', p: <priority>, o: <opcode>, d?: <data>}
 TASK_PAYLOAD_RESUME = {"m": "a", "p": 0, "o": 5}  # continueControl
 
+# Mowing preference ("PRE") records
+#
+# The device keeps one mowing preference record per map and mowing area. The
+# record is a flat integer array whose slots carry the mowing settings shown in
+# the app (efficiency mode, cutting height, mowing direction, edge and obstacle
+# behaviour, ...). Area ID 0 addresses the map-wide record that applies to the
+# whole map; positive area IDs address per-zone overrides.
+#
+# Which of the two a map actually uses is decided by the map's preference mode,
+# read with "PREI" and written with "PREP". While a map is in MAP_WIDE mode the
+# per-zone records are stored but ignored.
+#
+# Only the slots the integration touches are named here; every other slot must
+# be written back unchanged, so a write is always a read-modify-write of the
+# record the device currently holds.
+MOWING_PREFERENCE_GLOBAL_AREA_ID = 0
+MOWING_PREFERENCE_VERSION_INDEX = 0
+MOWING_PREFERENCE_MAP_INDEX_INDEX = 1
+MOWING_PREFERENCE_AREA_ID_INDEX = 2
+MOWING_PREFERENCE_CUTTING_HEIGHT_INDEX = 4
+# Records are written with the version slot zeroed; the device assigns the
+# resulting record version itself.
+MOWING_PREFERENCE_WRITE_VERSION = 0
+# Firmware that predates the trailing record slots rejects a full-length record
+# with MOWING_PREFERENCE_STATUS_INVALID. Such a write is retried with the record
+# truncated to the layout those firmware versions accept.
+MOWING_PREFERENCE_LEGACY_LENGTH = 16
+# Per-request status reported in the "r" field of a 2:50 response.
+MOWING_PREFERENCE_STATUS_SUCCESS = 0
+MOWING_PREFERENCE_STATUS_INVALID = -3
+
+
+class MowingPreferenceMode(IntEnum):
+    """Which mowing preference records a map applies."""
+
+    MAP_WIDE = 0  # One record (area 0) governs the whole map
+    PER_ZONE = 1  # Each zone follows its own record
+
+# Cutting height limits in centimetres. The record carries the height in
+# millimetres, adjustable in half-centimetre steps.
+CUTTING_HEIGHT_STEP_CM = 0.5
+CUTTING_HEIGHT_MIN_CM = 3.0
+# Tallest cut any known model offers; the protocol-level upper bound.
+CUTTING_HEIGHT_ABSOLUTE_MAX_CM = 10.0
+# Cut height most models top out at.
+CUTTING_HEIGHT_DEFAULT_MAX_CM = 7.0
+# Model codes that offer the extended cutting height range.
+_EXTENDED_CUTTING_HEIGHT_MODELS = ("g2529", "g2541")
+# Model codes whose cutting height is not adjustable from software.
+_FIXED_CUTTING_HEIGHT_MODELS = ("g2405", "g2420", "g2552", "g2583", "yc2530")
+
+
+def _model_code(model: str) -> str:
+    """Return the bare model code of a full model identifier.
+
+    Model identifiers look like ``dreame.mower.g2408`` or ``mova.mower.g2405c``;
+    the trailing segment is the model code, optionally suffixed by a hardware
+    variant letter.
+    """
+    return model.rsplit(".", 1)[-1].strip().lower()
+
+
+def supports_cutting_height(model: str) -> bool:
+    """Return True when the model's cutting height can be set over the protocol."""
+    model_code = _model_code(model)
+    return not model_code.startswith(_FIXED_CUTTING_HEIGHT_MODELS)
+
+
+def cutting_height_max_cm(model: str) -> float:
+    """Return the tallest cut the model supports, in centimetres."""
+    if _model_code(model).startswith(_EXTENDED_CUTTING_HEIGHT_MODELS):
+        return CUTTING_HEIGHT_ABSOLUTE_MAX_CM
+    return CUTTING_HEIGHT_DEFAULT_MAX_CM
+
 # Device status mapping for STATUS_PROPERTY (2:1)
 # 
 # Charging State Refinement (via correlation with CHARGING_STATUS_PROPERTY 3:2):
@@ -208,3 +282,9 @@ FIRMWARE_INSTALL_STATE_MAPPING: dict[int, str] = {
 # Individual property names
 PROPERTY_FIRMWARE = "firmware"
 PROPERTY_TEMPERATURE = "temperature"
+
+# Derived state names reported through the device property callbacks
+CURRENT_MAP_ID_PROPERTY_NAME = "current_map_id"
+CUTTING_HEIGHT_PROPERTY_NAME = "cutting_height"
+ZONE_CUTTING_HEIGHTS_PROPERTY_NAME = "zone_cutting_heights"
+MOWING_PREFERENCE_MODE_PROPERTY_NAME = "mowing_preference_mode"

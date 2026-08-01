@@ -162,6 +162,11 @@
       "dock_without_stopping": {
         "name": "Docka utan att stoppa uppgiften"
       }
+    },
+    "number": {
+      "cutting_height": {
+        "name": "Klipphöjd"
+      }
     }
   }
 }

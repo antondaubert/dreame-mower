@@ -87,6 +87,23 @@ from .const import (
     DEVICE_CODE_PROPERTY,
     PROPERTY_1_1,
     ONLINE_OFFLINE_DEBOUNCE_POLLS,
+    CURRENT_MAP_ID_PROPERTY_NAME,
+    CUTTING_HEIGHT_ABSOLUTE_MAX_CM,
+    CUTTING_HEIGHT_MIN_CM,
+    CUTTING_HEIGHT_STEP_CM,
+    CUTTING_HEIGHT_PROPERTY_NAME,
+    MOWING_PREFERENCE_AREA_ID_INDEX,
+    MOWING_PREFERENCE_CUTTING_HEIGHT_INDEX,
+    MOWING_PREFERENCE_GLOBAL_AREA_ID,
+    MOWING_PREFERENCE_LEGACY_LENGTH,
+    MOWING_PREFERENCE_MAP_INDEX_INDEX,
+    MOWING_PREFERENCE_MODE_PROPERTY_NAME,
+    MOWING_PREFERENCE_STATUS_INVALID,
+    MOWING_PREFERENCE_STATUS_SUCCESS,
+    MOWING_PREFERENCE_VERSION_INDEX,
+    MOWING_PREFERENCE_WRITE_VERSION,
+    ZONE_CUTTING_HEIGHTS_PROPERTY_NAME,
+    MowingPreferenceMode,
     DeviceStatus,
 )
 
@@ -203,6 +220,13 @@ class DreameMowerDevice:
         # Vector map from batch API
         self._vector_map: MowerVectorMap | None = None
         self._current_map_id: int | None = None
+
+        # Cutting heights of the current map, in centimetres, alongside the mode
+        # that decides which of them the mower applies. Read on demand from the
+        # mowing preference records; the device does not push them.
+        self._cutting_height: float | None = None
+        self._zone_cutting_heights: dict[int, float] = {}
+        self._mowing_preference_mode: MowingPreferenceMode | None = None
 
         # Property change callbacks
         self._property_callbacks: list[Callable[[str, Any], None]] = []
@@ -472,6 +496,21 @@ class DreameMowerDevice:
                 return map_id
 
         return None
+
+    @property
+    def cutting_height(self) -> float | None:
+        """Return the current map's cutting height in cm, if it has been read."""
+        return self._cutting_height
+
+    @property
+    def zone_cutting_heights(self) -> dict[int, float]:
+        """Return the per-zone cutting heights in cm known for the current map."""
+        return dict(self._zone_cutting_heights)
+
+    @property
+    def mowing_preference_mode(self) -> MowingPreferenceMode | None:
+        """Return whether the current map applies map-wide or per-zone preferences."""
+        return self._mowing_preference_mode
 
     @property
     def task_target_map_id(self) -> int | None:
@@ -1513,7 +1552,559 @@ class DreameMowerDevice:
 
         if self._current_map_id != current_map_id:
             self._current_map_id = current_map_id
-            self._notify_property_change("current_map_id", current_map_id)
+            self._reset_cutting_height_cache()
+            self._notify_property_change(CURRENT_MAP_ID_PROPERTY_NAME, current_map_id)
+
+        return True
+
+    def _build_get_mowing_preference_payload(
+        self,
+        map_index: int,
+        area_id: int = MOWING_PREFERENCE_GLOBAL_AREA_ID,
+    ) -> dict[str, Any]:
+        """Build the 2:50 getter payload for a mowing preference record."""
+        return {
+            "m": "g",
+            "t": "PRE",
+            "d": {
+                "idx": map_index,
+                "region": area_id,
+            },
+        }
+
+    def _build_set_mowing_preference_payload(self, record: Sequence[int]) -> dict[str, Any]:
+        """Build the 2:50 setter payload for a mowing preference record."""
+        return {
+            "m": "s",
+            "t": "PRE",
+            "d": [int(value) for value in record],
+        }
+
+    def _build_get_preference_info_payload(self, map_index: int) -> dict[str, Any]:
+        """Build the 2:50 getter payload for a map's preference overview."""
+        return {
+            "m": "g",
+            "t": "PREI",
+            "d": {
+                "idx": map_index,
+            },
+        }
+
+    def _build_set_preference_mode_payload(
+        self,
+        map_index: int,
+        mode: MowingPreferenceMode,
+    ) -> dict[str, Any]:
+        """Build the 2:50 setter payload for a map's preference mode."""
+        return {
+            "m": "s",
+            "t": "PREP",
+            "d": {
+                "idx": map_index,
+                "value": int(mode),
+            },
+        }
+
+    @staticmethod
+    def _preference_response(result: Any) -> tuple[int | None, Any]:
+        """Split a preference response into its status and payload data.
+
+        Either half is None when the response does not carry it: a write only
+        reports a status, and a malformed response reports neither.
+        """
+        if not isinstance(result, dict):
+            return None, None
+
+        if result.get("code") not in (None, 0):
+            return None, None
+
+        out_entries = result.get("out")
+        if not isinstance(out_entries, list):
+            return None, None
+
+        for out_entry in out_entries:
+            if not isinstance(out_entry, dict):
+                continue
+
+            status = out_entry.get("r")
+            normalized_status = status if isinstance(status, int) and not isinstance(status, bool) else None
+            data = out_entry.get("d")
+
+            if normalized_status is not None or data is not None:
+                return normalized_status, data
+
+        return None, None
+
+    @staticmethod
+    def _normalize_preference_record(data: Any) -> list[int] | None:
+        """Coerce a response payload into a mowing preference record."""
+        if not isinstance(data, list) or not data:
+            return None
+
+        try:
+            return [int(value) for value in data]
+        except (TypeError, ValueError):
+            return None
+
+    async def _get_mowing_preference(
+        self,
+        map_index: int,
+        area_id: int = MOWING_PREFERENCE_GLOBAL_AREA_ID,
+    ) -> list[int] | None:
+        """Read one mowing preference record, or None when it is unavailable."""
+        result = await self._send_task_payload(
+            "mowing preference read",
+            self._build_get_mowing_preference_payload(map_index, area_id),
+        )
+        status, data = self._preference_response(result)
+        record = self._normalize_preference_record(data)
+        if status not in (None, MOWING_PREFERENCE_STATUS_SUCCESS) or record is None:
+            _LOGGER.error(
+                "Failed to read the mowing preference for map index %s area %s: %s",
+                map_index,
+                area_id,
+                result,
+            )
+            return None
+
+        return record
+
+    async def _get_preference_info(
+        self,
+        map_index: int,
+    ) -> tuple[MowingPreferenceMode | None, list[int]]:
+        """Read a map's preference mode and the area IDs it holds records for."""
+        result = await self._send_task_payload(
+            "mowing preference info",
+            self._build_get_preference_info_payload(map_index),
+        )
+        status, data = self._preference_response(result)
+        if status not in (None, MOWING_PREFERENCE_STATUS_SUCCESS) or not isinstance(data, dict):
+            _LOGGER.error("Failed to read the preference info for map index %s: %s", map_index, result)
+            return None, []
+
+        mode: MowingPreferenceMode | None = None
+        try:
+            mode = MowingPreferenceMode(int(data["type"]))
+        except (KeyError, TypeError, ValueError):
+            _LOGGER.debug("Preference info for map index %s carries no known mode: %s", map_index, data)
+
+        # Each entry of the version list pairs an area ID with the version of the
+        # record the device holds for it.
+        configured_area_ids: list[int] = []
+        versions = data.get("ver")
+        if isinstance(versions, list):
+            for version_entry in versions:
+                if not isinstance(version_entry, (list, tuple)) or not version_entry:
+                    continue
+                try:
+                    configured_area_ids.append(int(version_entry[0]))
+                except (TypeError, ValueError):
+                    continue
+
+        return mode, configured_area_ids
+
+    async def _set_preference_mode(self, map_index: int, mode: MowingPreferenceMode) -> bool:
+        """Write a map's preference mode."""
+        result = await self._send_task_payload(
+            "mowing preference mode write",
+            self._build_set_preference_mode_payload(map_index, mode),
+        )
+        status, _ = self._preference_response(result)
+        if not result or status not in (None, MOWING_PREFERENCE_STATUS_SUCCESS):
+            _LOGGER.error(
+                "Failed to set the preference mode of map index %s to %s: %s",
+                map_index,
+                mode.name,
+                result,
+            )
+            return False
+
+        return True
+
+    async def _set_mowing_preference(self, record: Sequence[int]) -> bool:
+        """Write a complete mowing preference record back to the device."""
+        result = await self._send_task_payload(
+            "mowing preference write",
+            self._build_set_mowing_preference_payload(record),
+        )
+        status, _ = self._preference_response(result)
+
+        if status == MOWING_PREFERENCE_STATUS_INVALID and len(record) > MOWING_PREFERENCE_LEGACY_LENGTH:
+            _LOGGER.debug(
+                "Device rejected the full mowing preference record; retrying with %d slots",
+                MOWING_PREFERENCE_LEGACY_LENGTH,
+            )
+            result = await self._send_task_payload(
+                "mowing preference write (short record)",
+                self._build_set_mowing_preference_payload(record[:MOWING_PREFERENCE_LEGACY_LENGTH]),
+            )
+            status, _ = self._preference_response(result)
+
+        if not result or status not in (None, MOWING_PREFERENCE_STATUS_SUCCESS):
+            _LOGGER.error("Failed to write the mowing preference record %s: %s", list(record), result)
+            return False
+
+        return True
+
+    def _preference_map_index(self, map_id: int | None) -> int | None:
+        """Resolve the map index a mowing preference request targets."""
+        if map_id is None:
+            map_id = self.current_map_id
+
+        if map_id is None:
+            _LOGGER.error("No map is selected, so the mowing preference cannot be addressed")
+            return None
+
+        if not self._validate_map_id(map_id):
+            return None
+
+        return self._map_index_from_id(map_id)
+
+    def _zone_ids_for_map(self, map_id: int | None) -> list[int]:
+        """Return the zone IDs known for a map, or an empty list when unknown."""
+        if self._vector_map is None:
+            return []
+
+        if map_id is None:
+            map_id = self.current_map_id
+
+        parsed_maps = getattr(self._vector_map, "maps", None)
+        map_geometry = parsed_maps.get(map_id) if isinstance(parsed_maps, dict) else None
+        if map_geometry is None:
+            if map_id is not None and map_id != self.current_map_id:
+                return []
+            map_geometry = self._resolved_vector_map()
+
+        if map_geometry is None:
+            return []
+
+        return [int(zone.zone_id) for zone in map_geometry.zones]
+
+    def _validate_preference_zone_id(self, zone_id: int, map_id: int | None) -> bool:
+        """Return True when the zone exists on the targeted map."""
+        available_zone_ids = self._zone_ids_for_map(map_id)
+        if not available_zone_ids:
+            # No geometry for that map is loaded, so the device has to decide.
+            return True
+
+        if zone_id not in available_zone_ids:
+            _LOGGER.error(
+                "Requested unknown zone ID %s; available zones: %s",
+                zone_id,
+                sorted(available_zone_ids),
+            )
+            return False
+
+        return True
+
+    def _targets_current_map(self, map_index: int) -> bool:
+        """Return True when a map index addresses the currently selected map."""
+        current_map_id = self.current_map_id
+        return current_map_id is not None and self._map_index_from_id(current_map_id) == map_index
+
+    def _reset_cutting_height_cache(self) -> None:
+        """Drop the cached preferences, which only describe the current map."""
+        self._cutting_height = None
+        self._zone_cutting_heights = {}
+        self._mowing_preference_mode = None
+
+    def _update_cutting_height_cache(
+        self,
+        map_index: int,
+        height_cm: float,
+        zone_id: int | None = None,
+    ) -> None:
+        """Cache a cutting height when it belongs to the current map."""
+        if not self._targets_current_map(map_index):
+            return
+
+        if zone_id is not None:
+            if self._zone_cutting_heights.get(zone_id) != height_cm:
+                self._zone_cutting_heights[zone_id] = height_cm
+                self._notify_property_change(
+                    ZONE_CUTTING_HEIGHTS_PROPERTY_NAME,
+                    dict(self._zone_cutting_heights),
+                )
+            return
+
+        if height_cm != self._cutting_height:
+            self._cutting_height = height_cm
+            self._notify_property_change(CUTTING_HEIGHT_PROPERTY_NAME, height_cm)
+
+    def _update_preference_mode_cache(self, map_index: int, mode: MowingPreferenceMode) -> None:
+        """Cache a preference mode when it belongs to the current map."""
+        if not self._targets_current_map(map_index):
+            return
+
+        if mode != self._mowing_preference_mode:
+            self._mowing_preference_mode = mode
+            self._notify_property_change(MOWING_PREFERENCE_MODE_PROPERTY_NAME, mode)
+
+    @staticmethod
+    def _normalize_cutting_height(height_cm: float) -> float:
+        """Snap a requested cutting height to a settable value in centimetres."""
+        try:
+            requested_height = float(height_cm)
+        except (TypeError, ValueError) as ex:
+            raise ValueError(f"Cutting height must be a number; got {height_cm!r}") from ex
+
+        if not CUTTING_HEIGHT_MIN_CM <= requested_height <= CUTTING_HEIGHT_ABSOLUTE_MAX_CM:
+            raise ValueError(
+                f"Cutting height must be between {CUTTING_HEIGHT_MIN_CM} cm and "
+                f"{CUTTING_HEIGHT_ABSOLUTE_MAX_CM} cm; got {requested_height}"
+            )
+
+        return round(requested_height / CUTTING_HEIGHT_STEP_CM) * CUTTING_HEIGHT_STEP_CM
+
+    @staticmethod
+    def _record_cutting_height(record: Sequence[int]) -> float | None:
+        """Return the cutting height a record carries, in centimetres."""
+        if len(record) <= MOWING_PREFERENCE_CUTTING_HEIGHT_INDEX:
+            return None
+
+        return record[MOWING_PREFERENCE_CUTTING_HEIGHT_INDEX] / 10.0
+
+    def _record_for_write(
+        self,
+        record: Sequence[int],
+        map_index: int,
+        area_id: int,
+        height_cm: float,
+    ) -> list[int]:
+        """Return a copy of a record addressed at an area and carrying a height."""
+        updated_record = list(record)
+        updated_record[MOWING_PREFERENCE_VERSION_INDEX] = MOWING_PREFERENCE_WRITE_VERSION
+        updated_record[MOWING_PREFERENCE_MAP_INDEX_INDEX] = map_index
+        updated_record[MOWING_PREFERENCE_AREA_ID_INDEX] = area_id
+        updated_record[MOWING_PREFERENCE_CUTTING_HEIGHT_INDEX] = int(round(height_cm * 10))
+        return updated_record
+
+    async def refresh_cutting_height(self, map_id: int | None = None) -> float | None:
+        """Read the map-wide cutting height in cm, defaulting to the current map."""
+        map_index = self._preference_map_index(map_id)
+        if map_index is None:
+            return None
+
+        try:
+            record = await self._get_mowing_preference(map_index)
+        except Exception as ex:
+            _LOGGER.warning("Failed to read the cutting height for map index %s: %s", map_index, ex)
+            return None
+
+        if record is None:
+            return None
+
+        height_cm = self._record_cutting_height(record)
+        if height_cm is None:
+            return None
+
+        self._update_cutting_height_cache(map_index, height_cm)
+        return height_cm
+
+    async def refresh_zone_cutting_heights(self, map_id: int | None = None) -> dict[int, float]:
+        """Read the per-zone cutting heights in cm, defaulting to the current map.
+
+        Only zones the device already holds a record for are reported; the rest
+        follow the map-wide record until they are given one.
+        """
+        map_index = self._preference_map_index(map_id)
+        if map_index is None:
+            return {}
+
+        try:
+            mode, configured_area_ids = await self._get_preference_info(map_index)
+        except Exception as ex:
+            _LOGGER.warning("Failed to read the preference info for map index %s: %s", map_index, ex)
+            return {}
+
+        if mode is not None:
+            self._update_preference_mode_cache(map_index, mode)
+
+        zone_heights: dict[int, float] = {}
+        for area_id in configured_area_ids:
+            if area_id == MOWING_PREFERENCE_GLOBAL_AREA_ID:
+                continue
+
+            try:
+                record = await self._get_mowing_preference(map_index, area_id)
+            except Exception as ex:
+                _LOGGER.warning("Failed to read the cutting height of zone %s: %s", area_id, ex)
+                continue
+
+            if record is None:
+                continue
+
+            height_cm = self._record_cutting_height(record)
+            if height_cm is not None:
+                zone_heights[area_id] = height_cm
+
+        if self._targets_current_map(map_index) and zone_heights != self._zone_cutting_heights:
+            self._zone_cutting_heights = dict(zone_heights)
+            self._notify_property_change(ZONE_CUTTING_HEIGHTS_PROPERTY_NAME, dict(zone_heights))
+
+        return zone_heights
+
+    async def refresh_mowing_preference_mode(self, map_id: int | None = None) -> MowingPreferenceMode | None:
+        """Read which preference records a map applies, defaulting to the current map."""
+        map_index = self._preference_map_index(map_id)
+        if map_index is None:
+            return None
+
+        try:
+            mode, _ = await self._get_preference_info(map_index)
+        except Exception as ex:
+            _LOGGER.warning("Failed to read the preference mode for map index %s: %s", map_index, ex)
+            return None
+
+        if mode is not None:
+            self._update_preference_mode_cache(map_index, mode)
+
+        return mode
+
+    async def set_mowing_preference_mode(
+        self,
+        mode: MowingPreferenceMode,
+        map_id: int | None = None,
+    ) -> bool:
+        """Choose whether a map follows its map-wide record or its per-zone records."""
+        map_index = self._preference_map_index(map_id)
+        if map_index is None:
+            return False
+
+        try:
+            if not await self._set_preference_mode(map_index, mode):
+                return False
+        except Exception as ex:
+            _LOGGER.error("Failed to send the preference mode command: %s", ex)
+            return False
+
+        _LOGGER.info("Map index %s now applies its %s mowing preferences", map_index, mode.name)
+        self._update_preference_mode_cache(map_index, mode)
+        return True
+
+    async def _enable_per_zone_preferences(
+        self,
+        map_index: int,
+        map_id: int | None,
+        configured_area_ids: Sequence[int],
+        map_wide_record: Sequence[int] | None,
+    ) -> bool:
+        """Switch a map to its per-zone records, leaving untouched zones as they were.
+
+        A zone the device holds no record for has no settings of its own to fall
+        back on once the map stops applying its map-wide record, so every such
+        zone is first given a copy of that record.
+        """
+        map_wide_height = None if map_wide_record is None else self._record_cutting_height(map_wide_record)
+        if map_wide_record is not None and map_wide_height is not None:
+            already_configured = set(configured_area_ids)
+            for zone_id in self._zone_ids_for_map(map_id):
+                if zone_id in already_configured:
+                    continue
+
+                seeded_record = self._record_for_write(
+                    map_wide_record,
+                    map_index,
+                    zone_id,
+                    map_wide_height,
+                )
+                try:
+                    if not await self._set_mowing_preference(seeded_record):
+                        _LOGGER.warning(
+                            "Zone %s keeps no mowing preference of its own; it may fall back to device defaults",
+                            zone_id,
+                        )
+                except Exception as ex:
+                    _LOGGER.warning("Failed to seed the mowing preference of zone %s: %s", zone_id, ex)
+
+        try:
+            if not await self._set_preference_mode(map_index, MowingPreferenceMode.PER_ZONE):
+                return False
+        except Exception as ex:
+            _LOGGER.error("Failed to switch map index %s to per-zone preferences: %s", map_index, ex)
+            return False
+
+        self._update_preference_mode_cache(map_index, MowingPreferenceMode.PER_ZONE)
+        return True
+
+    async def set_cutting_height(
+        self,
+        height_cm: float,
+        map_id: int | None = None,
+        zone_id: int | None = None,
+    ) -> bool:
+        """Set a cutting height in cm, defaulting to the current map.
+
+        Without a zone the map-wide height is set. With a zone only that zone is
+        changed, and the map is switched to its per-zone records so the new
+        height actually takes effect.
+
+        The height lives in a mowing preference record alongside the remaining
+        mowing settings, so the record is read first and written back with only
+        the height slot changed. A zone that has no record of its own starts
+        from a copy of the map-wide record.
+        """
+        normalized_height = self._normalize_cutting_height(height_cm)
+
+        map_index = self._preference_map_index(map_id)
+        if map_index is None:
+            return False
+
+        if zone_id is not None and not self._validate_preference_zone_id(zone_id, map_id):
+            return False
+
+        try:
+            map_wide_record = await self._get_mowing_preference(map_index)
+            configured_area_ids: list[int] = []
+            mode: MowingPreferenceMode | None = None
+            base_record = map_wide_record
+
+            if zone_id is not None:
+                mode, configured_area_ids = await self._get_preference_info(map_index)
+                if zone_id in configured_area_ids:
+                    base_record = await self._get_mowing_preference(map_index, zone_id) or map_wide_record
+        except Exception as ex:
+            _LOGGER.error("Failed to read the mowing preference before setting the cutting height: %s", ex)
+            return False
+
+        if base_record is None or self._record_cutting_height(base_record) is None:
+            _LOGGER.error(
+                "Cannot set the cutting height for map index %s without its mowing preference record",
+                map_index,
+            )
+            return False
+
+        area_id = MOWING_PREFERENCE_GLOBAL_AREA_ID if zone_id is None else zone_id
+        updated_record = self._record_for_write(base_record, map_index, area_id, normalized_height)
+
+        try:
+            if not await self._set_mowing_preference(updated_record):
+                return False
+        except Exception as ex:
+            _LOGGER.error("Failed to send the cutting height command: %s", ex)
+            return False
+
+        if zone_id is None:
+            _LOGGER.info("Cutting height set to %s cm for map index %s", normalized_height, map_index)
+            self._update_cutting_height_cache(map_index, normalized_height)
+            return True
+
+        _LOGGER.info(
+            "Cutting height set to %s cm for zone %s of map index %s",
+            normalized_height,
+            zone_id,
+            map_index,
+        )
+        self._update_cutting_height_cache(map_index, normalized_height, zone_id=zone_id)
+
+        if mode != MowingPreferenceMode.PER_ZONE:
+            await self._enable_per_zone_preferences(
+                map_index,
+                map_id,
+                [*configured_area_ids, zone_id],
+                map_wide_record,
+            )
 
         return True
 
@@ -1834,8 +2425,9 @@ class DreameMowerDevice:
             return False
 
         self._current_map_id = map_id
+        self._reset_cutting_height_cache()
         _LOGGER.info("Current map switched to map ID %s (index %s)", map_id, map_index)
-        self._notify_property_change("current_map_id", map_id)
+        self._notify_property_change(CURRENT_MAP_ID_PROPERTY_NAME, map_id)
         return True
 
     def _validate_contour_ids(self, contour_ids: list[list[int]]) -> bool:

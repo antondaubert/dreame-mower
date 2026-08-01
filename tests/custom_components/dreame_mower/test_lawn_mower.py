@@ -7,7 +7,11 @@ from homeassistant.components.lawn_mower import LawnMowerActivity
 from homeassistant.exceptions import HomeAssistantError
 from custom_components.dreame_mower.dreame.device import MowingMode
 from custom_components.dreame_mower.lawn_mower import DreameMowerLawnMower
-from custom_components.dreame_mower.dreame.const import STATUS_PROPERTY, DeviceStatus
+from custom_components.dreame_mower.dreame.const import (
+    STATUS_PROPERTY,
+    DeviceStatus,
+    MowingPreferenceMode,
+)
 
 
 def _make_coordinator(connected=True, status_code=0):
@@ -40,6 +44,12 @@ def _make_coordinator(connected=True, status_code=0):
     coordinator.device.start_mowing_spots = AsyncMock(return_value=True)
     coordinator.device.start_mowing_generic = AsyncMock(return_value=True)
     coordinator.device.mowing_session_active = False
+    coordinator.supports_cutting_height = True
+    coordinator.cutting_height = None
+    coordinator.zone_cutting_heights = {}
+    coordinator.mowing_preference_mode = None
+    coordinator.async_set_cutting_height = AsyncMock(return_value=True)
+    coordinator.async_set_mowing_preference_mode = AsyncMock(return_value=True)
     return coordinator
 
 
@@ -351,8 +361,155 @@ def test_extra_state_attributes_include_zones_and_contours():
         "maps": [{"id": 1, "index": 0, "name": "Front", "area": 12.5}],
         "current_map_id": 1,
         "task_target_map_id": 2,
+        "cutting_height": None,
+        "zone_cutting_heights": {},
+        "mowing_preference_mode": None,
         "selected_mowing_mode": "all_area",
         "selected_contour_id": [2, 0],
         "selected_zone_id": 1,
         "selected_spot_area_id": 4,
     }
+
+
+@pytest.mark.asyncio
+async def test_set_cutting_height_service_delegates_to_the_coordinator():
+    """The service should forward the height and optional map to the coordinator."""
+    coordinator = _make_coordinator()
+    entity = _make_entity(coordinator)
+
+    await entity.async_set_cutting_height(4.5, map_id=2)
+
+    coordinator.async_set_cutting_height.assert_awaited_once_with(4.5, 2, None)
+
+
+@pytest.mark.asyncio
+async def test_set_cutting_height_service_defaults_to_the_active_map():
+    """Omitting the map should let the device layer use the active map."""
+    coordinator = _make_coordinator()
+    entity = _make_entity(coordinator)
+
+    await entity.async_set_cutting_height(6)
+
+    coordinator.async_set_cutting_height.assert_awaited_once_with(6, None, None)
+
+
+@pytest.mark.asyncio
+async def test_set_cutting_height_service_rejects_fixed_height_models():
+    """Models without an adjustable height should report a clear error."""
+    coordinator = _make_coordinator()
+    coordinator.supports_cutting_height = False
+    entity = _make_entity(coordinator)
+
+    with pytest.raises(HomeAssistantError):
+        await entity.async_set_cutting_height(5)
+
+    coordinator.async_set_cutting_height.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_set_cutting_height_service_raises_when_the_write_fails():
+    """A failed write should surface as an error instead of passing silently."""
+    coordinator = _make_coordinator()
+    coordinator.async_set_cutting_height = AsyncMock(return_value=False)
+    entity = _make_entity(coordinator)
+
+    with pytest.raises(HomeAssistantError):
+        await entity.async_set_cutting_height(5)
+
+
+@pytest.mark.asyncio
+async def test_set_cutting_height_service_reports_out_of_range_heights():
+    """A height the device layer rejects should surface as an error."""
+    coordinator = _make_coordinator()
+    coordinator.async_set_cutting_height = AsyncMock(side_effect=ValueError("out of range"))
+    entity = _make_entity(coordinator)
+
+    with pytest.raises(HomeAssistantError):
+        await entity.async_set_cutting_height(99)
+
+
+@pytest.mark.asyncio
+async def test_set_cutting_height_service_forwards_the_zone_id():
+    """A zone ID should reach the coordinator so only that zone changes."""
+    coordinator = _make_coordinator()
+    entity = _make_entity(coordinator)
+
+    await entity.async_set_cutting_height(5.0, zone_id=3)
+
+    coordinator.async_set_cutting_height.assert_awaited_once_with(5.0, None, 3)
+
+
+@pytest.mark.asyncio
+async def test_set_cutting_height_service_names_the_zone_when_it_fails():
+    """A failed zone write should say which zone it was."""
+    coordinator = _make_coordinator()
+    coordinator.async_set_cutting_height = AsyncMock(return_value=False)
+    entity = _make_entity(coordinator)
+
+    with pytest.raises(HomeAssistantError, match="zone 3"):
+        await entity.async_set_cutting_height(5.0, zone_id=3)
+
+
+@pytest.mark.asyncio
+async def test_set_mowing_preference_mode_service_maps_the_name_to_the_mode():
+    """The service takes a readable mode name and forwards the enum."""
+    coordinator = _make_coordinator()
+    entity = _make_entity(coordinator)
+
+    await entity.async_set_mowing_preference_mode("map_wide", map_id=2)
+
+    coordinator.async_set_mowing_preference_mode.assert_awaited_once_with(
+        MowingPreferenceMode.MAP_WIDE, 2
+    )
+
+
+@pytest.mark.asyncio
+async def test_set_mowing_preference_mode_service_rejects_fixed_height_models():
+    """Models without adjustable settings should report a clear error."""
+    coordinator = _make_coordinator()
+    coordinator.supports_cutting_height = False
+    entity = _make_entity(coordinator)
+
+    with pytest.raises(HomeAssistantError):
+        await entity.async_set_mowing_preference_mode("per_zone")
+
+    coordinator.async_set_mowing_preference_mode.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_set_mowing_preference_mode_service_raises_when_the_switch_fails():
+    """A rejected mode switch should surface as an error."""
+    coordinator = _make_coordinator()
+    coordinator.async_set_mowing_preference_mode = AsyncMock(return_value=False)
+    entity = _make_entity(coordinator)
+
+    with pytest.raises(HomeAssistantError):
+        await entity.async_set_mowing_preference_mode("per_zone")
+
+
+def test_attributes_expose_the_cutting_heights_and_mode():
+    """Automations need the zone IDs and the mode to use the service."""
+    coordinator = _make_coordinator()
+    coordinator.cutting_height = 4.0
+    coordinator.zone_cutting_heights = {1: 5.0, 3: 6.5}
+    coordinator.mowing_preference_mode = MowingPreferenceMode.PER_ZONE
+    entity = _make_entity(coordinator)
+
+    attributes = entity.extra_state_attributes
+
+    assert attributes["cutting_height"] == 4.0
+    assert attributes["zone_cutting_heights"] == {1: 5.0, 3: 6.5}
+    assert attributes["mowing_preference_mode"] == "per_zone"
+
+
+def test_attributes_omit_the_cutting_height_for_fixed_height_models():
+    """Models without an adjustable height should not advertise one."""
+    coordinator = _make_coordinator()
+    coordinator.supports_cutting_height = False
+    entity = _make_entity(coordinator)
+
+    attributes = entity.extra_state_attributes
+
+    assert "cutting_height" not in attributes
+    assert "zone_cutting_heights" not in attributes
+    assert "mowing_preference_mode" not in attributes

@@ -162,6 +162,11 @@
       "dock_without_stopping": {
         "name": "Acoplar sin detener la tarea"
       }
+    },
+    "number": {
+      "cutting_height": {
+        "name": "Altura de corte"
+      }
     }
   }
 }

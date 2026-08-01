@@ -4,9 +4,13 @@ import pytest
 from homeassistant.components.lawn_mower import LawnMowerActivity
 
 from custom_components.dreame_mower.dreame.const import (
+    CUTTING_HEIGHT_ABSOLUTE_MAX_CM,
+    CUTTING_HEIGHT_DEFAULT_MAX_CM,
     DeviceStatus,
     STATUS_MAPPING,
+    cutting_height_max_cm,
     map_status_to_activity,
+    supports_cutting_height,
 )
 
 
@@ -49,3 +53,29 @@ class TestStatusMapping:
 
     def test_maintenance_paused(self):
         assert STATUS_MAPPING[DeviceStatus.MAINTENANCE_PAUSED] == "maintenance_paused"
+
+
+class TestCuttingHeightSupport:
+    """Test the model-dependent cutting height helpers."""
+
+    @pytest.mark.parametrize(
+        "model",
+        ["dreame.mower.g2408", "dreame.mower.p2255", "dreame.mower.g2541e", "mova.mower.g2529b"],
+    )
+    def test_adjustable_models_are_supported(self, model):
+        assert supports_cutting_height(model) is True
+
+    @pytest.mark.parametrize("model", ["mova.mower.g2405a", "mova.mower.g2405c"])
+    def test_fixed_height_models_are_unsupported(self, model):
+        assert supports_cutting_height(model) is False
+
+    def test_default_models_top_out_at_seven_centimeters(self):
+        assert cutting_height_max_cm("dreame.mower.g2408") == CUTTING_HEIGHT_DEFAULT_MAX_CM
+
+    @pytest.mark.parametrize("model", ["dreame.mower.g2541e", "mova.mower.g2529b"])
+    def test_extended_models_top_out_at_ten_centimeters(self, model):
+        assert cutting_height_max_cm(model) == CUTTING_HEIGHT_ABSOLUTE_MAX_CM
+
+    def test_unknown_models_fall_back_to_the_default_range(self):
+        assert supports_cutting_height("dreame.mower.x9999") is True
+        assert cutting_height_max_cm("dreame.mower.x9999") == CUTTING_HEIGHT_DEFAULT_MAX_CM

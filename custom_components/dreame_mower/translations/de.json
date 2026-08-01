@@ -162,6 +162,11 @@
       "dock_without_stopping": {
         "name": "Andocken ohne Aufgabe zu stoppen"
       }
+    },
+    "number": {
+      "cutting_height": {
+        "name": "Schnitthöhe"
+      }
     }
   }
 }
