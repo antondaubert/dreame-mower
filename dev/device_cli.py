@@ -15,6 +15,11 @@ Examples:
     .venv/bin/python dev/device_cli.py cutting-height --set 5.5 --map-id 2
     .venv/bin/python dev/device_cli.py cutting-height --set 4 --zone-id 3
     .venv/bin/python dev/device_cli.py cutting-height --mode map_wide
+  .venv/bin/python dev/device_cli.py props
+    .venv/bin/python dev/device_cli.py props --skip-map-fetch
+  .venv/bin/python dev/device_cli.py charging-period
+    .venv/bin/python dev/device_cli.py charging-period --enable --start 22:00 --end 06:00
+    .venv/bin/python dev/device_cli.py charging-period --disable
 """
 
 from __future__ import annotations
@@ -22,6 +27,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 from dataclasses import dataclass, field
+import functools
 import getpass
 import json
 import logging
@@ -34,11 +40,15 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from custom_components.dreame_mower.dreame.const import MowingPreferenceMode
+from custom_components.dreame_mower.dreame import const as dreame_const
+from custom_components.dreame_mower.dreame.const import MINUTES_PER_DAY, MowingPreferenceMode, PropertyIdentifier
 from custom_components.dreame_mower.dreame.device import DreameMowerDevice, MowingMode
 
 VALID_COUNTRIES = ["eu", "cn", "us", "ru", "sg"]
 VALID_ACCOUNT_TYPES = ["dreame", "mova"]
+
+# Properties the device reports in one request without truncating the response.
+MIOT_PROPERTY_BATCH_SIZE = 20
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -150,6 +160,100 @@ def parse_contour_id(value: str) -> list[int]:
         return [int(parts[0]), int(parts[1])]
     except ValueError as exc:
         raise argparse.ArgumentTypeError("Contour IDs must contain integers") from exc
+
+
+def parse_time_of_day(value: str) -> int:
+    """Parse a "HH:MM" time of day into minutes since midnight."""
+    parts = value.strip().split(":")
+    if len(parts) != 2:
+        raise argparse.ArgumentTypeError("Times must be formatted as HH:MM")
+
+    try:
+        hours, minutes = int(parts[0]), int(parts[1])
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("Times must contain integers") from exc
+
+    if not 0 <= hours < 24 or not 0 <= minutes < 60:
+        raise argparse.ArgumentTypeError(f"Time out of range: {value}")
+
+    return hours * 60 + minutes
+
+
+def format_time_of_day(minutes: int | None) -> str | None:
+    """Format minutes since midnight as "HH:MM"."""
+    if minutes is None:
+        return None
+
+    normalized_minutes = int(minutes) % MINUTES_PER_DAY
+    return f"{normalized_minutes // 60:02d}:{normalized_minutes % 60:02d}"
+
+
+def describe_charging_settings(settings: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Add readable clock times to a charging settings payload."""
+    if settings is None:
+        return None
+
+    described_settings = dict(settings)
+    described_settings["charging_period_start"] = format_time_of_day(settings.get("charging_period_start_minutes"))
+    described_settings["charging_period_end"] = format_time_of_day(settings.get("charging_period_end_minutes"))
+    return described_settings
+
+
+def known_property_identifiers() -> list[PropertyIdentifier]:
+    """Return every device property the integration knows about, in address order."""
+    identifiers = {
+        (value.siid, value.piid): value
+        for value in vars(dreame_const).values()
+        if isinstance(value, PropertyIdentifier)
+    }
+    return sorted(identifiers.values(), key=lambda identifier: (identifier.siid, identifier.piid))
+
+
+async def read_miot_properties(device: DreameMowerDevice) -> list[dict[str, Any]]:
+    """Read every known device property and return one entry per property."""
+    identifiers = known_property_identifiers()
+    loop = asyncio.get_event_loop()
+    entries: list[dict[str, Any]] = []
+
+    for batch_start in range(0, len(identifiers), MIOT_PROPERTY_BATCH_SIZE):
+        batch = identifiers[batch_start : batch_start + MIOT_PROPERTY_BATCH_SIZE]
+        parameters = [{"siid": identifier.siid, "piid": identifier.piid} for identifier in batch]
+        error: str | None = None
+        try:
+            results = await loop.run_in_executor(
+                None,
+                functools.partial(device.cloud_device.get_properties, parameters),
+            )
+        except Exception as ex:
+            results = None
+            error = repr(ex)
+
+        responses: dict[tuple[Any, Any], dict[str, Any]] = {}
+        if isinstance(results, list):
+            for item in results:
+                if isinstance(item, dict):
+                    responses[(item.get("siid"), item.get("piid"))] = item
+        elif error is None:
+            error = f"Unexpected response: {results!r}"
+
+        for identifier in batch:
+            entry: dict[str, Any] = {
+                "name": identifier.name,
+                "siid": identifier.siid,
+                "piid": identifier.piid,
+            }
+            response = responses.get((identifier.siid, identifier.piid))
+            if response is None:
+                # The device answers a batch read with the properties it exposes
+                # for reading and silently omits the rest; those only ever arrive
+                # as pushed updates.
+                entry["error"] = error or "The device did not report this property"
+            else:
+                entry["code"] = response.get("code")
+                entry["value"] = response.get("value")
+            entries.append(entry)
+
+    return entries
 
 
 def serialize_spot_areas(device: DreameMowerDevice) -> list[dict[str, Any]]:
@@ -299,6 +403,56 @@ def build_parser() -> argparse.ArgumentParser:
         help="Do not load vector map metadata before addressing the map",
     )
 
+    props_parser = subparsers.add_parser(
+        "props",
+        help="Read every known property and setting the device exposes",
+    )
+    add_common_args(props_parser)
+    props_parser.add_argument(
+        "--map-id",
+        type=int,
+        default=None,
+        help="Read the mowing preferences of this map instead of the current one",
+    )
+    props_parser.add_argument(
+        "--skip-map-fetch",
+        action="store_true",
+        help="Do not load vector map metadata, which also skips the mowing preferences",
+    )
+
+    charging_period_parser = subparsers.add_parser(
+        "charging-period",
+        help="Read or change the custom charging period",
+    )
+    add_common_args(charging_period_parser)
+    charging_period_state = charging_period_parser.add_mutually_exclusive_group()
+    charging_period_state.add_argument(
+        "--enable",
+        dest="enabled",
+        action="store_true",
+        default=None,
+        help="Turn the custom charging period on",
+    )
+    charging_period_state.add_argument(
+        "--disable",
+        dest="enabled",
+        action="store_false",
+        default=None,
+        help="Turn the custom charging period off",
+    )
+    charging_period_parser.add_argument(
+        "--start",
+        type=parse_time_of_day,
+        default=None,
+        help="Start of the charging period as HH:MM",
+    )
+    charging_period_parser.add_argument(
+        "--end",
+        type=parse_time_of_day,
+        default=None,
+        help="End of the charging period as HH:MM; before the start time it runs past midnight",
+    )
+
     pause_parser = subparsers.add_parser("pause", help="Pause the mower")
     add_common_args(pause_parser)
 
@@ -420,6 +574,67 @@ async def run_command(device: DreameMowerDevice, args: argparse.Namespace) -> di
             "cutting_height_cm": current_height,
             "zone_cutting_heights_cm": zone_heights,
             "mowing_preference_mode": mode.name.lower() if mode is not None else None,
+            "state": build_device_snapshot(device),
+        }
+
+    if args.command == "props":
+        fetched_before = None if args.skip_map_fetch else await fetch_vector_map_async(device)
+        device_information = await device.get_device_information()
+        settings = await device.get_device_settings()
+        charging_settings = None
+        if settings is not None:
+            charging_settings = describe_charging_settings(await device.get_charging_settings())
+
+        cutting_height = None
+        zone_cutting_heights: dict[int, float] = {}
+        mowing_preference_mode = None
+        if not args.skip_map_fetch:
+            cutting_height = await device.refresh_cutting_height(args.map_id)
+            zone_cutting_heights = await device.refresh_zone_cutting_heights(args.map_id)
+            mowing_preference_mode = device.mowing_preference_mode
+
+        properties = await read_miot_properties(device)
+        return {
+            "ok": settings is not None,
+            "command": args.command,
+            "map_fetched_before": fetched_before,
+            "device_information": device_information,
+            "settings": settings,
+            "charging": charging_settings,
+            "cutting_height_cm": cutting_height,
+            "zone_cutting_heights_cm": zone_cutting_heights,
+            "mowing_preference_mode": (
+                mowing_preference_mode.name.lower() if mowing_preference_mode is not None else None
+            ),
+            "properties": properties,
+            "state": build_device_snapshot(device),
+        }
+
+    if args.command == "charging-period":
+        requested_change = args.enabled is not None or args.start is not None or args.end is not None
+        try:
+            if requested_change:
+                charging_settings = await device.set_charging_period(
+                    enabled=args.enabled,
+                    start_minutes=args.start,
+                    end_minutes=args.end,
+                )
+            else:
+                charging_settings = await device.get_charging_settings()
+        except ValueError as ex:
+            return {
+                "ok": False,
+                "command": args.command,
+                "error": str(ex),
+            }
+
+        return {
+            "ok": charging_settings is not None,
+            "command": args.command,
+            "requested_enabled": args.enabled,
+            "requested_start": format_time_of_day(args.start),
+            "requested_end": format_time_of_day(args.end),
+            "charging": describe_charging_settings(charging_settings),
             "state": build_device_snapshot(device),
         }
 

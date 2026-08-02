@@ -2368,3 +2368,131 @@ async def test_set_zone_cutting_height_defers_when_the_map_geometry_is_unknown(d
 
     assert await device.set_cutting_height(4.0, map_id=2, zone_id=99) is True
     assert [write[2] for write in calls["writes"]] == [99]
+
+
+# The settings record as the device reports it; only the keys under test matter.
+_DEVICE_SETTINGS = {
+    "BAT": [15, 95, 1, 0, 660, 1080],
+    "DND": [0, 1080, 480],
+    "VOL": 10,
+}
+
+
+def _settings_responder(settings=None):
+    """Build an action responder serving the settings record and its writes."""
+    served_settings = dict(_DEVICE_SETTINGS if settings is None else settings)
+    writes: list[dict] = []
+
+    def responder(siid, aiid, parameters, retry_count):
+        payload = parameters[0]
+        if payload["m"] == "g":
+            return {"code": 0, "out": [{"r": 0, "d": dict(served_settings)}]}
+
+        writes.append(payload["d"])
+        enabled, start, end = payload["d"]["value"]
+        record = list(served_settings["BAT"])
+        record[3:6] = [enabled, start, end]
+        served_settings["BAT"] = record
+        return {"code": 0, "out": [{"r": 0, "d": {"type": "charging", "value": list(record)}}]}
+
+    return responder, writes
+
+
+@pytest.mark.asyncio
+async def test_get_device_settings_returns_the_whole_record(device):
+    """The settings getter should hand back every key the device reports."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result, _ = _settings_responder()
+
+    settings = await device.get_device_settings()
+
+    assert settings == _DEVICE_SETTINGS
+    _, _, parameters, _ = device._cloud_device.action_calls[0]
+    assert parameters == [{"m": "g", "t": "CFG"}]
+
+
+@pytest.mark.asyncio
+async def test_get_charging_settings_decodes_the_battery_record(device):
+    """The battery record carries the thresholds and the custom charging period."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result, _ = _settings_responder()
+
+    settings = await device.get_charging_settings()
+
+    assert settings == {
+        "recharge_battery_level": 15,
+        "resume_battery_level": 95,
+        "resume_after_charging": True,
+        "charging_period_enabled": False,
+        "charging_period_start_minutes": 660,
+        "charging_period_end_minutes": 1080,
+        "raw": [15, 95, 1, 0, 660, 1080],
+    }
+
+
+@pytest.mark.asyncio
+async def test_get_charging_settings_fails_without_a_battery_record(device):
+    """A settings record without the battery key carries nothing to decode."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result, _ = _settings_responder({"VOL": 10})
+
+    assert await device.get_charging_settings() is None
+
+
+@pytest.mark.asyncio
+async def test_set_charging_period_writes_the_requested_window(device):
+    """Enabling the period should write the switch and both times in one request."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result, writes = _settings_responder()
+
+    settings = await device.set_charging_period(enabled=True, start_minutes=1320, end_minutes=360)
+
+    assert writes == [{"type": "charging", "value": [1, 1320, 360]}]
+    assert settings is not None
+    assert settings["charging_period_enabled"] is True
+    assert settings["charging_period_start_minutes"] == 1320
+    assert settings["charging_period_end_minutes"] == 360
+
+
+@pytest.mark.asyncio
+async def test_set_charging_period_keeps_the_times_when_only_toggled(device):
+    """Switching the period off must leave the window the device holds untouched."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result, writes = _settings_responder()
+
+    settings = await device.set_charging_period(enabled=False)
+
+    assert writes == [{"type": "charging", "value": [0, 660, 1080]}]
+    assert settings is not None
+    assert settings["charging_period_enabled"] is False
+
+
+@pytest.mark.asyncio
+async def test_set_charging_period_rejects_a_window_of_zero_length(device):
+    """A period that starts when it ends is rejected before any request."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result, writes = _settings_responder()
+
+    with pytest.raises(ValueError):
+        await device.set_charging_period(start_minutes=420, end_minutes=420)
+
+    assert writes == []
+
+
+@pytest.mark.asyncio
+async def test_set_charging_period_rejects_times_outside_a_day(device):
+    """Times the record cannot carry are rejected before any request."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result, writes = _settings_responder()
+
+    with pytest.raises(ValueError):
+        await device.set_charging_period(start_minutes=1440)
+
+    assert writes == []

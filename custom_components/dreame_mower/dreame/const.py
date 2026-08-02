@@ -186,6 +186,32 @@ def cutting_height_max_cm(model: str) -> float:
         return CUTTING_HEIGHT_ABSOLUTE_MAX_CM
     return CUTTING_HEIGHT_DEFAULT_MAX_CM
 
+# Device settings ("CFG") record
+#
+# The device keeps its user-facing settings in a single record that is read as a
+# whole; each setting is written back on its own with the setter that owns its
+# key. Only the keys the integration understands are named here, every other key
+# is passed through as the device reports it.
+DEVICE_SETTINGS_BATTERY_KEY = "BAT"
+
+# Battery and charging settings ("BAT")
+#
+# The record holds the battery levels that drive docking and resuming, followed
+# by the custom charging period. While that period is enabled the mower only
+# keeps a safe battery level when idle and fully charges inside the period.
+# Both times are minutes since midnight; an end time below the start time means
+# the period runs past midnight into the next day.
+BATTERY_SETTING_RECHARGE_LEVEL_INDEX = 0
+BATTERY_SETTING_RESUME_LEVEL_INDEX = 1
+BATTERY_SETTING_RESUME_AFTER_CHARGING_INDEX = 2
+BATTERY_SETTING_CHARGING_PERIOD_ENABLED_INDEX = 3
+BATTERY_SETTING_CHARGING_PERIOD_START_INDEX = 4
+BATTERY_SETTING_CHARGING_PERIOD_END_INDEX = 5
+BATTERY_SETTING_LENGTH = 6
+
+# Times inside the settings record are minutes since midnight.
+MINUTES_PER_DAY = 1440
+
 # Device status mapping for STATUS_PROPERTY (2:1)
 # 
 # Charging State Refinement (via correlation with CHARGING_STATUS_PROPERTY 3:2):

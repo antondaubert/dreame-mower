@@ -103,6 +103,15 @@ from .const import (
     MOWING_PREFERENCE_VERSION_INDEX,
     MOWING_PREFERENCE_WRITE_VERSION,
     ZONE_CUTTING_HEIGHTS_PROPERTY_NAME,
+    BATTERY_SETTING_CHARGING_PERIOD_ENABLED_INDEX,
+    BATTERY_SETTING_CHARGING_PERIOD_END_INDEX,
+    BATTERY_SETTING_CHARGING_PERIOD_START_INDEX,
+    BATTERY_SETTING_LENGTH,
+    BATTERY_SETTING_RECHARGE_LEVEL_INDEX,
+    BATTERY_SETTING_RESUME_AFTER_CHARGING_INDEX,
+    BATTERY_SETTING_RESUME_LEVEL_INDEX,
+    DEVICE_SETTINGS_BATTERY_KEY,
+    MINUTES_PER_DAY,
     MowingPreferenceMode,
     DeviceStatus,
 )
@@ -1366,6 +1375,36 @@ class DreameMowerDevice:
             },
         }
 
+    def _build_get_device_settings_payload(self) -> dict[str, Any]:
+        """Build the getter payload for the CFG settings record."""
+        return {
+            "m": "g",
+            "t": "CFG",
+        }
+
+    def _build_get_device_information_payload(self) -> dict[str, Any]:
+        """Build the getter payload for the DEV hardware information."""
+        return {
+            "m": "g",
+            "t": "DEV",
+        }
+
+    def _build_set_charging_period_payload(
+        self,
+        enabled: bool,
+        start_minutes: int,
+        end_minutes: int,
+    ) -> dict[str, Any]:
+        """Build the setter payload for the custom charging period."""
+        return {
+            "m": "s",
+            "t": DEVICE_SETTINGS_BATTERY_KEY,
+            "d": {
+                "type": "charging",
+                "value": [int(enabled), int(start_minutes), int(end_minutes)],
+            },
+        }
+
     @staticmethod
     def _extract_custom_action_data(result: Any) -> dict[str, Any] | None:
         """Extract the first successful data payload from a custom action result."""
@@ -1532,6 +1571,150 @@ class DreameMowerDevice:
             "raw_get_result": current_status["raw_result"],
             "raw_set_result": updated_status["raw_result"],
         }
+
+    async def get_device_settings(self) -> dict[str, Any] | None:
+        """Read the whole settings record the device keeps, or None on failure.
+
+        The record carries every setting the app exposes, keyed by its protocol
+        name; values are returned exactly as the device reports them.
+        """
+        result = await self._send_task_payload("device settings read", self._build_get_device_settings_payload())
+        settings = self._extract_custom_action_data(result)
+        if settings is None:
+            _LOGGER.error("Failed to read the device settings: %s", result)
+            return None
+
+        return settings
+
+    async def get_device_information(self) -> dict[str, Any] | None:
+        """Read the device's hardware information, or None on failure.
+
+        Reports the serial number, Bluetooth MAC and the running firmware
+        version as the device itself knows them.
+        """
+        result = await self._send_task_payload(
+            "device information read",
+            self._build_get_device_information_payload(),
+        )
+        information = self._extract_custom_action_data(result)
+        if information is None:
+            _LOGGER.error("Failed to read the device information: %s", result)
+            return None
+
+        return information
+
+    @staticmethod
+    def _normalize_battery_settings(data: Any) -> list[int] | None:
+        """Coerce a settings value into a battery settings record."""
+        if isinstance(data, dict):
+            data = data.get("value")
+
+        if not isinstance(data, list) or len(data) < BATTERY_SETTING_LENGTH:
+            return None
+
+        try:
+            return [int(value) for value in data]
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _decode_battery_settings(record: Sequence[int]) -> dict[str, Any]:
+        """Describe the battery and charging settings a record carries."""
+        return {
+            "recharge_battery_level": record[BATTERY_SETTING_RECHARGE_LEVEL_INDEX],
+            "resume_battery_level": record[BATTERY_SETTING_RESUME_LEVEL_INDEX],
+            "resume_after_charging": bool(record[BATTERY_SETTING_RESUME_AFTER_CHARGING_INDEX]),
+            "charging_period_enabled": bool(record[BATTERY_SETTING_CHARGING_PERIOD_ENABLED_INDEX]),
+            "charging_period_start_minutes": record[BATTERY_SETTING_CHARGING_PERIOD_START_INDEX],
+            "charging_period_end_minutes": record[BATTERY_SETTING_CHARGING_PERIOD_END_INDEX],
+            "raw": list(record),
+        }
+
+    async def get_charging_settings(self) -> dict[str, Any] | None:
+        """Read the battery and charging settings, or None when unavailable."""
+        settings = await self.get_device_settings()
+        if settings is None:
+            return None
+
+        record = self._normalize_battery_settings(settings.get(DEVICE_SETTINGS_BATTERY_KEY))
+        if record is None:
+            _LOGGER.error("Device settings carry no battery record: %s", settings)
+            return None
+
+        return self._decode_battery_settings(record)
+
+    @staticmethod
+    def _validate_time_of_day(minutes: int, label: str) -> int:
+        """Return a time of day in minutes since midnight, or raise."""
+        try:
+            normalized_minutes = int(minutes)
+        except (TypeError, ValueError) as ex:
+            raise ValueError(f"The charging period {label} must be a number of minutes; got {minutes!r}") from ex
+
+        if not 0 <= normalized_minutes < MINUTES_PER_DAY:
+            raise ValueError(
+                f"The charging period {label} must be between 0 and {MINUTES_PER_DAY - 1} minutes; "
+                f"got {normalized_minutes}"
+            )
+
+        return normalized_minutes
+
+    async def set_charging_period(
+        self,
+        enabled: bool | None = None,
+        start_minutes: int | None = None,
+        end_minutes: int | None = None,
+    ) -> dict[str, Any] | None:
+        """Update the custom charging period and return the settings that took effect.
+
+        Every unspecified part keeps the value the device currently holds, so the
+        period can be switched on and off without restating its times. Returns
+        None when the settings could not be read or the write was rejected.
+        """
+        current_settings = await self.get_charging_settings()
+        if current_settings is None:
+            return None
+
+        next_enabled = current_settings["charging_period_enabled"] if enabled is None else bool(enabled)
+        next_start = (
+            current_settings["charging_period_start_minutes"]
+            if start_minutes is None
+            else self._validate_time_of_day(start_minutes, "start time")
+        )
+        next_end = (
+            current_settings["charging_period_end_minutes"]
+            if end_minutes is None
+            else self._validate_time_of_day(end_minutes, "end time")
+        )
+
+        # The device keeps a period of zero length; it rejects such a window.
+        if next_start == next_end:
+            raise ValueError(
+                f"The charging period start and end time must differ; both are {next_start} minutes"
+            )
+
+        result = await self._send_task_payload(
+            "charging period write",
+            self._build_set_charging_period_payload(next_enabled, next_start, next_end),
+        )
+        record = self._normalize_battery_settings(self._extract_custom_action_data(result))
+        if record is None:
+            _LOGGER.error(
+                "Failed to write the charging period (enabled=%s start=%s end=%s): %s",
+                next_enabled,
+                next_start,
+                next_end,
+                result,
+            )
+            return None
+
+        _LOGGER.info(
+            "Charging period is now %s from %s to %s minutes",
+            "enabled" if record[BATTERY_SETTING_CHARGING_PERIOD_ENABLED_INDEX] else "disabled",
+            record[BATTERY_SETTING_CHARGING_PERIOD_START_INDEX],
+            record[BATTERY_SETTING_CHARGING_PERIOD_END_INDEX],
+        )
+        return self._decode_battery_settings(record)
 
     def refresh_current_map_id(self) -> bool:
         """Refresh the current map by querying the MAPL getter."""
