@@ -31,6 +31,12 @@ Provided "as-is" under the MIT License for personal, non-commercial use with dev
 
 The current release exposes map, zone, and edge selection as select entities in Home Assistant. Selecting **multiple zones or areas** at once is not yet available in the UI — use the service actions below for that.
 
+### Switching Maps
+
+The mower only switches its active map while **no mowing task is in progress**. A task that is running, paused, or interrupted on the way back to the dock all block the switch — the mower accepts the command and then ignores it. Finish or cancel the task first, then switch the map. The **Map** select reports an error instead of silently leaving the mower on the old map.
+
+In automations that switch the map and then start mowing, give the mower a moment between the two steps so the new map is active before the run starts.
+
 ### Cutting Height
 
 The **Cutting height** number entity sets the cutting height of the **active map**, in 0.5 cm steps. The entity is only created for models whose cutting height is adjustable from software; on models with a manual height dial (for example the MOVA 600 and MOVA 1000) it is omitted.

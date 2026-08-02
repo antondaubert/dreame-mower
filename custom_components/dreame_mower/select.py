@@ -7,6 +7,7 @@ from typing import Any
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DATA_COORDINATOR, DOMAIN
@@ -71,10 +72,18 @@ class DreameMowerMapSelect(DreameMowerEntity, SelectEntity):
         """Select the active map on the mower."""
         map_id = self._map_id_from_option(option)
         if map_id is None:
-            raise ValueError(f"Unknown map option: {option}")
+            raise HomeAssistantError(f"Unknown map option: {option}")
 
-        if not await self.coordinator.device.set_current_map(map_id):
-            raise ValueError(f"Failed to select map option: {option}")
+        if await self.coordinator.device.set_current_map(map_id):
+            return
+
+        if self.coordinator.device.mowing_session_active:
+            raise HomeAssistantError(
+                f"Cannot switch to {option} while a mowing task is in progress. "
+                "Finish or cancel the task, then try again."
+            )
+
+        raise HomeAssistantError(f"Failed to select map option: {option}")
 
     def _option_label(self, map_entry: dict[str, Any]) -> str:
         """Return the label shown for a map option."""

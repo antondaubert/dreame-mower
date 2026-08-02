@@ -481,17 +481,49 @@ async def test_start_mowing_all_area_uses_map_task_payload(device):
     assert parameters == [{"m": "a", "p": 0, "o": 100, "d": {"region_id": [2], "area_id": []}}]
 
 
-@pytest.mark.asyncio
-async def test_set_current_map_uses_verified_map_switch_payload(device):
-    """Map switching should use the verified 2:50 payload with o=200 and idx=mapIndex."""
-    device._cloud_device.set_connected_state(True)
-    await device.connect()
+def _load_two_map_metadata(device):
+    """Attach metadata for two maps so map IDs resolve to device indices."""
     device._vector_map = SimpleNamespace(
         available_maps=[
             SimpleNamespace(map_id=1, map_index=0, name="Front", total_area=25.0),
             SimpleNamespace(map_id=2, map_index=1, name="Back", total_area=30.5),
         ]
     )
+
+
+def _map_switch_responder(current_map_index=0, applies_switch=True):
+    """Answer MAPL with a map list that reflects whether the switch was applied."""
+    state = {"index": current_map_index}
+
+    def respond(siid, aiid, parameters, retry_count):
+        payload = parameters[0] if parameters else {}
+        if payload.get("t") == "MAPL":
+            return {
+                "code": 0,
+                "out": [
+                    {
+                        "m": "r",
+                        "r": 0,
+                        "d": [[index, int(index == state["index"]), 1, 1, 0] for index in (0, 1)],
+                    }
+                ],
+            }
+
+        if payload.get("o") == 200 and applies_switch:
+            state["index"] = payload["d"]["idx"]
+
+        return True
+
+    return respond
+
+
+@pytest.mark.asyncio
+async def test_set_current_map_uses_verified_map_switch_payload(device):
+    """Map switching should use the verified 2:50 payload with o=200 and idx=mapIndex."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_metadata(device)
+    device._cloud_device.action_result = _map_switch_responder()
 
     result = await device.set_current_map(2)
 
@@ -500,6 +532,55 @@ async def test_set_current_map_uses_verified_map_switch_payload(device):
     assert (siid, aiid) == (2, 50)
     assert parameters == [{"m": "a", "p": 0, "o": 200, "d": {"idx": 1}}]
     assert device.current_map_id == 2
+
+
+@pytest.mark.asyncio
+async def test_set_current_map_fails_when_the_mower_ignores_the_switch(device, caplog):
+    """An acknowledged but unapplied switch must be reported as a failure."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_metadata(device)
+    device._cloud_device.action_result = _map_switch_responder(applies_switch=False)
+
+    with patch("custom_components.dreame_mower.dreame.device.MAP_SWITCH_VERIFY_DELAY_SECONDS", 0):
+        with caplog.at_level(logging.ERROR):
+            result = await device.set_current_map(2)
+
+    assert result is False
+    assert device.current_map_id == 1
+    assert "stayed on map ID 1" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_set_current_map_is_refused_while_a_task_is_running(device, caplog):
+    """The mower ignores map switches during a task, so refuse before sending one."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_metadata(device)
+    device._misc_handler._property_1_1_handler._task_status = "mowing"
+
+    with caplog.at_level(logging.ERROR):
+        result = await device.set_current_map(2)
+
+    assert result is False
+    assert len(device._cloud_device.action_calls) == 0
+    assert "finish or cancel the task first" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_set_current_map_assumes_success_when_the_map_list_is_unreadable(device, caplog):
+    """Without a readable map list the switch cannot be verified either way."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_metadata(device)
+
+    with patch("custom_components.dreame_mower.dreame.device.MAP_SWITCH_VERIFY_DELAY_SECONDS", 0):
+        with caplog.at_level(logging.WARNING):
+            result = await device.set_current_map(2)
+
+    assert result is True
+    assert device.current_map_id == 2
+    assert "Could not read back the map list" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -2286,7 +2367,8 @@ async def test_switching_the_current_map_drops_the_cached_heights(device):
     assert device.cutting_height is not None
     assert device.zone_cutting_heights
 
-    await device.set_current_map(2)
+    with patch("custom_components.dreame_mower.dreame.device.MAP_SWITCH_VERIFY_DELAY_SECONDS", 0):
+        await device.set_current_map(2)
 
     assert device.cutting_height is None
     assert device.zone_cutting_heights == {}

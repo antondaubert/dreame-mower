@@ -118,6 +118,12 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+# The mower acknowledges a map switch even when it refuses to act on it, so the
+# switch is confirmed by re-reading the map list. The device needs a moment to
+# apply the change, hence more than one attempt.
+MAP_SWITCH_VERIFY_ATTEMPTS = 3
+MAP_SWITCH_VERIFY_DELAY_SECONDS = 1.0
+
 CONSUMABLE_COUNTER_TOTAL_MINUTES: dict[str, int] = {
     "blade": 6000,
     "brush": 30000,
@@ -2591,8 +2597,22 @@ class DreameMowerDevice:
         return True
 
     async def set_current_map(self, map_id: int) -> bool:
-        """Switch the mower's current map using the map-switch payload."""
+        """Switch the mower's current map using the map-switch payload.
+
+        The mower only applies a map switch while no mowing task is in progress.
+        With a task running it still acknowledges the command and then ignores
+        it, so the switch is both refused up front and verified afterwards.
+        """
         if not self._validate_map_id(map_id):
+            return False
+
+        if self.mowing_session_active:
+            _LOGGER.error(
+                "Cannot switch to map ID %s while a mowing task is in progress (task status: %s); "
+                "finish or cancel the task first",
+                map_id,
+                self.task_status,
+            )
             return False
 
         map_index = self._map_index_from_id(map_id)
@@ -2607,11 +2627,51 @@ class DreameMowerDevice:
             _LOGGER.error("set_current_map command returned falsy result: %s", result)
             return False
 
-        self._current_map_id = map_id
-        self._reset_cutting_height_cache()
+        confirmed = await self._confirm_current_map(map_id)
+        if confirmed is False:
+            _LOGGER.error(
+                "Map switch to map ID %s was acknowledged but the mower stayed on map ID %s; "
+                "it only switches maps while no task is in progress",
+                map_id,
+                self._current_map_id,
+            )
+            return False
+
+        if confirmed is None:
+            _LOGGER.warning(
+                "Could not read back the map list to confirm the switch to map ID %s; "
+                "assuming the mower applied it",
+                map_id,
+            )
+            self._current_map_id = map_id
+            self._reset_cutting_height_cache()
+            self._notify_property_change(CURRENT_MAP_ID_PROPERTY_NAME, map_id)
+
         _LOGGER.info("Current map switched to map ID %s (index %s)", map_id, map_index)
-        self._notify_property_change(CURRENT_MAP_ID_PROPERTY_NAME, map_id)
         return True
+
+    async def _confirm_current_map(self, map_id: int) -> bool | None:
+        """Re-read the map list until the mower reports the requested map.
+
+        Returns True once the mower confirms the map, False when it keeps
+        reporting a different one, and None when the map list stayed unreadable
+        and the switch could therefore not be verified either way.
+        """
+        readable = False
+
+        for attempt in range(MAP_SWITCH_VERIFY_ATTEMPTS):
+            if attempt:
+                await asyncio.sleep(MAP_SWITCH_VERIFY_DELAY_SECONDS)
+
+            refreshed = await asyncio.get_event_loop().run_in_executor(None, self.refresh_current_map_id)
+            if not refreshed:
+                continue
+
+            readable = True
+            if self._current_map_id == map_id:
+                return True
+
+        return False if readable else None
 
     def _validate_contour_ids(self, contour_ids: list[list[int]]) -> bool:
         """Return True when all requested contour IDs are valid and available."""

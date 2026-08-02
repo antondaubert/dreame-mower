@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.dreame_mower.coordinator import DreameMowerCoordinator
 from custom_components.dreame_mower.dreame.device import MowingMode
@@ -131,6 +132,30 @@ async def test_map_select_calls_device_set_current_map():
     await entity.async_select_option("Front (#1)")
 
     coordinator.device.set_current_map.assert_awaited_once_with(1)
+
+
+@pytest.mark.asyncio
+async def test_map_select_explains_a_refused_switch_during_a_task():
+    """A failed switch during a task should name the reason, not just fail."""
+    coordinator = _make_coordinator()
+    coordinator.device.set_current_map = AsyncMock(return_value=False)
+    coordinator.device.mowing_session_active = True
+    entity = _make_map_select(coordinator)
+
+    with pytest.raises(HomeAssistantError, match="while a mowing task is in progress"):
+        await entity.async_select_option("Front (#1)")
+
+
+@pytest.mark.asyncio
+async def test_map_select_reports_a_failed_switch_outside_a_task():
+    """Any other failure keeps the generic message."""
+    coordinator = _make_coordinator()
+    coordinator.device.set_current_map = AsyncMock(return_value=False)
+    coordinator.device.mowing_session_active = False
+    entity = _make_map_select(coordinator)
+
+    with pytest.raises(HomeAssistantError, match="Failed to select map option: Front"):
+        await entity.async_select_option("Front (#1)")
 
 
 def test_mowing_action_select_options_and_current_option():
