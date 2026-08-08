@@ -191,3 +191,88 @@ async def test_coordinator_cutting_height_defaults_to_the_current_map_and_whole_
     await coordinator.async_set_cutting_height(6.0)
 
     coordinator.device.set_cutting_height.assert_awaited_once_with(6.0, None, None)
+
+
+def _charging_settings(enabled=True, start=1320, end=360):
+    """Build a charging settings payload as the device decodes it."""
+    return {
+        "recharge_battery_level": 20,
+        "resume_battery_level": 80,
+        "resume_after_charging": True,
+        "charging_period_enabled": enabled,
+        "charging_period_start_minutes": start,
+        "charging_period_end_minutes": end,
+        "raw": [20, 80, 1, int(enabled), start, end],
+    }
+
+
+async def test_coordinator_caches_the_charging_settings_it_reads(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """The entities read the cached settings, so a fetch has to fill the cache."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.device.get_charging_settings = AsyncMock(return_value=_charging_settings())
+    coordinator.async_update_listeners = MagicMock()
+
+    assert coordinator.supports_charging_period is False
+    assert coordinator.charging_period_enabled is None
+    assert coordinator.charging_period_start_minutes is None
+    assert coordinator.charging_period_end_minutes is None
+
+    assert await coordinator.async_fetch_charging_settings() is True
+
+    assert coordinator.supports_charging_period is True
+    assert coordinator.charging_period_enabled is True
+    assert coordinator.charging_period_start_minutes == 1320
+    assert coordinator.charging_period_end_minutes == 360
+    coordinator.async_update_listeners.assert_called_once()
+
+
+async def test_coordinator_reports_a_device_without_charging_settings(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """A device that cannot report the settings must not claim to support them."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.device.get_charging_settings = AsyncMock(return_value=None)
+
+    assert await coordinator.async_fetch_charging_settings() is False
+    assert coordinator.supports_charging_period is False
+
+
+async def test_coordinator_caches_the_charging_period_it_writes(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """A write returns the settings that took effect; they become the new state."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.device.set_charging_period = AsyncMock(
+        return_value=_charging_settings(enabled=False, start=60, end=420)
+    )
+    coordinator.async_update_listeners = MagicMock()
+
+    assert await coordinator.async_set_charging_period(enabled=False) is True
+
+    coordinator.device.set_charging_period.assert_awaited_once_with(
+        enabled=False, start_minutes=None, end_minutes=None
+    )
+    assert coordinator.charging_period_enabled is False
+    assert coordinator.charging_period_start_minutes == 60
+    assert coordinator.charging_period_end_minutes == 420
+    coordinator.async_update_listeners.assert_called_once()
+
+
+async def test_coordinator_keeps_the_charging_period_when_a_write_is_rejected(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """A rejected write must not leave the entities showing the requested value."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.device.get_charging_settings = AsyncMock(return_value=_charging_settings())
+    coordinator.device.set_charging_period = AsyncMock(return_value=None)
+    await coordinator.async_fetch_charging_settings()
+
+    assert await coordinator.async_set_charging_period(start_minutes=0) is False
+
+    assert coordinator.charging_period_start_minutes == 1320

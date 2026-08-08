@@ -167,6 +167,19 @@
       "cutting_height": {
         "name": "Высота скашивания"
       }
+    },
+    "switch": {
+      "charging_period": {
+        "name": "Период зарядки"
+      }
+    },
+    "time": {
+      "charging_period_start": {
+        "name": "Начало периода зарядки"
+      },
+      "charging_period_end": {
+        "name": "Конец периода зарядки"
+      }
     }
   }
 }

@@ -37,6 +37,8 @@ _MOWER_PLATFORMS = (
     Platform.SELECT,
     Platform.BUTTON,
     Platform.NUMBER,
+    Platform.SWITCH,
+    Platform.TIME,
 )
 _SWBOT_PLATFORMS = (
     Platform.SENSOR,
@@ -86,6 +88,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             await coordinator.async_fetch_cutting_heights()
         except Exception as ex:
             _LOGGER.warning("Initial cutting height fetch failed: %s", ex)
+
+    # Read the charging settings once: they double as the probe that decides
+    # whether the device exposes a custom charging period at all.
+    if coordinator.device_type != DEVICE_TYPE_SWBOT:
+        try:
+            await coordinator.async_fetch_charging_settings()
+        except Exception as ex:
+            _LOGGER.warning("Initial charging settings fetch failed: %s", ex)
 
     # Store coordinator in hass data
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {

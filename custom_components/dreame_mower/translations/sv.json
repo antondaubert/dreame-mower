@@ -167,6 +167,19 @@
       "cutting_height": {
         "name": "Klipphöjd"
       }
+    },
+    "switch": {
+      "charging_period": {
+        "name": "Laddningsperiod"
+      }
+    },
+    "time": {
+      "charging_period_start": {
+        "name": "Laddningsperiodens start"
+      },
+      "charging_period_end": {
+        "name": "Laddningsperiodens slut"
+      }
     }
   }
 }

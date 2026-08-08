@@ -74,6 +74,7 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._selected_zone_id: int | None = None
         self._selected_spot_area_id: int | None = None
         self._consumable_values: list[int] | None = None
+        self._charging_settings: dict[str, Any] | None = None
 
         # Initialize coordinator with no automatic polling (device will push updates)
         super().__init__(
@@ -353,6 +354,61 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         updated = await self.device.set_mowing_preference_mode(mode, map_id)
         self.async_update_listeners()
         return updated
+
+    @property
+    def supports_charging_period(self) -> bool:
+        """Return whether the device reported a custom charging period."""
+        return self._charging_settings is not None
+
+    @property
+    def charging_period_enabled(self) -> bool | None:
+        """Return whether the custom charging period is on, if it is known."""
+        if self._charging_settings is None:
+            return None
+        return bool(self._charging_settings["charging_period_enabled"])
+
+    @property
+    def charging_period_start_minutes(self) -> int | None:
+        """Return the start of the charging period in minutes since midnight."""
+        if self._charging_settings is None:
+            return None
+        return int(self._charging_settings["charging_period_start_minutes"])
+
+    @property
+    def charging_period_end_minutes(self) -> int | None:
+        """Return the end of the charging period in minutes since midnight."""
+        if self._charging_settings is None:
+            return None
+        return int(self._charging_settings["charging_period_end_minutes"])
+
+    async def async_fetch_charging_settings(self) -> bool:
+        """Read the battery and charging settings from the device."""
+        settings = await self.device.get_charging_settings()
+        if settings is None:
+            return False
+
+        self._charging_settings = settings
+        self.async_update_listeners()
+        return True
+
+    async def async_set_charging_period(
+        self,
+        enabled: bool | None = None,
+        start_minutes: int | None = None,
+        end_minutes: int | None = None,
+    ) -> bool:
+        """Update the custom charging period, keeping every unspecified part as is."""
+        settings = await self.device.set_charging_period(
+            enabled=enabled,
+            start_minutes=start_minutes,
+            end_minutes=end_minutes,
+        )
+        if settings is None:
+            return False
+
+        self._charging_settings = settings
+        self.async_update_listeners()
+        return True
 
     @property
     def task_target_map_id(self) -> int | None:

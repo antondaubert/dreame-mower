@@ -167,6 +167,19 @@
       "cutting_height": {
         "name": "Maaihoogte"
       }
+    },
+    "switch": {
+      "charging_period": {
+        "name": "Laadperiode"
+      }
+    },
+    "time": {
+      "charging_period_start": {
+        "name": "Start laadperiode"
+      },
+      "charging_period_end": {
+        "name": "Einde laadperiode"
+      }
     }
   }
 }

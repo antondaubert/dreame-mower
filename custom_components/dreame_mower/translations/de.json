@@ -167,6 +167,19 @@
       "cutting_height": {
         "name": "Schnitthöhe"
       }
+    },
+    "switch": {
+      "charging_period": {
+        "name": "Ladezeitraum"
+      }
+    },
+    "time": {
+      "charging_period_start": {
+        "name": "Ladezeitraum Start"
+      },
+      "charging_period_end": {
+        "name": "Ladezeitraum Ende"
+      }
     }
   }
 }

@@ -20,6 +20,7 @@ Provided "as-is" under the MIT License for personal, non-commercial use with dev
 - **Remote Control** - Start, pause, stop, and dock your mower
 - **Map Awareness** - Inspect known maps, zones, contours, and active task metadata
 - **Cutting Height** - Read and set the cutting height of the active map
+- **Charging Period** - Read and set the time window the mower is allowed to fully charge in
 - **Battery Status** - Current battery level and charging info
 - **Mowing Progress** - Coverage percentage and session duration
 - **Do Not Disturb** - View quiet hours settings
@@ -46,6 +47,20 @@ The selectable range depends on the model: most mowers go from 3 cm to 7 cm, whi
 The entity always sets the height for the whole map. To set a height for a single zone, use the `dreame_mower.set_cutting_height` service action with a `zone_id`.
 
 The mower entity exposes `cutting_height`, `zone_cutting_heights` and `mowing_preference_mode` as attributes, so automations can read back the current values and see which of the two is in effect.
+
+### Charging Period
+
+The mower can restrict full charging to a time window of your choosing. Three entities control it:
+
+- **Charging Period** (switch) - turns the custom period on and off
+- **Charging Period Start** (time) - when the window opens
+- **Charging Period End** (time) - when the window closes
+
+While the period is on, the mower only keeps a safe battery level when it sits idle at the station and fully charges inside the window. Turning the switch off returns it to charging whenever it is docked. Both times keep their value while the period is off, so an automation can switch it on and off without restating the window.
+
+An end time earlier than the start time means the window runs past midnight into the next day, for example 22:00 to 06:00. Start and end must differ — the mower rejects a window of zero length. The times follow the clock of the mower itself, so they match Home Assistant only while both use the same time zone.
+
+The entities are created only for devices that report their charging settings; the settings are read once when the integration starts. Changes made in the Dreame or MOVA app are picked up the next time the integration reloads.
 
 ### TODO: Hierarchical Mowing UI
 

@@ -56,6 +56,7 @@ def _make_coordinator() -> MagicMock:
     coordinator.async_request_refresh = AsyncMock(return_value=None)
     coordinator.async_fetch_consumable_data = AsyncMock(return_value=None)
     coordinator.async_fetch_cutting_heights = AsyncMock(return_value=None)
+    coordinator.async_fetch_charging_settings = AsyncMock(return_value=True)
     coordinator.async_fetch_firmware_status = AsyncMock(return_value=None)
     coordinator.async_update_online_status = AsyncMock(return_value=None)
     return coordinator
@@ -80,6 +81,7 @@ async def test_async_setup_entry_fetches_vector_map_for_mowers(hass):
     coordinator.async_config_entry_first_refresh.assert_awaited_once()
     coordinator.async_request_refresh.assert_awaited_once()
     coordinator.async_fetch_cutting_heights.assert_awaited_once()
+    coordinator.async_fetch_charging_settings.assert_awaited_once()
     forward_entry_setups.assert_awaited_once()
     assert hass.data[DOMAIN][entry.entry_id][DATA_COORDINATOR] is coordinator
 
