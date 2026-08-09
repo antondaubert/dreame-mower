@@ -1,6 +1,8 @@
 """Tests for the Dreame Mower protocol module."""
 
 import json
+import time
+from threading import Thread
 from unittest.mock import Mock, patch, PropertyMock
 import pytest
 import requests
@@ -455,6 +457,38 @@ class TestDreameMowerCloudDevice:
         assert result == "success"
         assert protocol._cloud_base._id == 2
         assert protocol.device_reachable is True
+
+    def test_send_serializes_concurrent_commands(self, protocol):
+        """Overlapping commands would take the same request ID and cross replies."""
+        self.setup_protocol_for_send_tests(protocol)
+
+        in_flight = 0
+        overlapped = False
+        request_ids: list[int] = []
+
+        def _api_call(url, params=None, retry_count=2):
+            nonlocal in_flight, overlapped
+            in_flight += 1
+            overlapped = overlapped or in_flight > 1
+            request_ids.append(params["id"])
+            # Long enough for a second thread to reach the request ID it reads.
+            time.sleep(0.02)
+            in_flight -= 1
+            return {"code": 0, "data": {"result": "success"}}
+
+        protocol._cloud_base._api_call = _api_call
+
+        threads = [
+            Thread(target=lambda: protocol.send("test_method", {"param": "value"}))
+            for _ in range(4)
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        assert overlapped is False
+        assert sorted(request_ids) == [1, 2, 3, 4]
 
     def test_send_timeout_error_80001(self, protocol):
         """Test send method with timeout error code 80001.

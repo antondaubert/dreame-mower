@@ -2,7 +2,7 @@ import logging
 import json
 import random
 import ssl
-from threading import Timer
+from threading import Lock, Timer
 from paho.mqtt import client as mqtt_client
 from typing import Any, Optional, Tuple, Callable, Dict
 
@@ -50,6 +50,8 @@ class DreameMowerCloudDevice:
         self._mqtt_client_key: Optional[str] = None        
         # Track if device is reachable via cloud API
         self._device_reachable = True
+        # Keeps commands from overlapping, see send().
+        self._send_lock = Lock()
     @property
     def device_id(self) -> str:
         return self._device_id
@@ -374,6 +376,16 @@ class DreameMowerCloudDevice:
         return None
 
     def send(self, method: str, parameters: Any, retry_count: int = 2) -> Any:
+        """Send one command to the device and return what it answered.
+
+        The cloud pairs a command with the device's answer by the request ID the
+        command carries, so only one command may be in flight at a time: two that
+        overlap take the same ID and are then answered with each other's reply.
+        """
+        with self._send_lock:
+            return self._send(method, parameters, retry_count)
+
+    def _send(self, method: str, parameters: Any, retry_count: int = 2) -> Any:
         host = ""
         if self._host and len(self._host):
             host = f"-{self._host.split('.')[0]}"
