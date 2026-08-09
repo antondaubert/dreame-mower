@@ -63,6 +63,11 @@ class DreameMowerCuttingHeightNumber(DreameMowerEntity, NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         """Set the cutting height for the active map."""
-        if not await self.coordinator.async_set_cutting_height(value):
+        try:
+            updated = await self.coordinator.async_set_cutting_height(value)
+        except ValueError as ex:
+            raise HomeAssistantError(str(ex)) from ex
+
+        if not updated:
             raise HomeAssistantError(f"Failed to set the cutting height to {value} cm")
 

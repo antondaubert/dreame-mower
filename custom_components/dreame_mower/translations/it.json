@@ -177,6 +177,15 @@
       },
       "rain_protection": {
         "name": "Protezione pioggia"
+      },
+      "edge_mowing_auto": {
+        "name": "Falciatura automatica dei bordi"
+      },
+      "edge_blade_offset": {
+        "name": "EdgeMaster"
+      },
+      "edge_mowing_safe": {
+        "name": "Falciatura dei bordi in sicurezza"
       }
     },
     "time": {

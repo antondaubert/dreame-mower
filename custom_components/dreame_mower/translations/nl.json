@@ -177,6 +177,15 @@
       },
       "rain_protection": {
         "name": "Regenbescherming"
+      },
+      "edge_mowing_auto": {
+        "name": "Automatisch randen maaien"
+      },
+      "edge_blade_offset": {
+        "name": "EdgeMaster"
+      },
+      "edge_mowing_safe": {
+        "name": "Veilig maaien van randen"
       }
     },
     "time": {

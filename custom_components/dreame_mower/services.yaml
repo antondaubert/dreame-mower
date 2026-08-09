@@ -82,6 +82,62 @@ set_cutting_height:
       required: false
       example: 3
 
+set_edge_mowing_settings:
+  name: Set edge mowing settings
+  description: >-
+    Switch the edge mowing settings for a whole map, or for a single zone of it.
+    Every setting left out keeps the value it has. The same settings are
+    available as switch entities for the active map.
+  target:
+    entity:
+      integration: dreame_mower
+      domain: lawn_mower
+  fields:
+    automatic_edge_mowing:
+      name: Automatic edge mowing
+      description: >-
+        Whether the mower mows the edges on its own once all-area or zone mowing
+        has finished.
+      required: false
+      example: true
+      selector:
+        boolean:
+    safe_edge_mowing:
+      name: Safe edge mowing
+      description: >-
+        Whether the mower keeps a small buffer from the lawn boundary while it
+        mows the edges. Not every model offers this setting.
+      required: false
+      example: false
+      selector:
+        boolean:
+    edge_blade_offset:
+      name: Edge blade offset
+      description: >-
+        Whether the blade disc shifts to the side for the edge laps so the mower
+        cuts closer to the boundary. Switching this on also raises a single edge
+        lap to two, which the offset disc needs to cover the edge.
+      required: false
+      example: true
+      selector:
+        boolean:
+    map_id:
+      name: Map ID
+      description: >-
+        Map to change. Defaults to the active map. Available map IDs are exposed
+        in the mower entity's maps attribute once the map has been fetched.
+      required: false
+      example: 2
+    zone_id:
+      name: Zone ID
+      description: >-
+        Zone to change instead of the whole map. Setting a zone also switches the
+        map to per-zone mowing settings, so the other zones keep their own
+        settings and the map-wide ones stop applying. Available zone IDs are
+        exposed in the mower entity's zones attribute.
+      required: false
+      example: 3
+
 set_mowing_preference_mode:
   name: Set mowing preference mode
   description: >-

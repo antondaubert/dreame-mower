@@ -44,6 +44,22 @@ async def async_setup_entry(
             coordinator.device_name,
         )
 
+    if coordinator.supports_edge_mowing_settings:
+        switches.append(DreameMowerAutomaticEdgeMowingSwitch(coordinator))
+        switches.append(DreameMowerEdgeBladeOffsetSwitch(coordinator))
+        if coordinator.supports_safe_edge_mowing:
+            switches.append(DreameMowerSafeEdgeMowingSwitch(coordinator))
+        else:
+            _LOGGER.debug(
+                "Skipping the safe edge mowing switch: device %s keeps no such setting",
+                coordinator.device_name,
+            )
+    else:
+        _LOGGER.debug(
+            "Skipping the edge mowing switches: device %s reported no mowing settings",
+            coordinator.device_name,
+        )
+
     async_add_entities(switches)
 
 
@@ -117,3 +133,107 @@ class DreameMowerRainProtectionSwitch(DreameMowerEntity, SwitchEntity):
             raise HomeAssistantError(
                 f"Failed to turn rain protection {'on' if enabled else 'off'}"
             )
+
+
+class DreameMowerEdgeMowingSwitch(DreameMowerEntity, SwitchEntity):
+    """Base switch for one edge mowing setting of the active map.
+
+    The settings are stored per map, and per zone once a map follows its per-zone
+    settings. These switches always address the active map as a whole; a single
+    zone is changed with the set_edge_mowing_settings action.
+    """
+
+    _attr_entity_category = EntityCategory.CONFIG
+    # Name of the set_edge_mowing_settings argument the switch drives, alongside
+    # how the setting reads in an error message.
+    _setting: str
+    _setting_description: str
+
+    async def async_turn_on(self, **kwargs) -> None:
+        """Turn the setting on."""
+        await self._async_set_enabled(True)
+
+    async def async_turn_off(self, **kwargs) -> None:
+        """Turn the setting off."""
+        await self._async_set_enabled(False)
+
+    async def _async_set_enabled(self, enabled: bool) -> None:
+        """Switch the setting for the active map, keeping the other settings as they are."""
+        try:
+            updated = await self.coordinator.async_set_edge_mowing_settings(**{self._setting: enabled})
+        except ValueError as ex:
+            raise HomeAssistantError(str(ex)) from ex
+
+        if not updated:
+            raise HomeAssistantError(
+                f"Failed to turn {self._setting_description} {'on' if enabled else 'off'}"
+            )
+
+
+class DreameMowerAutomaticEdgeMowingSwitch(DreameMowerEdgeMowingSwitch):
+    """Switch entity for automatic edge mowing.
+
+    While it is on the mower mows the edges of the map on its own once an
+    all-area or zone run has finished.
+    """
+
+    _attr_translation_key = "edge_mowing_auto"
+    _attr_icon = "mdi:vector-square"
+    _setting = "auto"
+    _setting_description = "automatic edge mowing"
+
+    def __init__(self, coordinator: DreameMowerCoordinator) -> None:
+        """Initialize the automatic edge mowing switch."""
+        super().__init__(coordinator, "edge_mowing_auto")
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return whether the mower mows the edges on its own, if it is known."""
+        return self.coordinator.edge_mowing_auto
+
+
+class DreameMowerSafeEdgeMowingSwitch(DreameMowerEdgeMowingSwitch):
+    """Switch entity for safe edge mowing.
+
+    While it is on the mower keeps a small buffer from the lawn boundary as it
+    mows the edges, which spares the boundary at the cost of leaving a strip of
+    uncut grass along it.
+    """
+
+    _attr_translation_key = "edge_mowing_safe"
+    _attr_icon = "mdi:shield-outline"
+    _setting = "safe"
+    _setting_description = "safe edge mowing"
+
+    def __init__(self, coordinator: DreameMowerCoordinator) -> None:
+        """Initialize the safe edge mowing switch."""
+        super().__init__(coordinator, "edge_mowing_safe")
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return whether the mower keeps a buffer from the boundary, if it is known."""
+        return self.coordinator.edge_mowing_safe
+
+
+class DreameMowerEdgeBladeOffsetSwitch(DreameMowerEdgeMowingSwitch):
+    """Switch entity for the offset blade disc used along the edges.
+
+    While it is on the blade disc shifts sideways for the edge laps so the mower
+    cuts closer to the boundary than the centred disc reaches. The offset disc
+    needs more than one lap to cover the edge, so switching it on also raises a
+    single edge lap to two.
+    """
+
+    _attr_translation_key = "edge_blade_offset"
+    _attr_icon = "mdi:circle-half-full"
+    _setting = "blade_offset"
+    _setting_description = "the edge blade offset"
+
+    def __init__(self, coordinator: DreameMowerCoordinator) -> None:
+        """Initialize the edge blade offset switch."""
+        super().__init__(coordinator, "edge_blade_offset")
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return whether the blade disc shifts sideways for the edges, if it is known."""
+        return self.coordinator.edge_blade_offset

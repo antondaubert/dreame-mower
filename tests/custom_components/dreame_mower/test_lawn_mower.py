@@ -1,12 +1,16 @@
 """Tests for DreameMowerLawnMower entity."""
 
-from unittest.mock import AsyncMock, MagicMock
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import voluptuous as vol
 from homeassistant.components.lawn_mower import LawnMowerActivity
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import config_validation as cv
+from custom_components.dreame_mower.const import DATA_COORDINATOR, DOMAIN
 from custom_components.dreame_mower.dreame.device import MowingMode
-from custom_components.dreame_mower.lawn_mower import DreameMowerLawnMower
+from custom_components.dreame_mower.lawn_mower import DreameMowerLawnMower, async_setup_entry
 from custom_components.dreame_mower.dreame.const import (
     STATUS_PROPERTY,
     DeviceStatus,
@@ -50,6 +54,10 @@ def _make_coordinator(connected=True, status_code=0):
     coordinator.mowing_preference_mode = None
     coordinator.async_set_cutting_height = AsyncMock(return_value=True)
     coordinator.async_set_mowing_preference_mode = AsyncMock(return_value=True)
+    coordinator.supports_edge_mowing_settings = False
+    coordinator.edge_mowing_settings = None
+    coordinator.zone_edge_mowing_settings = {}
+    coordinator.async_set_edge_mowing_settings = AsyncMock(return_value=True)
     return coordinator
 
 
@@ -451,6 +459,64 @@ async def test_set_cutting_height_service_names_the_zone_when_it_fails():
 
 
 @pytest.mark.asyncio
+async def test_set_edge_mowing_settings_service_forwards_only_what_was_asked_for():
+    """Settings the call leaves out must reach the coordinator as None."""
+    coordinator = _make_coordinator()
+    entity = _make_entity(coordinator)
+
+    await entity.async_set_edge_mowing_settings(safe_edge_mowing=False, zone_id=3)
+
+    coordinator.async_set_edge_mowing_settings.assert_awaited_once_with(
+        auto=None,
+        blade_offset=None,
+        safe=False,
+        map_id=None,
+        zone_id=3,
+    )
+
+
+@pytest.mark.asyncio
+async def test_set_edge_mowing_settings_service_names_the_zone_when_it_fails():
+    """A failed zone write should say which zone it was."""
+    coordinator = _make_coordinator()
+    coordinator.async_set_edge_mowing_settings = AsyncMock(return_value=False)
+    entity = _make_entity(coordinator)
+
+    with pytest.raises(HomeAssistantError, match="zone 3"):
+        await entity.async_set_edge_mowing_settings(automatic_edge_mowing=True, zone_id=3)
+
+
+@pytest.mark.asyncio
+async def test_set_edge_mowing_settings_service_reports_unsupported_settings():
+    """A setting the mower has no slot for has to reach the user as an error."""
+    coordinator = _make_coordinator()
+    coordinator.async_set_edge_mowing_settings = AsyncMock(
+        side_effect=ValueError("This mower does not support safe edge mowing")
+    )
+    entity = _make_entity(coordinator)
+
+    with pytest.raises(HomeAssistantError, match="safe edge mowing"):
+        await entity.async_set_edge_mowing_settings(safe_edge_mowing=True)
+
+
+def test_extra_state_attributes_include_the_edge_mowing_settings():
+    """Automations read the settings back from the mower entity."""
+    coordinator = _make_coordinator()
+    coordinator.supports_edge_mowing_settings = True
+    coordinator.edge_mowing_settings = {"edge_mowing_auto": True, "edge_mowing_safe": False}
+    coordinator.zone_edge_mowing_settings = {3: {"edge_mowing_safe": True}}
+    entity = _make_entity(coordinator)
+
+    attributes = entity.extra_state_attributes
+
+    assert attributes["edge_mowing_settings"] == {
+        "edge_mowing_auto": True,
+        "edge_mowing_safe": False,
+    }
+    assert attributes["zone_edge_mowing_settings"] == {3: {"edge_mowing_safe": True}}
+
+
+@pytest.mark.asyncio
 async def test_set_mowing_preference_mode_service_maps_the_name_to_the_mode():
     """The service takes a readable mode name and forwards the enum."""
     coordinator = _make_coordinator()
@@ -513,3 +579,51 @@ def test_attributes_omit_the_cutting_height_for_fixed_height_models():
     assert "cutting_height" not in attributes
     assert "zone_cutting_heights" not in attributes
     assert "mowing_preference_mode" not in attributes
+
+
+async def _registered_services(hass):
+    """Run platform setup and report the entity services it registered."""
+    registrations: list[tuple[str, Any]] = []
+    platform = MagicMock()
+    platform.async_register_entity_service = lambda name, schema, method: registrations.append(
+        (name, schema)
+    )
+
+    entry = MagicMock()
+    entry.entry_id = "entry_id"
+    hass.data = {DOMAIN: {"entry_id": {DATA_COORDINATOR: _make_coordinator()}}}
+
+    with patch(
+        "custom_components.dreame_mower.lawn_mower.entity_platform.async_get_current_platform",
+        return_value=platform,
+    ), patch.object(DreameMowerLawnMower, "__init__", return_value=None):
+        await async_setup_entry(hass, entry, MagicMock())
+
+    return registrations
+
+
+@pytest.mark.asyncio
+async def test_every_service_registers_with_an_entity_service_schema(hass):
+    """Home Assistant refuses a schema it cannot recognise as an entity one."""
+    registrations = await _registered_services(hass)
+
+    assert registrations
+    for name, schema in registrations:
+        # A plain dict is wrapped by Home Assistant itself; anything else has to
+        # be built around cv.make_entity_service_schema to be accepted.
+        assert isinstance(schema, dict) or cv.is_entity_service_schema(schema), name
+
+
+@pytest.mark.asyncio
+async def test_set_edge_mowing_settings_schema_validates_its_input(hass):
+    """The service takes booleans as written and insists on at least one setting."""
+    schema = dict(await _registered_services(hass))["set_edge_mowing_settings"]
+
+    validated = schema(
+        {"entity_id": "lawn_mower.mower", "safe_edge_mowing": "off", "zone_id": "3"}
+    )
+    assert validated["safe_edge_mowing"] is False
+    assert validated["zone_id"] == 3
+
+    with pytest.raises(vol.Invalid):
+        schema({"entity_id": "lawn_mower.mower", "map_id": 2})

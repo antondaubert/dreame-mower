@@ -84,27 +84,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         except Exception as ex:
             _LOGGER.warning("Initial consumable data fetch failed: %s", ex)
 
-    if coordinator.device_type != DEVICE_TYPE_SWBOT and coordinator.supports_cutting_height:
-        try:
-            await coordinator.async_fetch_cutting_heights()
-        except Exception as ex:
-            _LOGGER.warning("Initial cutting height fetch failed: %s", ex)
-
-    # Read the charging settings once: they double as the probe that decides
-    # whether the device exposes a custom charging period at all.
+    # Read the mowing preferences once: they carry the cutting heights and the
+    # edge mowing settings, and double as the probe that decides which of them
+    # the device offers.
     if coordinator.device_type != DEVICE_TYPE_SWBOT:
         try:
-            await coordinator.async_fetch_charging_settings()
+            await coordinator.async_fetch_mowing_preferences()
         except Exception as ex:
-            _LOGGER.warning("Initial charging settings fetch failed: %s", ex)
+            _LOGGER.warning("Initial mowing preference fetch failed: %s", ex)
 
-    # Read the rain protection settings once: they double as the probe that
-    # decides whether the device offers rain protection at all.
+    # Read the settings record once: the charging period and rain protection
+    # both live in it, and it doubles as the probe that decides which of them
+    # the device offers at all.
     if coordinator.device_type != DEVICE_TYPE_SWBOT:
         try:
-            await coordinator.async_refresh_rain_state()
+            await coordinator.async_fetch_device_settings()
         except Exception as ex:
-            _LOGGER.warning("Initial rain protection fetch failed: %s", ex)
+            _LOGGER.warning("Initial device settings fetch failed: %s", ex)
 
     # Store coordinator in hass data
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {

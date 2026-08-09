@@ -177,6 +177,15 @@
       },
       "rain_protection": {
         "name": "Esővédelem"
+      },
+      "edge_mowing_auto": {
+        "name": "Automatikus szegélynyírás"
+      },
+      "edge_blade_offset": {
+        "name": "EdgeMaster"
+      },
+      "edge_mowing_safe": {
+        "name": "Biztonságos szegélynyírás"
       }
     },
     "time": {

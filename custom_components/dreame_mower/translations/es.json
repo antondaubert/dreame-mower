@@ -177,6 +177,15 @@
       },
       "rain_protection": {
         "name": "Protección contra lluvia"
+      },
+      "edge_mowing_auto": {
+        "name": "Corte automático de bordes"
+      },
+      "edge_blade_offset": {
+        "name": "EdgeMaster"
+      },
+      "edge_mowing_safe": {
+        "name": "Corte seguro de bordes"
       }
     },
     "time": {

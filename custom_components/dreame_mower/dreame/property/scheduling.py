@@ -5,6 +5,10 @@ This module provides parsing and handling for Service 2 scheduling properties:
 - 2:52 - Mission completion summary (currently empty, future use)
 
 These properties manage mission lifecycle and completion tracking.
+
+The device also reports a changed mowing preference on 2:52, without naming the
+map or the setting that changed. The payload is passed on as it arrives, and the
+coordinator takes any report here as the cue to read the records back.
 """
 
 from __future__ import annotations

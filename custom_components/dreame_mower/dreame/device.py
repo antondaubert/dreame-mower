@@ -10,7 +10,7 @@ TODO: Implement connection retry logic
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from enum import Enum
 import json
 import logging
@@ -92,8 +92,17 @@ from .const import (
     CUTTING_HEIGHT_MIN_CM,
     CUTTING_HEIGHT_STEP_CM,
     CUTTING_HEIGHT_PROPERTY_NAME,
+    EDGE_BLADE_OFFSET_KEY,
+    EDGE_MOWING_AUTO_KEY,
+    EDGE_MOWING_SAFE_KEY,
+    EDGE_MOWING_SETTINGS_PROPERTY_NAME,
     MOWING_PREFERENCE_AREA_ID_INDEX,
     MOWING_PREFERENCE_CUTTING_HEIGHT_INDEX,
+    MOWING_PREFERENCE_EDGE_BLADE_OFFSET_INDEX,
+    MOWING_PREFERENCE_EDGE_BLADE_OFFSET_MIN_LAPS,
+    MOWING_PREFERENCE_EDGE_MOWING_AUTO_INDEX,
+    MOWING_PREFERENCE_EDGE_MOWING_LAPS_INDEX,
+    MOWING_PREFERENCE_EDGE_MOWING_SAFE_INDEX,
     MOWING_PREFERENCE_GLOBAL_AREA_ID,
     MOWING_PREFERENCE_LEGACY_LENGTH,
     MOWING_PREFERENCE_MAP_INDEX_INDEX,
@@ -103,6 +112,7 @@ from .const import (
     MOWING_PREFERENCE_VERSION_INDEX,
     MOWING_PREFERENCE_WRITE_VERSION,
     ZONE_CUTTING_HEIGHTS_PROPERTY_NAME,
+    ZONE_EDGE_MOWING_SETTINGS_PROPERTY_NAME,
     BATTERY_SETTING_CHARGING_PERIOD_ENABLED_INDEX,
     BATTERY_SETTING_CHARGING_PERIOD_END_INDEX,
     BATTERY_SETTING_CHARGING_PERIOD_START_INDEX,
@@ -245,11 +255,13 @@ class DreameMowerDevice:
         self._vector_map: MowerVectorMap | None = None
         self._current_map_id: int | None = None
 
-        # Cutting heights of the current map, in centimetres, alongside the mode
-        # that decides which of them the mower applies. Read on demand from the
-        # mowing preference records; the device does not push them.
+        # Mowing settings of the current map, alongside the mode that decides
+        # which of them the mower applies. Read on demand from the mowing
+        # preference records; the device does not push them.
         self._cutting_height: float | None = None
         self._zone_cutting_heights: dict[int, float] = {}
+        self._edge_mowing_settings: dict[str, bool] | None = None
+        self._zone_edge_mowing_settings: dict[int, dict[str, bool]] = {}
         self._mowing_preference_mode: MowingPreferenceMode | None = None
 
         # Property change callbacks
@@ -530,6 +542,16 @@ class DreameMowerDevice:
     def zone_cutting_heights(self) -> dict[int, float]:
         """Return the per-zone cutting heights in cm known for the current map."""
         return dict(self._zone_cutting_heights)
+
+    @property
+    def edge_mowing_settings(self) -> dict[str, bool] | None:
+        """Return the current map's edge mowing settings, if they have been read."""
+        return None if self._edge_mowing_settings is None else dict(self._edge_mowing_settings)
+
+    @property
+    def zone_edge_mowing_settings(self) -> dict[int, dict[str, bool]]:
+        """Return the per-zone edge mowing settings known for the current map."""
+        return {zone_id: dict(settings) for zone_id, settings in self._zone_edge_mowing_settings.items()}
 
     @property
     def mowing_preference_mode(self) -> MowingPreferenceMode | None:
@@ -2096,13 +2118,31 @@ class DreameMowerDevice:
 
         return True
 
-    async def _set_mowing_preference(self, record: Sequence[int]) -> bool:
-        """Write a complete mowing preference record back to the device."""
+    async def _set_mowing_preference(
+        self,
+        record: Sequence[int],
+        minimum_length: int = 0,
+    ) -> bool:
+        """Write a complete mowing preference record back to the device.
+
+        A record the device rejects as too long is retried in the shorter legacy
+        layout, unless that would cut off a slot the write has to carry.
+        """
         result = await self._send_task_payload(
             "mowing preference write",
             self._build_set_mowing_preference_payload(record),
         )
         status, _ = self._preference_response(result)
+
+        if (
+            status == MOWING_PREFERENCE_STATUS_INVALID
+            and minimum_length > MOWING_PREFERENCE_LEGACY_LENGTH
+        ):
+            _LOGGER.error(
+                "Device rejected the mowing preference record and the setting it carries "
+                "is not part of the shorter record it accepts",
+            )
+            return False
 
         if status == MOWING_PREFERENCE_STATUS_INVALID and len(record) > MOWING_PREFERENCE_LEGACY_LENGTH:
             _LOGGER.debug(
@@ -2181,6 +2221,8 @@ class DreameMowerDevice:
         """Drop the cached preferences, which only describe the current map."""
         self._cutting_height = None
         self._zone_cutting_heights = {}
+        self._edge_mowing_settings = None
+        self._zone_edge_mowing_settings = {}
         self._mowing_preference_mode = None
 
     def _update_cutting_height_cache(
@@ -2205,6 +2247,29 @@ class DreameMowerDevice:
         if height_cm != self._cutting_height:
             self._cutting_height = height_cm
             self._notify_property_change(CUTTING_HEIGHT_PROPERTY_NAME, height_cm)
+
+    def _update_edge_mowing_cache(
+        self,
+        map_index: int,
+        settings: dict[str, bool],
+        zone_id: int | None = None,
+    ) -> None:
+        """Cache edge mowing settings when they belong to the current map."""
+        if not self._targets_current_map(map_index):
+            return
+
+        if zone_id is not None:
+            if self._zone_edge_mowing_settings.get(zone_id) != settings:
+                self._zone_edge_mowing_settings[zone_id] = dict(settings)
+                self._notify_property_change(
+                    ZONE_EDGE_MOWING_SETTINGS_PROPERTY_NAME,
+                    self.zone_edge_mowing_settings,
+                )
+            return
+
+        if settings != self._edge_mowing_settings:
+            self._edge_mowing_settings = dict(settings)
+            self._notify_property_change(EDGE_MOWING_SETTINGS_PROPERTY_NAME, dict(settings))
 
     def _update_preference_mode_cache(self, map_index: int, mode: MowingPreferenceMode) -> None:
         """Cache a preference mode when it belongs to the current map."""
@@ -2239,20 +2304,80 @@ class DreameMowerDevice:
 
         return record[MOWING_PREFERENCE_CUTTING_HEIGHT_INDEX] / 10.0
 
+    @staticmethod
+    def _record_edge_mowing_settings(record: Sequence[int]) -> dict[str, bool] | None:
+        """Return the edge mowing settings a record carries.
+
+        Settings the record is too short to carry are left out rather than
+        reported as off, so a firmware that predates one is told apart from a
+        device that has it switched off.
+        """
+        settings: dict[str, bool] = {}
+        for key, index in (
+            (EDGE_MOWING_AUTO_KEY, MOWING_PREFERENCE_EDGE_MOWING_AUTO_INDEX),
+            (EDGE_BLADE_OFFSET_KEY, MOWING_PREFERENCE_EDGE_BLADE_OFFSET_INDEX),
+            (EDGE_MOWING_SAFE_KEY, MOWING_PREFERENCE_EDGE_MOWING_SAFE_INDEX),
+        ):
+            if len(record) > index:
+                settings[key] = bool(record[index])
+
+        return settings or None
+
+    @staticmethod
+    def _edge_mowing_slots(
+        record: Sequence[int],
+        auto: bool | None,
+        blade_offset: bool | None,
+        safe: bool | None,
+    ) -> dict[int, int]:
+        """Return the record slots that switch the requested edge settings.
+
+        Raises when the record does not reach a slot a request needs, which is
+        how a firmware without that setting reports it.
+        """
+        slots: dict[int, int] = {}
+        for value, index, name in (
+            (auto, MOWING_PREFERENCE_EDGE_MOWING_AUTO_INDEX, "automatic edge mowing"),
+            (blade_offset, MOWING_PREFERENCE_EDGE_BLADE_OFFSET_INDEX, "the edge blade offset"),
+            (safe, MOWING_PREFERENCE_EDGE_MOWING_SAFE_INDEX, "safe edge mowing"),
+        ):
+            if value is None:
+                continue
+            if len(record) <= index:
+                raise ValueError(f"This mower does not support {name}")
+            slots[index] = int(value)
+
+        # An offset blade disc needs more than one lap along the edge to cover it,
+        # and the mower turns the setting down while it is told to mow one lap.
+        if (
+            blade_offset
+            and len(record) > MOWING_PREFERENCE_EDGE_MOWING_LAPS_INDEX
+            and record[MOWING_PREFERENCE_EDGE_MOWING_LAPS_INDEX] < MOWING_PREFERENCE_EDGE_BLADE_OFFSET_MIN_LAPS
+        ):
+            slots[MOWING_PREFERENCE_EDGE_MOWING_LAPS_INDEX] = MOWING_PREFERENCE_EDGE_BLADE_OFFSET_MIN_LAPS
+
+        return slots
+
     def _record_for_write(
         self,
         record: Sequence[int],
         map_index: int,
         area_id: int,
-        height_cm: float,
+        slot_values: Mapping[int, int],
     ) -> list[int]:
-        """Return a copy of a record addressed at an area and carrying a height."""
+        """Return a copy of a record addressed at an area and carrying new slots."""
         updated_record = list(record)
         updated_record[MOWING_PREFERENCE_VERSION_INDEX] = MOWING_PREFERENCE_WRITE_VERSION
         updated_record[MOWING_PREFERENCE_MAP_INDEX_INDEX] = map_index
         updated_record[MOWING_PREFERENCE_AREA_ID_INDEX] = area_id
-        updated_record[MOWING_PREFERENCE_CUTTING_HEIGHT_INDEX] = int(round(height_cm * 10))
+        for index, value in slot_values.items():
+            updated_record[index] = value
         return updated_record
+
+    @staticmethod
+    def _cutting_height_slots(height_cm: float) -> dict[int, int]:
+        """Return the record slots that carry a cutting height."""
+        return {MOWING_PREFERENCE_CUTTING_HEIGHT_INDEX: int(round(height_cm * 10))}
 
     async def refresh_cutting_height(self, map_id: int | None = None) -> float | None:
         """Read the map-wide cutting height in cm, defaulting to the current map."""
@@ -2260,24 +2385,74 @@ class DreameMowerDevice:
         if map_index is None:
             return None
 
+        record = await self._refresh_map_wide_record(map_index)
+        if record is None:
+            return None
+
+        return self._record_cutting_height(record)
+
+    async def refresh_edge_mowing_settings(self, map_id: int | None = None) -> dict[str, bool] | None:
+        """Read the map-wide edge mowing settings, defaulting to the current map."""
+        map_index = self._preference_map_index(map_id)
+        if map_index is None:
+            return None
+
+        record = await self._refresh_map_wide_record(map_index)
+        if record is None:
+            return None
+
+        return self._record_edge_mowing_settings(record)
+
+    async def refresh_mowing_preferences(self, map_id: int | None = None) -> bool:
+        """Read a map's map-wide record, updating every setting it carries."""
+        map_index = self._preference_map_index(map_id)
+        if map_index is None:
+            return False
+
+        return await self._refresh_map_wide_record(map_index) is not None
+
+    async def _refresh_map_wide_record(self, map_index: int) -> list[int] | None:
+        """Read a map's map-wide record and cache every setting it carries."""
         try:
             record = await self._get_mowing_preference(map_index)
         except Exception as ex:
-            _LOGGER.warning("Failed to read the cutting height for map index %s: %s", map_index, ex)
+            _LOGGER.warning("Failed to read the mowing preference for map index %s: %s", map_index, ex)
             return None
 
         if record is None:
             return None
 
-        height_cm = self._record_cutting_height(record)
-        if height_cm is None:
-            return None
+        self._cache_record_settings(map_index, record)
+        return record
 
-        self._update_cutting_height_cache(map_index, height_cm)
-        return height_cm
+    def _cache_record_settings(
+        self,
+        map_index: int,
+        record: Sequence[int],
+        zone_id: int | None = None,
+    ) -> None:
+        """Cache every setting a mowing preference record carries."""
+        height_cm = self._record_cutting_height(record)
+        if height_cm is not None:
+            self._update_cutting_height_cache(map_index, height_cm, zone_id=zone_id)
+
+        edge_settings = self._record_edge_mowing_settings(record)
+        if edge_settings is not None:
+            self._update_edge_mowing_cache(map_index, edge_settings, zone_id=zone_id)
 
     async def refresh_zone_cutting_heights(self, map_id: int | None = None) -> dict[int, float]:
-        """Read the per-zone cutting heights in cm, defaulting to the current map.
+        """Read the per-zone cutting heights in cm, defaulting to the current map."""
+        zone_records = await self.refresh_zone_mowing_preferences(map_id)
+        zone_heights: dict[int, float] = {}
+        for zone_id, record in zone_records.items():
+            height_cm = self._record_cutting_height(record)
+            if height_cm is not None:
+                zone_heights[zone_id] = height_cm
+
+        return zone_heights
+
+    async def refresh_zone_mowing_preferences(self, map_id: int | None = None) -> dict[int, list[int]]:
+        """Read the per-zone records of a map, defaulting to the current map.
 
         Only zones the device already holds a record for are reported; the rest
         follow the map-wide record until they are given one.
@@ -2295,7 +2470,7 @@ class DreameMowerDevice:
         if mode is not None:
             self._update_preference_mode_cache(map_index, mode)
 
-        zone_heights: dict[int, float] = {}
+        zone_records: dict[int, list[int]] = {}
         for area_id in configured_area_ids:
             if area_id == MOWING_PREFERENCE_GLOBAL_AREA_ID:
                 continue
@@ -2303,21 +2478,41 @@ class DreameMowerDevice:
             try:
                 record = await self._get_mowing_preference(map_index, area_id)
             except Exception as ex:
-                _LOGGER.warning("Failed to read the cutting height of zone %s: %s", area_id, ex)
+                _LOGGER.warning("Failed to read the mowing preference of zone %s: %s", area_id, ex)
                 continue
 
-            if record is None:
-                continue
+            if record is not None:
+                zone_records[area_id] = record
 
+        self._replace_zone_caches(map_index, zone_records)
+        return zone_records
+
+    def _replace_zone_caches(self, map_index: int, zone_records: Mapping[int, Sequence[int]]) -> None:
+        """Replace the per-zone caches with what a full read of a map reported."""
+        if not self._targets_current_map(map_index):
+            return
+
+        zone_heights: dict[int, float] = {}
+        zone_edge_settings: dict[int, dict[str, bool]] = {}
+        for zone_id, record in zone_records.items():
             height_cm = self._record_cutting_height(record)
             if height_cm is not None:
-                zone_heights[area_id] = height_cm
+                zone_heights[zone_id] = height_cm
 
-        if self._targets_current_map(map_index) and zone_heights != self._zone_cutting_heights:
-            self._zone_cutting_heights = dict(zone_heights)
+            edge_settings = self._record_edge_mowing_settings(record)
+            if edge_settings is not None:
+                zone_edge_settings[zone_id] = edge_settings
+
+        if zone_heights != self._zone_cutting_heights:
+            self._zone_cutting_heights = zone_heights
             self._notify_property_change(ZONE_CUTTING_HEIGHTS_PROPERTY_NAME, dict(zone_heights))
 
-        return zone_heights
+        if zone_edge_settings != self._zone_edge_mowing_settings:
+            self._zone_edge_mowing_settings = zone_edge_settings
+            self._notify_property_change(
+                ZONE_EDGE_MOWING_SETTINGS_PROPERTY_NAME,
+                self.zone_edge_mowing_settings,
+            )
 
     async def refresh_mowing_preference_mode(self, map_id: int | None = None) -> MowingPreferenceMode | None:
         """Read which preference records a map applies, defaulting to the current map."""
@@ -2381,7 +2576,7 @@ class DreameMowerDevice:
                     map_wide_record,
                     map_index,
                     zone_id,
-                    map_wide_height,
+                    self._cutting_height_slots(map_wide_height),
                 )
                 try:
                     if not await self._set_mowing_preference(seeded_record):
@@ -2402,25 +2597,24 @@ class DreameMowerDevice:
         self._update_preference_mode_cache(map_index, MowingPreferenceMode.PER_ZONE)
         return True
 
-    async def set_cutting_height(
+    async def _change_mowing_preference(
         self,
-        height_cm: float,
-        map_id: int | None = None,
-        zone_id: int | None = None,
+        map_id: int | None,
+        zone_id: int | None,
+        build_slots: Callable[[Sequence[int]], dict[int, int]],
+        description: str,
     ) -> bool:
-        """Set a cutting height in cm, defaulting to the current map.
+        """Change part of a mowing preference record, defaulting to the current map.
 
-        Without a zone the map-wide height is set. With a zone only that zone is
-        changed, and the map is switched to its per-zone records so the new
-        height actually takes effect.
+        Without a zone the map-wide record is changed. With a zone only that
+        zone's record is, and the map is switched to its per-zone records so the
+        change actually takes effect.
 
-        The height lives in a mowing preference record alongside the remaining
-        mowing settings, so the record is read first and written back with only
-        the height slot changed. A zone that has no record of its own starts
-        from a copy of the map-wide record.
+        A setting shares its record with every other mowing setting, so the
+        record is read first and written back with only the requested slots
+        changed. A zone that has no record of its own starts from a copy of the
+        map-wide record.
         """
-        normalized_height = self._normalize_cutting_height(height_cm)
-
         map_index = self._preference_map_index(map_id)
         if map_index is None:
             return False
@@ -2439,38 +2633,40 @@ class DreameMowerDevice:
                 if zone_id in configured_area_ids:
                     base_record = await self._get_mowing_preference(map_index, zone_id) or map_wide_record
         except Exception as ex:
-            _LOGGER.error("Failed to read the mowing preference before setting the cutting height: %s", ex)
+            _LOGGER.error("Failed to read the mowing preference before changing it: %s", ex)
             return False
 
-        if base_record is None or self._record_cutting_height(base_record) is None:
+        if base_record is None:
             _LOGGER.error(
-                "Cannot set the cutting height for map index %s without its mowing preference record",
+                "Cannot change the mowing settings of map index %s without its preference record",
                 map_index,
             )
             return False
 
+        slot_values = build_slots(base_record)
+        if not slot_values:
+            return True
+
         area_id = MOWING_PREFERENCE_GLOBAL_AREA_ID if zone_id is None else zone_id
-        updated_record = self._record_for_write(base_record, map_index, area_id, normalized_height)
+        updated_record = self._record_for_write(base_record, map_index, area_id, slot_values)
 
         try:
-            if not await self._set_mowing_preference(updated_record):
+            # Dropping the trailing slots of the record would drop the change
+            # itself when it lives in one of them, so a write only falls back to
+            # the shorter legacy record while it keeps every slot it changed.
+            if not await self._set_mowing_preference(updated_record, max(slot_values) + 1):
                 return False
         except Exception as ex:
-            _LOGGER.error("Failed to send the cutting height command: %s", ex)
+            _LOGGER.error("Failed to send the mowing preference command: %s", ex)
             return False
 
         if zone_id is None:
-            _LOGGER.info("Cutting height set to %s cm for map index %s", normalized_height, map_index)
-            self._update_cutting_height_cache(map_index, normalized_height)
+            _LOGGER.info("%s for map index %s", description, map_index)
+            self._cache_record_settings(map_index, updated_record)
             return True
 
-        _LOGGER.info(
-            "Cutting height set to %s cm for zone %s of map index %s",
-            normalized_height,
-            zone_id,
-            map_index,
-        )
-        self._update_cutting_height_cache(map_index, normalized_height, zone_id=zone_id)
+        _LOGGER.info("%s for zone %s of map index %s", description, zone_id, map_index)
+        self._cache_record_settings(map_index, updated_record, zone_id=zone_id)
 
         if mode != MowingPreferenceMode.PER_ZONE:
             await self._enable_per_zone_preferences(
@@ -2481,6 +2677,63 @@ class DreameMowerDevice:
             )
 
         return True
+
+    async def set_cutting_height(
+        self,
+        height_cm: float,
+        map_id: int | None = None,
+        zone_id: int | None = None,
+    ) -> bool:
+        """Set a cutting height in cm, defaulting to the current map.
+
+        Without a zone the map-wide height is set. With a zone only that zone is
+        changed, and the map is switched to its per-zone records so the new
+        height actually takes effect.
+        """
+        normalized_height = self._normalize_cutting_height(height_cm)
+
+        def build_slots(record: Sequence[int]) -> dict[int, int]:
+            if self._record_cutting_height(record) is None:
+                raise ValueError("This mower does not report a cutting height")
+            return self._cutting_height_slots(normalized_height)
+
+        return await self._change_mowing_preference(
+            map_id,
+            zone_id,
+            build_slots,
+            f"Cutting height set to {normalized_height} cm",
+        )
+
+    async def set_edge_mowing_settings(
+        self,
+        auto: bool | None = None,
+        blade_offset: bool | None = None,
+        safe: bool | None = None,
+        map_id: int | None = None,
+        zone_id: int | None = None,
+    ) -> bool:
+        """Switch the edge mowing settings, keeping every unspecified one as it is.
+
+        Without a zone the settings of the whole map are changed. With a zone only
+        that zone is changed, and the map is switched to its per-zone records so
+        the change actually takes effect.
+        """
+        if auto is None and blade_offset is None and safe is None:
+            return True
+
+        def build_slots(record: Sequence[int]) -> dict[int, int]:
+            return self._edge_mowing_slots(record, auto, blade_offset, safe)
+
+        requested = {
+            EDGE_MOWING_AUTO_KEY: auto,
+            EDGE_BLADE_OFFSET_KEY: blade_offset,
+            EDGE_MOWING_SAFE_KEY: safe,
+        }
+        description = "Edge mowing settings set to " + ", ".join(
+            f"{key}={value}" for key, value in requested.items() if value is not None
+        )
+
+        return await self._change_mowing_preference(map_id, zone_id, build_slots, description)
 
     def _build_all_area_task_payload(self, map_id: int) -> dict[str, Any]:
         """Build the 2:50 action payload for map-aware all-area mowing."""

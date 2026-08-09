@@ -177,6 +177,15 @@
       },
       "rain_protection": {
         "name": "Захист від дощу"
+      },
+      "edge_mowing_auto": {
+        "name": "Автоматичне обкошування країв"
+      },
+      "edge_blade_offset": {
+        "name": "EdgeMaster"
+      },
+      "edge_mowing_safe": {
+        "name": "Безпечне обкошування країв"
       }
     },
     "time": {

@@ -132,12 +132,25 @@ MOWING_PREFERENCE_VERSION_INDEX = 0
 MOWING_PREFERENCE_MAP_INDEX_INDEX = 1
 MOWING_PREFERENCE_AREA_ID_INDEX = 2
 MOWING_PREFERENCE_CUTTING_HEIGHT_INDEX = 4
+# Edge mowing slots, all of them flags that are 1 while the behaviour is on:
+#   auto         mow the edges on their own once an all-area or zone run finished
+#   blade offset shift the blade disc sideways for the edge laps, which cuts
+#                closer to the boundary than the centred disc reaches
+#   safe         keep a small buffer from the boundary while mowing the edges
+MOWING_PREFERENCE_EDGE_MOWING_AUTO_INDEX = 7
+MOWING_PREFERENCE_EDGE_BLADE_OFFSET_INDEX = 10
+MOWING_PREFERENCE_EDGE_MOWING_LAPS_INDEX = 11
+MOWING_PREFERENCE_EDGE_MOWING_SAFE_INDEX = 16
+# The offset blade disc only covers the edge over more than one lap, so the mower
+# rejects the setting while it is told to mow the edges a single time.
+MOWING_PREFERENCE_EDGE_BLADE_OFFSET_MIN_LAPS = 2
 # Records are written with the version slot zeroed; the device assigns the
 # resulting record version itself.
 MOWING_PREFERENCE_WRITE_VERSION = 0
 # Firmware that predates the trailing record slots rejects a full-length record
 # with MOWING_PREFERENCE_STATUS_INVALID. Such a write is retried with the record
-# truncated to the layout those firmware versions accept.
+# truncated to the layout those firmware versions accept. Safe edge mowing is the
+# first slot beyond that layout, so those firmware versions do not offer it.
 MOWING_PREFERENCE_LEGACY_LENGTH = 16
 # Per-request status reported in the "r" field of a 2:50 response.
 MOWING_PREFERENCE_STATUS_SUCCESS = 0
@@ -350,3 +363,12 @@ CURRENT_MAP_ID_PROPERTY_NAME = "current_map_id"
 CUTTING_HEIGHT_PROPERTY_NAME = "cutting_height"
 ZONE_CUTTING_HEIGHTS_PROPERTY_NAME = "zone_cutting_heights"
 MOWING_PREFERENCE_MODE_PROPERTY_NAME = "mowing_preference_mode"
+EDGE_MOWING_SETTINGS_PROPERTY_NAME = "edge_mowing_settings"
+ZONE_EDGE_MOWING_SETTINGS_PROPERTY_NAME = "zone_edge_mowing_settings"
+
+# Keys the edge mowing settings of one mowing preference record are reported
+# under. Safe edge mowing is missing from the record of firmware that predates
+# it, and is then absent from the settings rather than reported as off.
+EDGE_MOWING_AUTO_KEY = "edge_mowing_auto"
+EDGE_BLADE_OFFSET_KEY = "edge_blade_offset"
+EDGE_MOWING_SAFE_KEY = "edge_mowing_safe"

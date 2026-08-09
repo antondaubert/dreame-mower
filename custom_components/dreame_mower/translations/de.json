@@ -177,6 +177,15 @@
       },
       "rain_protection": {
         "name": "Regenschutz"
+      },
+      "edge_mowing_auto": {
+        "name": "Automatisches Randmähen"
+      },
+      "edge_blade_offset": {
+        "name": "EdgeMaster"
+      },
+      "edge_mowing_safe": {
+        "name": "Sicheres Randmähen"
       }
     },
     "time": {

@@ -177,6 +177,15 @@
       },
       "rain_protection": {
         "name": "Защита от дождя"
+      },
+      "edge_mowing_auto": {
+        "name": "Автоматическая краевая стрижка"
+      },
+      "edge_blade_offset": {
+        "name": "EdgeMaster"
+      },
+      "edge_mowing_safe": {
+        "name": "Безопасное скашивание по краям"
       }
     },
     "time": {

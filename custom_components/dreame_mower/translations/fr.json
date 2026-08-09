@@ -177,6 +177,15 @@
       },
       "rain_protection": {
         "name": "Protection pluie"
+      },
+      "edge_mowing_auto": {
+        "name": "Tonte automatique des bordures"
+      },
+      "edge_blade_offset": {
+        "name": "EdgeMaster"
+      },
+      "edge_mowing_safe": {
+        "name": "Tonte des bordures sécurisée"
       }
     },
     "time": {

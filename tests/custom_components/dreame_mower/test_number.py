@@ -111,3 +111,15 @@ async def test_setting_the_cutting_height_raises_when_the_device_rejects_it():
     with pytest.raises(HomeAssistantError):
         await entity.async_set_native_value(4.0)
 
+
+@pytest.mark.asyncio
+async def test_setting_a_height_the_record_cannot_carry_raises():
+    """A record without a height slot has to reach the user as an error."""
+    coordinator = _make_coordinator()
+    coordinator.async_set_cutting_height = AsyncMock(
+        side_effect=ValueError("This mower does not report a cutting height")
+    )
+    entity = _make_cutting_height_number(coordinator)
+
+    with pytest.raises(HomeAssistantError, match="cutting height"):
+        await entity.async_set_native_value(5.0)

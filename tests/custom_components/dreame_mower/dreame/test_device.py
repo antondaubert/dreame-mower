@@ -2452,6 +2452,232 @@ async def test_set_zone_cutting_height_defers_when_the_map_geometry_is_unknown(d
     assert [write[2] for write in calls["writes"]] == [99]
 
 
+@pytest.mark.asyncio
+async def test_refresh_reads_the_edge_mowing_settings_from_the_same_record(device):
+    """The heights and the edge settings share a record, so one read serves both."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_vector_map(device)
+    record = list(_MOWING_PREFERENCE_RECORD)
+    record[7] = 0  # automatic edge mowing off
+    record[10] = 1  # blade offset on
+    record[16] = 0  # safe edge mowing off
+    device._cloud_device.action_result, _ = _mowing_preference_responder(record)
+
+    settings = await device.refresh_edge_mowing_settings()
+
+    assert settings == {
+        "edge_mowing_auto": False,
+        "edge_blade_offset": True,
+        "edge_mowing_safe": False,
+    }
+    assert device.edge_mowing_settings == settings
+    assert device.cutting_height == 6.0
+    assert len(device._cloud_device.action_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_set_edge_mowing_settings_only_changes_the_requested_slots(device):
+    """Every other mowing setting must be written back as the device reported it."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_vector_map(device)
+    device._cloud_device.action_result, writes = _mowing_preference_responder()
+
+    result = await device.set_edge_mowing_settings(safe=False)
+
+    assert result is True
+    expected_record = list(_MOWING_PREFERENCE_RECORD)
+    expected_record[0] = 0  # version is zeroed on write
+    expected_record[1] = 0  # map index of map ID 1
+    expected_record[2] = 0  # map-wide area ID
+    expected_record[16] = 0
+    assert writes[0] == expected_record
+    assert device.edge_mowing_settings["edge_mowing_safe"] is False
+
+
+@pytest.mark.asyncio
+async def test_set_edge_mowing_settings_writes_several_settings_at_once(device):
+    """One call should cost one write, not one per setting."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_vector_map(device)
+    device._cloud_device.action_result, writes = _mowing_preference_responder()
+
+    result = await device.set_edge_mowing_settings(auto=False, safe=False)
+
+    assert result is True
+    assert len(writes) == 1
+    assert writes[0][7] == 0
+    assert writes[0][16] == 0
+
+
+@pytest.mark.asyncio
+async def test_enabling_the_blade_offset_raises_a_single_edge_lap(device):
+    """The offset disc needs more than one lap along the edge to cover it."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_vector_map(device)
+    record = list(_MOWING_PREFERENCE_RECORD)
+    record[10] = 0
+    record[11] = 1
+    device._cloud_device.action_result, writes = _mowing_preference_responder(record)
+
+    assert await device.set_edge_mowing_settings(blade_offset=True) is True
+
+    assert writes[0][10] == 1
+    assert writes[0][11] == 2
+
+
+@pytest.mark.asyncio
+async def test_enabling_the_blade_offset_keeps_a_higher_lap_count(device):
+    """A lap count the mower already accepts must not be lowered."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_vector_map(device)
+    record = list(_MOWING_PREFERENCE_RECORD)
+    record[11] = 3
+    device._cloud_device.action_result, writes = _mowing_preference_responder(record)
+
+    assert await device.set_edge_mowing_settings(blade_offset=True) is True
+
+    assert writes[0][11] == 3
+
+
+@pytest.mark.asyncio
+async def test_safe_edge_mowing_is_absent_from_a_record_that_predates_it(device):
+    """A short record means the firmware has no such setting, not that it is off."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_vector_map(device)
+    device._cloud_device.action_result, _ = _mowing_preference_responder(
+        _MOWING_PREFERENCE_RECORD[:16]
+    )
+
+    settings = await device.refresh_edge_mowing_settings()
+
+    assert settings is not None
+    assert "edge_mowing_safe" not in settings
+    assert settings["edge_mowing_auto"] is True
+
+
+@pytest.mark.asyncio
+async def test_setting_safe_edge_mowing_is_rejected_without_the_slot(device):
+    """A record without the slot cannot carry the setting, so the call must say so."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_vector_map(device)
+    device._cloud_device.action_result, writes = _mowing_preference_responder(
+        _MOWING_PREFERENCE_RECORD[:16]
+    )
+
+    with pytest.raises(ValueError, match="safe edge mowing"):
+        await device.set_edge_mowing_settings(safe=False)
+
+    assert writes == []
+
+
+@pytest.mark.asyncio
+async def test_a_rejected_safe_edge_write_is_not_retried_without_the_setting(device):
+    """The shorter record the device falls back to would drop the change itself."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_vector_map(device)
+    device._cloud_device.action_result, writes = _mowing_preference_responder(
+        reject_full_record=True
+    )
+
+    result = await device.set_edge_mowing_settings(safe=False)
+
+    assert result is False
+    assert len(writes) == 1
+    assert device.edge_mowing_settings is None
+
+
+@pytest.mark.asyncio
+async def test_set_zone_edge_mowing_settings_writes_a_record_for_that_zone(device):
+    """A zone's edge settings should be written to the zone's own record."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_zoned_vector_map(device)
+    device._cloud_device.action_result, calls = _preference_responder(mode=1)
+
+    result = await device.set_edge_mowing_settings(safe=False, zone_id=2)
+
+    assert result is True
+    assert [write[2] for write in calls["writes"]] == [2]
+    assert calls["writes"][0][16] == 0
+    assert device.zone_edge_mowing_settings[2]["edge_mowing_safe"] is False
+    assert device.edge_mowing_settings is None
+
+
+@pytest.mark.asyncio
+async def test_set_zone_edge_mowing_settings_switches_the_map_to_per_zone_records(device):
+    """A zone's settings have no effect while the map applies its map-wide record."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_zoned_vector_map(device)
+    device._cloud_device.action_result, calls = _preference_responder(mode=0)
+
+    result = await device.set_edge_mowing_settings(auto=False, zone_id=2)
+
+    assert result is True
+    assert calls["modes"] == [{"idx": 0, "value": 1}]
+    assert device.mowing_preference_mode == MowingPreferenceMode.PER_ZONE
+
+
+@pytest.mark.asyncio
+async def test_refresh_zone_mowing_preferences_reports_the_edge_settings_per_zone(device):
+    """Each zone that keeps its own record reports its own edge settings."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_zoned_vector_map(device)
+    zone_one = list(_MOWING_PREFERENCE_RECORD)
+    zone_one[16] = 0
+    device._cloud_device.action_result, _ = _preference_responder(
+        mode=1,
+        configured_area_ids=(0, 1, 3),
+        records={1: zone_one, 3: list(_MOWING_PREFERENCE_RECORD)},
+    )
+
+    await device.refresh_zone_mowing_preferences()
+
+    assert device.zone_edge_mowing_settings[1]["edge_mowing_safe"] is False
+    assert device.zone_edge_mowing_settings[3]["edge_mowing_safe"] is True
+
+
+@pytest.mark.asyncio
+async def test_edge_mowing_change_notifies_property_callbacks(device):
+    """Changed settings should be pushed to registered property callbacks."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_vector_map(device)
+    device._cloud_device.action_result, _ = _mowing_preference_responder()
+    notified = []
+    device.register_property_callback(lambda name, value: notified.append((name, value)))
+
+    await device.set_edge_mowing_settings(auto=False)
+
+    assert ("edge_mowing_settings", {
+        "edge_mowing_auto": False,
+        "edge_blade_offset": True,
+        "edge_mowing_safe": True,
+    }) in notified
+
+
+@pytest.mark.asyncio
+async def test_set_edge_mowing_settings_without_a_change_writes_nothing(device):
+    """A call that states no setting has nothing to write."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_vector_map(device)
+    device._cloud_device.action_result, writes = _mowing_preference_responder()
+
+    assert await device.set_edge_mowing_settings() is True
+    assert writes == []
+    assert device._cloud_device.action_calls == []
+
+
 # The settings record as the device reports it; only the keys under test matter.
 _DEVICE_SETTINGS = {
     "BAT": [15, 95, 1, 0, 660, 1080],

@@ -177,6 +177,15 @@
       },
       "rain_protection": {
         "name": "Regnskydd"
+      },
+      "edge_mowing_auto": {
+        "name": "Automatisk kantklippning"
+      },
+      "edge_blade_offset": {
+        "name": "EdgeMaster"
+      },
+      "edge_mowing_safe": {
+        "name": "Säker kantklippning"
       }
     },
     "time": {

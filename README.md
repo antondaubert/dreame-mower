@@ -20,6 +20,7 @@ Provided "as-is" under the MIT License for personal, non-commercial use with dev
 - **Remote Control** - Start, pause, stop, and dock your mower
 - **Map Awareness** - Inspect known maps, zones, contours, and active task metadata
 - **Cutting Height** - Read and set the cutting height of the active map
+- **Edge Mowing** - Read and set how the mower treats the edges, per map or per zone
 - **Charging Period** - Read and set the time window the mower is allowed to fully charge in
 - **Rain Protection** - See when rain keeps the mower docked, and set how long it waits afterwards
 - **Battery Status** - Current battery level and charging info
@@ -47,7 +48,23 @@ The selectable range depends on the model: most mowers go from 3 cm to 7 cm, whi
 
 The entity always sets the height for the whole map. To set a height for a single zone, use the `dreame_mower.set_cutting_height` service action with a `zone_id`.
 
-The mower entity exposes `cutting_height`, `zone_cutting_heights` and `mowing_preference_mode` as attributes, so automations can read back the current values and see which of the two is in effect.
+The mower entity exposes `cutting_height`, `zone_cutting_heights` and `mowing_preference_mode` as attributes, so automations can read back the current values and see which of the two is in effect. The mower announces a changed height, whoever changed it, so one set in the Dreame or MOVA app shows up within seconds.
+
+### Edge Mowing
+
+Three switches cover how the mower treats the edges of the **active map**:
+
+- **Automatic Edge Mowing** - the mower mows the edges on its own once all-area or zone mowing has finished
+- **Safe Edge Mowing** - the mower keeps a small buffer from the lawn boundary while mowing the edges, which spares the boundary but leaves a strip of uncut grass along it
+- **EdgeMaster** - the blade disc shifts to the side for the edge laps so the mower cuts closer to the boundary than the centred disc reaches
+
+Switching **EdgeMaster** on also raises a single edge lap to two, which the offset disc needs to cover the edge.
+
+**Safe Edge Mowing** is the setting that keeps a mower away from the boundary even with obstacle avoidance turned off. Firmware that predates it keeps no such setting, and the switch is then omitted rather than offered as a control that cannot write.
+
+The switches always change the active map as a whole. To change a single zone, or a map that is not active, use the `dreame_mower.set_edge_mowing_settings` service action.
+
+The switches are created only for devices that reported their mowing settings, which are read when the integration starts and whenever the active map changes. The mower announces every change to them, whoever made it, so changes from the Dreame or MOVA app show up within seconds without reloading the integration.
 
 ### Charging Period
 
@@ -164,6 +181,23 @@ data:
 ```
 
 Setting a zone height also switches that map to **per-zone** mowing settings, because a zone height has no effect while the map is applying one setting to everything. Every other zone keeps whatever it already had, and the map-wide height stops applying until you switch back.
+
+### `dreame_mower.set_edge_mowing_settings`
+
+Switch the edge mowing settings for a whole map, or for a single zone of it. Use this instead of the switch entities when you want to change a map that is not currently active, several settings at once, or a single zone.
+
+```yaml
+action: dreame_mower.set_edge_mowing_settings
+target:
+  entity_id: lawn_mower.your_mower
+data:
+  automatic_edge_mowing: true
+  safe_edge_mowing: false
+```
+
+Every setting left out keeps the value it has. `map_id` is optional and defaults to the active map; `zone_id` changes a single zone instead of the whole map, which switches that map to **per-zone** mowing settings the same way `set_cutting_height` does.
+
+The mower entity exposes `edge_mowing_settings` and `zone_edge_mowing_settings` as attributes so automations can read the settings back.
 
 ### `dreame_mower.set_mowing_preference_mode`
 

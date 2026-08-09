@@ -9,7 +9,7 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import entity_platform
+from homeassistant.helpers import config_validation as cv, entity_platform
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.components.lawn_mower import (  # type: ignore[attr-defined]
     LawnMowerActivity,
@@ -76,6 +76,24 @@ async def async_setup_entry(
             vol.Optional("zone_id"): vol.Coerce(int),
         },
         "async_set_cutting_height",
+    )
+    platform.async_register_entity_service(
+        "set_edge_mowing_settings",
+        vol.All(
+            cv.make_entity_service_schema(
+                {
+                    vol.Optional("automatic_edge_mowing"): cv.boolean,
+                    vol.Optional("safe_edge_mowing"): cv.boolean,
+                    vol.Optional("edge_blade_offset"): cv.boolean,
+                    vol.Optional("map_id"): vol.Coerce(int),
+                    vol.Optional("zone_id"): vol.Coerce(int),
+                }
+            ),
+            cv.has_at_least_one_key(
+                "automatic_edge_mowing", "safe_edge_mowing", "edge_blade_offset"
+            ),
+        ),
+        "async_set_edge_mowing_settings",
     )
     platform.async_register_entity_service(
         "set_mowing_preference_mode",
@@ -225,6 +243,30 @@ class DreameMowerLawnMower(DreameMowerEntity, LawnMowerEntity):
             target = "the map" if zone_id is None else f"zone {zone_id}"
             raise HomeAssistantError(f"Failed to set the cutting height of {target} to {height} cm")
 
+    async def async_set_edge_mowing_settings(
+        self,
+        automatic_edge_mowing: bool | None = None,
+        safe_edge_mowing: bool | None = None,
+        edge_blade_offset: bool | None = None,
+        map_id: int | None = None,
+        zone_id: int | None = None,
+    ) -> None:
+        """Switch edge mowing settings for a map, or for a single zone of it."""
+        try:
+            updated = await self.coordinator.async_set_edge_mowing_settings(
+                auto=automatic_edge_mowing,
+                blade_offset=edge_blade_offset,
+                safe=safe_edge_mowing,
+                map_id=map_id,
+                zone_id=zone_id,
+            )
+        except ValueError as ex:
+            raise HomeAssistantError(str(ex)) from ex
+
+        if not updated:
+            target = "the map" if zone_id is None else f"zone {zone_id}"
+            raise HomeAssistantError(f"Failed to change the edge mowing settings of {target}")
+
     async def async_set_mowing_preference_mode(self, mode: str, map_id: int | None = None) -> None:
         """Choose whether a map follows one set of mowing settings or per-zone ones."""
         self._assert_cutting_height_supported()
@@ -269,6 +311,11 @@ class DreameMowerLawnMower(DreameMowerEntity, LawnMowerEntity):
             attributes["mowing_preference_mode"] = (
                 None if mowing_preference_mode is None else mowing_preference_mode.name.lower()
             )
+        if self.coordinator.supports_edge_mowing_settings:
+            # Exposed so automations can read back what set_edge_mowing_settings
+            # did, for the map as a whole and for the zones that keep their own.
+            attributes["edge_mowing_settings"] = self.coordinator.edge_mowing_settings
+            attributes["zone_edge_mowing_settings"] = self.coordinator.zone_edge_mowing_settings
         attributes["selected_mowing_mode"] = self.coordinator.selected_mowing_mode.value
         if self.coordinator.selected_contour_id is not None:
             attributes["selected_contour_id"] = self.coordinator.selected_contour_id

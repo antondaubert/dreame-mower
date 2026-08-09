@@ -177,6 +177,15 @@
       },
       "rain_protection": {
         "name": "Ochrona przed deszczem"
+      },
+      "edge_mowing_auto": {
+        "name": "Automatyczne koszenie krawędzi"
+      },
+      "edge_blade_offset": {
+        "name": "EdgeMaster"
+      },
+      "edge_mowing_safe": {
+        "name": "Bezpieczne koszenie krawędzi"
       }
     },
     "time": {
