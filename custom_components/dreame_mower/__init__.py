@@ -23,6 +23,7 @@ from .const import (
     DOMAIN,
     FIRMWARE_POLL_INTERVAL_HOURS,
     ONLINE_POLL_INTERVAL_SECONDS,
+    RAIN_POLL_INTERVAL_SECONDS,
 )
 from .coordinator import DreameMowerCoordinator
 from .config_flow import DEVICE_TYPE_SWBOT
@@ -97,6 +98,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         except Exception as ex:
             _LOGGER.warning("Initial charging settings fetch failed: %s", ex)
 
+    # Read the rain protection settings once: they double as the probe that
+    # decides whether the device offers rain protection at all.
+    if coordinator.device_type != DEVICE_TYPE_SWBOT:
+        try:
+            await coordinator.async_refresh_rain_state()
+        except Exception as ex:
+            _LOGGER.warning("Initial rain protection fetch failed: %s", ex)
+
     # Store coordinator in hass data
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         DATA_COORDINATOR: coordinator,
@@ -138,6 +147,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 hass,
                 _async_poll_online,
                 timedelta(seconds=ONLINE_POLL_INTERVAL_SECONDS),
+                cancel_on_shutdown=True,
+            )
+        )
+
+    # Keep the rain protection state current: the mower reports neither when its
+    # protection expires nor when the settings are changed from elsewhere.
+    if coordinator.supports_rain_protection:
+        async def _async_poll_rain(now=None) -> None:
+            try:
+                await coordinator.async_refresh_rain_state()
+            except Exception as ex:
+                _LOGGER.warning("Rain protection poll failed: %s", ex)
+
+        entry.async_on_unload(
+            async_track_time_interval(
+                hass,
+                _async_poll_rain,
+                timedelta(seconds=RAIN_POLL_INTERVAL_SECONDS),
                 cancel_on_shutdown=True,
             )
         )

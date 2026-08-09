@@ -137,6 +137,9 @@
       },
       "consumable_robot_health": {
         "name": "Karbantartási állapot"
+      },
+      "rain_protection_end": {
+        "name": "Nyírás folytatása esővédelem után"
       }
     },
     "binary_sensor": {
@@ -166,11 +169,17 @@
     "number": {
       "cutting_height": {
         "name": "Vágási magasság"
+      },
+      "rain_delay": {
+        "name": "Várakozás eső után"
       }
     },
     "switch": {
       "charging_period": {
         "name": "Töltési időszak"
+      },
+      "rain_protection": {
+        "name": "Esővédelem"
       }
     },
     "time": {

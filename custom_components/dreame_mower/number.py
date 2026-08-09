@@ -6,7 +6,7 @@ import logging
 
 from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfLength
+from homeassistant.const import EntityCategory, UnitOfLength, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -31,14 +31,25 @@ async def async_setup_entry(
     """Set up Dreame Mower numbers from a config entry."""
     coordinator: DreameMowerCoordinator = hass.data[DOMAIN][entry.entry_id][DATA_COORDINATOR]
 
-    if not coordinator.supports_cutting_height:
+    numbers: list[NumberEntity] = []
+
+    if coordinator.supports_cutting_height:
+        numbers.append(DreameMowerCuttingHeightNumber(coordinator))
+    else:
         _LOGGER.debug(
             "Skipping the cutting height entity: model %s has no software-adjustable cutting height",
             coordinator.device_model,
         )
-        return
 
-    async_add_entities([DreameMowerCuttingHeightNumber(coordinator)])
+    if coordinator.supports_rain_protection:
+        numbers.append(DreameMowerRainDelayNumber(coordinator))
+    else:
+        _LOGGER.debug(
+            "Skipping the rain delay entity: device %s reported no rain settings",
+            coordinator.device_name,
+        )
+
+    async_add_entities(numbers)
 
 
 class DreameMowerCuttingHeightNumber(DreameMowerEntity, NumberEntity):
@@ -65,3 +76,47 @@ class DreameMowerCuttingHeightNumber(DreameMowerEntity, NumberEntity):
         """Set the cutting height for the active map."""
         if not await self.coordinator.async_set_cutting_height(value):
             raise HomeAssistantError(f"Failed to set the cutting height to {value} cm")
+
+
+class DreameMowerRainDelayNumber(DreameMowerEntity, NumberEntity):
+    """Number entity for how long the mower waits after rain before it resumes.
+
+    A delay of zero leaves the mower docked until it is started again. Models
+    that navigate by camera accept one step beyond the hourly range, which makes
+    them resume as soon as the rain stops instead of drying off first. A changed
+    delay applies the next time rain protection triggers.
+
+    The mower only takes a new delay while rain protection is on; with it off it
+    keeps the delay it holds.
+    """
+
+    _attr_translation_key = "rain_delay"
+    _attr_icon = "mdi:weather-rainy"
+    _attr_mode = NumberMode.SLIDER
+    _attr_native_unit_of_measurement = UnitOfTime.HOURS
+    _attr_native_step = 1
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator: DreameMowerCoordinator) -> None:
+        """Initialize the rain delay entity."""
+        super().__init__(coordinator, "rain_delay")
+        self._attr_native_min_value = coordinator.rain_delay_min_hours
+        self._attr_native_max_value = coordinator.rain_delay_max_hours
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the configured after-rain delay, if it is known."""
+        return self.coordinator.rain_delay_hours
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Set how long the mower waits after rain."""
+        delay_hours = round(value)
+        if not await self.coordinator.async_set_rain_protection(delay_hours=delay_hours):
+            raise HomeAssistantError(f"Failed to set the after-rain delay to {delay_hours} h")
+
+        if self.coordinator.rain_delay_hours != delay_hours:
+            raise HomeAssistantError(
+                f"The mower kept its after-rain delay of {self.coordinator.rain_delay_hours} h "
+                f"instead of the requested {delay_hours} h; it only takes a new delay while "
+                "rain protection is on"
+            )

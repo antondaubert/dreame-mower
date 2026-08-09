@@ -137,6 +137,9 @@
       },
       "consumable_robot_health": {
         "name": "Onderhoudsstatus"
+      },
+      "rain_protection_end": {
+        "name": "Maaien hervat na regenbescherming"
       }
     },
     "binary_sensor": {
@@ -166,11 +169,17 @@
     "number": {
       "cutting_height": {
         "name": "Maaihoogte"
+      },
+      "rain_delay": {
+        "name": "Wachttijd na regen"
       }
     },
     "switch": {
       "charging_period": {
         "name": "Laadperiode"
+      },
+      "rain_protection": {
+        "name": "Regenbescherming"
       }
     },
     "time": {

@@ -111,7 +111,16 @@ from .const import (
     BATTERY_SETTING_RESUME_AFTER_CHARGING_INDEX,
     BATTERY_SETTING_RESUME_LEVEL_INDEX,
     DEVICE_SETTINGS_BATTERY_KEY,
+    DEVICE_SETTINGS_RAIN_KEY,
     MINUTES_PER_DAY,
+    RAIN_DELAY_MIN_HOURS,
+    RAIN_DELAY_RESUME_IMMEDIATELY_HOURS,
+    RAIN_SETTING_DEFAULT_SENSITIVITY,
+    RAIN_SETTING_DELAY_INDEX,
+    RAIN_SETTING_ENABLED_INDEX,
+    RAIN_SETTING_LENGTH,
+    RAIN_SETTING_MINIMUM_LENGTH,
+    RAIN_SETTING_SENSITIVITY_INDEX,
     MowingPreferenceMode,
     DeviceStatus,
 )
@@ -1411,6 +1420,30 @@ class DreameMowerDevice:
             },
         }
 
+    def _build_set_rain_protection_payload(
+        self,
+        enabled: bool,
+        delay_hours: int,
+        sensitivity: int,
+    ) -> dict[str, Any]:
+        """Build the setter payload for the rain protection settings."""
+        return {
+            "m": "s",
+            "t": DEVICE_SETTINGS_RAIN_KEY,
+            "d": {
+                "value": int(enabled),
+                "time": int(delay_hours),
+                "sen": int(sensitivity),
+            },
+        }
+
+    def _build_get_rain_protection_end_payload(self) -> dict[str, Any]:
+        """Build the getter payload for the time rain protection releases the mower."""
+        return {
+            "m": "g",
+            "t": "RPET",
+        }
+
     @staticmethod
     def _extract_custom_action_data(result: Any) -> dict[str, Any] | None:
         """Extract the first successful data payload from a custom action result."""
@@ -1721,6 +1754,150 @@ class DreameMowerDevice:
             record[BATTERY_SETTING_CHARGING_PERIOD_END_INDEX],
         )
         return self._decode_battery_settings(record)
+
+    @staticmethod
+    def _normalize_rain_settings(data: Any) -> list[int] | None:
+        """Coerce a settings value into a rain protection record."""
+        if isinstance(data, dict):
+            data = data.get("value")
+
+        if not isinstance(data, list) or len(data) < RAIN_SETTING_MINIMUM_LENGTH:
+            return None
+
+        try:
+            record = [int(value) for value in data]
+        except (TypeError, ValueError):
+            return None
+
+        while len(record) < RAIN_SETTING_LENGTH:
+            record.append(RAIN_SETTING_DEFAULT_SENSITIVITY)
+
+        return record
+
+    @staticmethod
+    def _decode_rain_settings(record: Sequence[int]) -> dict[str, Any]:
+        """Describe the rain protection settings a record carries."""
+        return {
+            "rain_protection_enabled": bool(record[RAIN_SETTING_ENABLED_INDEX]),
+            "rain_delay_hours": record[RAIN_SETTING_DELAY_INDEX],
+            "rain_sensitivity": record[RAIN_SETTING_SENSITIVITY_INDEX],
+            "raw": list(record),
+        }
+
+    async def get_rain_settings(self) -> dict[str, Any] | None:
+        """Read the rain protection settings, or None when unavailable."""
+        settings = await self.get_device_settings()
+        if settings is None:
+            return None
+
+        record = self._normalize_rain_settings(settings.get(DEVICE_SETTINGS_RAIN_KEY))
+        if record is None:
+            _LOGGER.error("Device settings carry no rain protection record: %s", settings)
+            return None
+
+        return self._decode_rain_settings(record)
+
+    @staticmethod
+    def _validate_rain_delay(delay_hours: int) -> int:
+        """Return an after-rain delay in whole hours, or raise."""
+        try:
+            normalized_delay = int(delay_hours)
+        except (TypeError, ValueError) as ex:
+            raise ValueError(
+                f"The after-rain delay must be a number of hours; got {delay_hours!r}"
+            ) from ex
+
+        if not RAIN_DELAY_MIN_HOURS <= normalized_delay <= RAIN_DELAY_RESUME_IMMEDIATELY_HOURS:
+            raise ValueError(
+                f"The after-rain delay must be between {RAIN_DELAY_MIN_HOURS} and "
+                f"{RAIN_DELAY_RESUME_IMMEDIATELY_HOURS} hours; got {normalized_delay}"
+            )
+
+        return normalized_delay
+
+    async def set_rain_protection(
+        self,
+        enabled: bool | None = None,
+        delay_hours: int | None = None,
+    ) -> dict[str, Any] | None:
+        """Update the rain protection settings and return the ones that took effect.
+
+        Every unspecified part keeps the value the device currently holds, so
+        rain protection can be switched without restating its delay. Returns None
+        when the settings could not be read or the write was rejected.
+        """
+        current_settings = await self.get_rain_settings()
+        if current_settings is None:
+            return None
+
+        next_enabled = (
+            current_settings["rain_protection_enabled"] if enabled is None else bool(enabled)
+        )
+        next_delay = (
+            current_settings["rain_delay_hours"]
+            if delay_hours is None
+            else self._validate_rain_delay(delay_hours)
+        )
+
+        result = await self._send_task_payload(
+            "rain protection write",
+            self._build_set_rain_protection_payload(
+                next_enabled,
+                next_delay,
+                current_settings["rain_sensitivity"],
+            ),
+        )
+        record = self._normalize_rain_settings(self._extract_custom_action_data(result))
+        if record is None:
+            _LOGGER.error(
+                "Failed to write the rain protection settings (enabled=%s delay=%s): %s",
+                next_enabled,
+                next_delay,
+                result,
+            )
+            return None
+
+        if record[RAIN_SETTING_DELAY_INDEX] != next_delay:
+            # The device only takes a new delay while rain protection is on; it
+            # keeps the stored one otherwise and reports what it kept.
+            _LOGGER.warning(
+                "The device kept its after-rain delay of %s hours instead of the requested %s",
+                record[RAIN_SETTING_DELAY_INDEX],
+                next_delay,
+            )
+
+        _LOGGER.info(
+            "Rain protection is now %s with an after-rain delay of %s hours",
+            "enabled" if record[RAIN_SETTING_ENABLED_INDEX] else "disabled",
+            record[RAIN_SETTING_DELAY_INDEX],
+        )
+        return self._decode_rain_settings(record)
+
+    async def get_rain_protection_end_timestamp(self) -> int | None:
+        """Read when rain protection lets the mower work again.
+
+        Returns the end time as a Unix timestamp in seconds, zero while rain
+        protection is not holding the mower back, and None when the read failed.
+        The last two are told apart on purpose: a read that did not come through
+        says nothing about the mower, whereas zero says it is free to work.
+        """
+        result = await self._send_task_payload(
+            "rain protection end time read",
+            self._build_get_rain_protection_end_payload(),
+        )
+        data = self._extract_custom_action_data(result)
+        if not isinstance(data, dict) or "endTime" not in data:
+            _LOGGER.error("Failed to read the rain protection end time: %s", result)
+            return None
+
+        try:
+            end_timestamp = int(data["endTime"])
+        except (TypeError, ValueError):
+            _LOGGER.error("Rain protection end time is not a timestamp: %s", data)
+            return None
+
+        # The device reports zero whenever rain protection is not holding it back.
+        return end_timestamp if end_timestamp > 0 else 0
 
     def refresh_current_map_id(self) -> bool:
         """Refresh the current map by querying the MAPL getter."""

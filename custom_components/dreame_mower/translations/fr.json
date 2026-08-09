@@ -137,6 +137,9 @@
       },
       "consumable_robot_health": {
         "name": "État de maintenance"
+      },
+      "rain_protection_end": {
+        "name": "Reprise de la tonte après protection pluie"
       }
     },
     "binary_sensor": {
@@ -166,11 +169,17 @@
     "number": {
       "cutting_height": {
         "name": "Hauteur de coupe"
+      },
+      "rain_delay": {
+        "name": "Délai après la pluie"
       }
     },
     "switch": {
       "charging_period": {
         "name": "Période de charge"
+      },
+      "rain_protection": {
+        "name": "Protection pluie"
       }
     },
     "time": {

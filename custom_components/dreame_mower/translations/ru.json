@@ -137,6 +137,9 @@
       },
       "consumable_robot_health": {
         "name": "Состояние обслуживания"
+      },
+      "rain_protection_end": {
+        "name": "Возобновление кошения после защиты от дождя"
       }
     },
     "binary_sensor": {
@@ -166,11 +169,17 @@
     "number": {
       "cutting_height": {
         "name": "Высота скашивания"
+      },
+      "rain_delay": {
+        "name": "Задержка после дождя"
       }
     },
     "switch": {
       "charging_period": {
         "name": "Период зарядки"
+      },
+      "rain_protection": {
+        "name": "Защита от дождя"
       }
     },
     "time": {

@@ -137,6 +137,9 @@
       },
       "consumable_robot_health": {
         "name": "Estado de manutenção"
+      },
+      "rain_protection_end": {
+        "name": "Retoma do corte após a proteção contra chuva"
       }
     },
     "binary_sensor": {
@@ -166,11 +169,17 @@
     "number": {
       "cutting_height": {
         "name": "Altura de corte"
+      },
+      "rain_delay": {
+        "name": "Espera após a chuva"
       }
     },
     "switch": {
       "charging_period": {
         "name": "Período de carregamento"
+      },
+      "rain_protection": {
+        "name": "Proteção contra chuva"
       }
     },
     "time": {

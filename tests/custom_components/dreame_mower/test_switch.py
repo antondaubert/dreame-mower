@@ -8,6 +8,7 @@ from homeassistant.exceptions import HomeAssistantError
 from custom_components.dreame_mower.const import DATA_COORDINATOR, DOMAIN
 from custom_components.dreame_mower.switch import (
     DreameMowerChargingPeriodSwitch,
+    DreameMowerRainProtectionSwitch,
     async_setup_entry,
 )
 
@@ -25,6 +26,7 @@ def _make_coordinator(supported=True, enabled=True):
     coordinator.supports_charging_period = supported
     coordinator.charging_period_enabled = enabled
     coordinator.async_set_charging_period = AsyncMock(return_value=True)
+    coordinator.supports_rain_protection = False
     return coordinator
 
 
@@ -98,3 +100,65 @@ async def test_switching_raises_when_the_device_rejects_it():
 
     with pytest.raises(HomeAssistantError):
         await entity.async_turn_off()
+
+
+def _make_rain_coordinator(supported=True, enabled=True):
+    coordinator = _make_coordinator()
+    coordinator.supports_charging_period = False
+    coordinator.supports_rain_protection = supported
+    coordinator.rain_protection_enabled = enabled
+    coordinator.async_set_rain_protection = AsyncMock(return_value=True)
+    return coordinator
+
+
+def _make_rain_switch(coordinator=None):
+    entity = DreameMowerRainProtectionSwitch(coordinator or _make_rain_coordinator())
+    entity.hass = MagicMock()
+    return entity
+
+
+@pytest.mark.asyncio
+async def test_setup_adds_the_rain_protection_switch():
+    """A device that reports rain settings gets the switch."""
+    entities = await _setup_entry(_make_rain_coordinator())
+
+    assert len(entities) == 1
+    assert isinstance(entities[0], DreameMowerRainProtectionSwitch)
+
+
+@pytest.mark.asyncio
+async def test_setup_skips_devices_without_rain_settings():
+    """Devices that never reported the settings must not get the switch."""
+    assert await _setup_entry(_make_rain_coordinator(supported=False)) == []
+
+
+def test_the_rain_switch_reports_whether_protection_is_on():
+    """The switch state should mirror what the coordinator holds."""
+    assert _make_rain_switch().is_on is True
+    assert _make_rain_switch(_make_rain_coordinator(enabled=False)).is_on is False
+    assert _make_rain_switch(_make_rain_coordinator(enabled=None)).is_on is None
+
+
+@pytest.mark.asyncio
+async def test_switching_rain_protection_keeps_the_configured_delay():
+    """Toggling must not restate the delay, so the device keeps it."""
+    coordinator = _make_rain_coordinator()
+    entity = _make_rain_switch(coordinator)
+
+    await entity.async_turn_on()
+    coordinator.async_set_rain_protection.assert_awaited_once_with(enabled=True)
+
+    coordinator.async_set_rain_protection.reset_mock()
+    await entity.async_turn_off()
+    coordinator.async_set_rain_protection.assert_awaited_once_with(enabled=False)
+
+
+@pytest.mark.asyncio
+async def test_switching_rain_protection_raises_when_the_device_rejects_it():
+    """A rejected write should surface as an error instead of passing silently."""
+    coordinator = _make_rain_coordinator()
+    coordinator.async_set_rain_protection = AsyncMock(return_value=False)
+    entity = _make_rain_switch(coordinator)
+
+    with pytest.raises(HomeAssistantError):
+        await entity.async_turn_on()

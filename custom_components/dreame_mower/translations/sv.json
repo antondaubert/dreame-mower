@@ -137,6 +137,9 @@
       },
       "consumable_robot_health": {
         "name": "Underhållsstatus"
+      },
+      "rain_protection_end": {
+        "name": "Klippning återupptas efter regnskydd"
       }
     },
     "binary_sensor": {
@@ -166,11 +169,17 @@
     "number": {
       "cutting_height": {
         "name": "Klipphöjd"
+      },
+      "rain_delay": {
+        "name": "Väntetid efter regn"
       }
     },
     "switch": {
       "charging_period": {
         "name": "Laddningsperiod"
+      },
+      "rain_protection": {
+        "name": "Regnskydd"
       }
     },
     "time": {

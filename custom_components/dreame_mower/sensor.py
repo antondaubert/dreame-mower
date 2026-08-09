@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 import logging
 from typing import Any
 
@@ -47,7 +48,14 @@ async def async_setup_entry(
             DreameMowerConsumableHealthSensor(coordinator, "brush", 1, 30000, "mdi:brush"),
             DreameMowerConsumableHealthSensor(coordinator, "robot", 2, 3600, "mdi:robot"),
         ]
-    
+        if coordinator.supports_rain_protection:
+            sensors.append(DreameMowerRainProtectionEndSensor(coordinator))
+        else:
+            _LOGGER.debug(
+                "Skipping the rain protection end sensor: device %s reported no rain settings",
+                coordinator.device_name,
+            )
+
     async_add_entities(sensors)
 
 
@@ -263,6 +271,29 @@ class DreameMowerProgressSensor(DreameMowerEntity, SensorEntity):
         attributes["path_points"] = len(path_history)
         
         return attributes
+
+
+class DreameMowerRainProtectionEndSensor(DreameMowerEntity, SensorEntity):
+    """When rain protection lets the mower work again.
+
+    The mower only reports a time while rain protection is holding it back; the
+    sensor is unknown at any other time.
+    """
+
+    _attr_translation_key = "rain_protection_end"
+    _attr_icon = "mdi:weather-sunny-alert"
+
+    def __init__(self, coordinator: DreameMowerCoordinator) -> None:
+        """Initialize the rain protection end sensor."""
+        super().__init__(coordinator, "rain_protection_end")
+        self._attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Return when the mower may resume, or None while rain is not holding it back."""
+        if not self.coordinator.rain_protection_active:
+            return None
+        return self.coordinator.rain_protection_end_time
 
 
 _CONSUMABLE_ITEM_INDEX = {"blade": 0, "brush": 1, "robot": 2}

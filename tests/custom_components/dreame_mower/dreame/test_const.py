@@ -6,10 +6,13 @@ from homeassistant.components.lawn_mower import LawnMowerActivity
 from custom_components.dreame_mower.dreame.const import (
     CUTTING_HEIGHT_ABSOLUTE_MAX_CM,
     CUTTING_HEIGHT_DEFAULT_MAX_CM,
+    RAIN_DELAY_MAX_HOURS,
+    RAIN_DELAY_RESUME_IMMEDIATELY_HOURS,
     DeviceStatus,
     STATUS_MAPPING,
     cutting_height_max_cm,
     map_status_to_activity,
+    rain_delay_max_hours,
     supports_cutting_height,
 )
 
@@ -79,3 +82,18 @@ class TestCuttingHeightSupport:
     def test_unknown_models_fall_back_to_the_default_range(self):
         assert supports_cutting_height("dreame.mower.x9999") is True
         assert cutting_height_max_cm("dreame.mower.x9999") == CUTTING_HEIGHT_DEFAULT_MAX_CM
+
+
+class TestRainDelayMaxHours:
+    """Test the after-rain delay range helper."""
+
+    @pytest.mark.parametrize("model", ["dreame.mower.g2408", "mova.mower.g2420c"])
+    def test_camera_models_can_resume_as_soon_as_the_rain_stops(self, model):
+        assert rain_delay_max_hours(model) == RAIN_DELAY_RESUME_IMMEDIATELY_HOURS
+
+    @pytest.mark.parametrize("model", ["dreame.mower.g2405", "mova.mower.g2529b"])
+    def test_other_models_top_out_at_a_full_day(self, model):
+        assert rain_delay_max_hours(model) == RAIN_DELAY_MAX_HOURS
+
+    def test_unknown_models_fall_back_to_the_hourly_range(self):
+        assert rain_delay_max_hours("dreame.mower.x9999") == RAIN_DELAY_MAX_HOURS

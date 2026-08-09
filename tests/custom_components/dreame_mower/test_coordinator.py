@@ -1,10 +1,12 @@
 """Test the Dreame Mower coordinator."""
 
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.const import CONF_NAME, CONF_PASSWORD, CONF_USERNAME
+from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.dreame_mower.coordinator import DreameMowerCoordinator
@@ -13,6 +15,12 @@ from custom_components.dreame_mower.config_flow import CONF_ACCOUNT_TYPE, CONF_C
 from custom_components.dreame_mower.dreame.const import (
     CURRENT_MAP_ID_PROPERTY_NAME,
     MowingPreferenceMode,
+)
+from custom_components.dreame_mower.dreame.property import (
+    DEVICE_CODE_INFO_PROPERTY_NAME,
+    NOTIFICATION_CODE_FIELD,
+    NOTIFICATION_DESCRIPTION_FIELD,
+    NOTIFICATION_NAME_FIELD,
 )
 
 
@@ -276,3 +284,218 @@ async def test_coordinator_keeps_the_charging_period_when_a_write_is_rejected(
     assert await coordinator.async_set_charging_period(start_minutes=0) is False
 
     assert coordinator.charging_period_start_minutes == 1320
+
+
+def _rain_settings(enabled=True, delay_hours=8, sensitivity=0):
+    """Build a rain settings payload as the device decodes it."""
+    return {
+        "rain_protection_enabled": enabled,
+        "rain_delay_hours": delay_hours,
+        "rain_sensitivity": sensitivity,
+        "raw": [int(enabled), delay_hours, sensitivity],
+    }
+
+
+async def test_coordinator_caches_the_rain_settings_it_reads(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """The entities read the cached settings, so a fetch has to fill the cache."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.device.get_rain_settings = AsyncMock(return_value=_rain_settings())
+    coordinator.device.get_rain_protection_end_timestamp = AsyncMock(return_value=0)
+    coordinator.async_update_listeners = MagicMock()
+
+    assert coordinator.supports_rain_protection is False
+    assert coordinator.rain_protection_enabled is None
+    assert coordinator.rain_delay_hours is None
+
+    assert await coordinator.async_fetch_rain_settings() is True
+
+    assert coordinator.supports_rain_protection is True
+    assert coordinator.rain_protection_enabled is True
+    assert coordinator.rain_delay_hours == 8
+    coordinator.async_update_listeners.assert_called_once()
+
+
+async def test_coordinator_reports_a_device_without_rain_settings(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """A device that cannot report the settings must not claim to support them."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.device.get_rain_settings = AsyncMock(return_value=None)
+
+    assert await coordinator.async_fetch_rain_settings() is False
+    assert coordinator.supports_rain_protection is False
+
+
+async def test_coordinator_caches_the_rain_settings_it_writes(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """A write returns the settings that took effect; they become the new state."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.device.set_rain_protection = AsyncMock(
+        return_value=_rain_settings(enabled=False, delay_hours=3)
+    )
+    coordinator.device.get_rain_protection_end_timestamp = AsyncMock(return_value=0)
+    coordinator.async_update_listeners = MagicMock()
+
+    assert await coordinator.async_set_rain_protection(enabled=False) is True
+
+    coordinator.device.set_rain_protection.assert_awaited_once_with(
+        enabled=False, delay_hours=None
+    )
+    assert coordinator.rain_protection_enabled is False
+    assert coordinator.rain_delay_hours == 3
+    coordinator.async_update_listeners.assert_called()
+    # Switching protection off can release a mower rain was holding back.
+    coordinator.device.get_rain_protection_end_timestamp.assert_awaited_once()
+
+
+async def test_coordinator_keeps_the_rain_settings_when_a_write_is_rejected(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """A rejected write must not leave the entities showing the requested value."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.device.get_rain_settings = AsyncMock(return_value=_rain_settings())
+    coordinator.device.set_rain_protection = AsyncMock(return_value=None)
+    coordinator.device.get_rain_protection_end_timestamp = AsyncMock(return_value=0)
+    await coordinator.async_fetch_rain_settings()
+
+    assert await coordinator.async_set_rain_protection(delay_hours=0) is False
+
+    assert coordinator.rain_delay_hours == 8
+
+
+async def test_coordinator_holds_the_mower_back_until_the_end_time_passes(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """Rain protection counts as active only while its end time is still ahead."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.async_update_listeners = MagicMock()
+
+    ahead = int(dt_util.utcnow().timestamp()) + 3600
+    coordinator.device.get_rain_protection_end_timestamp = AsyncMock(return_value=ahead)
+    await coordinator.async_fetch_rain_protection_end()
+
+    assert coordinator.rain_protection_active is True
+    assert coordinator.rain_protection_end_time == datetime.fromtimestamp(ahead, tz=timezone.utc)
+
+    behind = int(dt_util.utcnow().timestamp()) - 60
+    coordinator.device.get_rain_protection_end_timestamp = AsyncMock(return_value=behind)
+    await coordinator.async_fetch_rain_protection_end()
+
+    assert coordinator.rain_protection_active is False
+
+
+async def test_coordinator_has_no_end_time_while_rain_holds_nothing_back(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """Without an end time from the device there is nothing to report."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.device.get_rain_protection_end_timestamp = AsyncMock(return_value=0)
+    coordinator.async_update_listeners = MagicMock()
+
+    await coordinator.async_fetch_rain_protection_end()
+
+    assert coordinator.rain_protection_end_time is None
+    assert coordinator.rain_protection_active is False
+
+
+async def test_coordinator_rereads_the_end_time_when_rain_stops_the_mower(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """A rain device code is the cue that the mower now knows when it may resume."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.device.get_rain_settings = AsyncMock(return_value=_rain_settings())
+    coordinator.device.get_rain_protection_end_timestamp = AsyncMock(return_value=0)
+    coordinator.async_update_listeners = MagicMock()
+    await coordinator.async_fetch_rain_settings()
+    coordinator.device.get_rain_protection_end_timestamp.reset_mock()
+
+    coordinator._handle_device_update(
+        DEVICE_CODE_INFO_PROPERTY_NAME,
+        {NOTIFICATION_CODE_FIELD: 56, NOTIFICATION_NAME_FIELD: "x", NOTIFICATION_DESCRIPTION_FIELD: "y"},
+    )
+    await hass.async_block_till_done()
+
+    coordinator.device.get_rain_protection_end_timestamp.assert_awaited()
+
+
+async def test_coordinator_ignores_unrelated_device_codes_for_rain(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """Codes that have nothing to do with rain must not trigger a read."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.device.get_rain_settings = AsyncMock(return_value=_rain_settings())
+    coordinator.device.get_rain_protection_end_timestamp = AsyncMock(return_value=0)
+    coordinator.async_update_listeners = MagicMock()
+    await coordinator.async_fetch_rain_settings()
+    coordinator.device.get_rain_protection_end_timestamp.reset_mock()
+
+    coordinator._handle_device_update(
+        DEVICE_CODE_INFO_PROPERTY_NAME,
+        {NOTIFICATION_CODE_FIELD: 50, NOTIFICATION_NAME_FIELD: "x", NOTIFICATION_DESCRIPTION_FIELD: "y"},
+    )
+    await hass.async_block_till_done()
+
+    coordinator.device.get_rain_protection_end_timestamp.assert_not_awaited()
+
+
+async def test_coordinator_skips_the_end_time_without_rain_settings(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """A device with no rain settings has no protection to ask about."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.device.get_rain_settings = AsyncMock(return_value=None)
+    coordinator.device.get_rain_protection_end_timestamp = AsyncMock(return_value=None)
+
+    await coordinator.async_refresh_rain_state()
+
+    coordinator.device.get_rain_protection_end_timestamp.assert_not_awaited()
+
+
+async def test_coordinator_keeps_the_end_time_when_the_read_fails(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """A read that did not come through must not read as a mower free to work."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.async_update_listeners = MagicMock()
+
+    ahead = int(dt_util.utcnow().timestamp()) + 3600
+    coordinator.device.get_rain_protection_end_timestamp = AsyncMock(return_value=ahead)
+    assert await coordinator.async_fetch_rain_protection_end() is True
+
+    coordinator.device.get_rain_protection_end_timestamp = AsyncMock(return_value=None)
+    assert await coordinator.async_fetch_rain_protection_end() is False
+
+    assert coordinator.rain_protection_active is True
+    assert coordinator.rain_protection_end_time == datetime.fromtimestamp(ahead, tz=timezone.utc)
+
+
+async def test_coordinator_clears_the_end_time_when_the_mower_is_free(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """Zero is the device saying it is free to work, so the time has to go."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.async_update_listeners = MagicMock()
+
+    ahead = int(dt_util.utcnow().timestamp()) + 3600
+    coordinator.device.get_rain_protection_end_timestamp = AsyncMock(return_value=ahead)
+    await coordinator.async_fetch_rain_protection_end()
+
+    coordinator.device.get_rain_protection_end_timestamp = AsyncMock(return_value=0)
+    assert await coordinator.async_fetch_rain_protection_end() is True
+
+    assert coordinator.rain_protection_end_time is None
+    assert coordinator.rain_protection_active is False

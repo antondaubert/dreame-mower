@@ -137,6 +137,9 @@
       },
       "consumable_robot_health": {
         "name": "Wartungszustand"
+      },
+      "rain_protection_end": {
+        "name": "Mähen wird nach Regenschutz fortgesetzt"
       }
     },
     "binary_sensor": {
@@ -166,11 +169,17 @@
     "number": {
       "cutting_height": {
         "name": "Schnitthöhe"
+      },
+      "rain_delay": {
+        "name": "Wartezeit nach Regen"
       }
     },
     "switch": {
       "charging_period": {
         "name": "Ladezeitraum"
+      },
+      "rain_protection": {
+        "name": "Regenschutz"
       }
     },
     "time": {

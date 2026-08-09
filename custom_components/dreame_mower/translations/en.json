@@ -137,6 +137,9 @@
       },
       "consumable_robot_health": {
         "name": "Robot Maintenance Health"
+      },
+      "rain_protection_end": {
+        "name": "Mowing Resumes After Rain Protection"
       }
     },
     "binary_sensor": {
@@ -166,11 +169,17 @@
     "number": {
       "cutting_height": {
         "name": "Cutting Height"
+      },
+      "rain_delay": {
+        "name": "After-Rain Delay"
       }
     },
     "switch": {
       "charging_period": {
         "name": "Charging Period"
+      },
+      "rain_protection": {
+        "name": "Rain Protection"
       }
     },
     "time": {

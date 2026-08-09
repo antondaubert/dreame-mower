@@ -137,6 +137,9 @@
       },
       "consumable_robot_health": {
         "name": "Stan konserwacji"
+      },
+      "rain_protection_end": {
+        "name": "Wznowienie koszenia po ochronie przed deszczem"
       }
     },
     "binary_sensor": {
@@ -166,11 +169,17 @@
     "number": {
       "cutting_height": {
         "name": "Wysokość koszenia"
+      },
+      "rain_delay": {
+        "name": "Opóźnienie po deszczu"
       }
     },
     "switch": {
       "charging_period": {
         "name": "Okres ładowania"
+      },
+      "rain_protection": {
+        "name": "Ochrona przed deszczem"
       }
     },
     "time": {

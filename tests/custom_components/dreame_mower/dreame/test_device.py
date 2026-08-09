@@ -2457,6 +2457,7 @@ _DEVICE_SETTINGS = {
     "BAT": [15, 95, 1, 0, 660, 1080],
     "DND": [0, 1080, 480],
     "VOL": 10,
+    "WRP": [1, 8, 0],
 }
 
 
@@ -2578,3 +2579,180 @@ async def test_set_charging_period_rejects_times_outside_a_day(device):
         await device.set_charging_period(start_minutes=1440)
 
     assert writes == []
+
+
+def _rain_responder(settings=None, end_timestamp=0):
+    """Build an action responder serving the rain settings, its writes and its end time."""
+    served_settings = dict(_DEVICE_SETTINGS if settings is None else settings)
+    writes: list[dict] = []
+
+    def responder(siid, aiid, parameters, retry_count):
+        payload = parameters[0]
+        if payload["t"] == "RPET":
+            return {"code": 0, "out": [{"r": 0, "d": {"endTime": end_timestamp}}]}
+
+        if payload["m"] == "g":
+            return {"code": 0, "out": [{"r": 0, "d": dict(served_settings)}]}
+
+        writes.append(payload["d"])
+        record = [payload["d"]["value"], payload["d"]["time"], payload["d"]["sen"]]
+        served_settings["WRP"] = record
+        return {"code": 0, "out": [{"r": 0, "d": {"value": list(record)}}]}
+
+    return responder, writes
+
+
+@pytest.mark.asyncio
+async def test_get_rain_settings_decodes_the_rain_record(device):
+    """The rain record carries the switch, the after-rain delay and the sensitivity."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result, _ = _rain_responder()
+
+    settings = await device.get_rain_settings()
+
+    assert settings == {
+        "rain_protection_enabled": True,
+        "rain_delay_hours": 8,
+        "rain_sensitivity": 0,
+        "raw": [1, 8, 0],
+    }
+
+
+@pytest.mark.asyncio
+async def test_get_rain_settings_pads_a_record_without_a_sensitivity(device):
+    """Firmware that predates the sensitivity slot still yields a usable record."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result, _ = _rain_responder({"WRP": [1, 6]})
+
+    settings = await device.get_rain_settings()
+
+    assert settings is not None
+    assert settings["rain_delay_hours"] == 6
+    assert settings["rain_sensitivity"] == 0
+
+
+@pytest.mark.asyncio
+async def test_get_rain_settings_fails_without_a_rain_record(device):
+    """A settings record without the rain key carries nothing to decode."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result, _ = _rain_responder({"VOL": 10})
+
+    assert await device.get_rain_settings() is None
+
+
+@pytest.mark.asyncio
+async def test_set_rain_protection_writes_the_requested_settings(device):
+    """Setting the delay should write the switch, the delay and the sensitivity together."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result, writes = _rain_responder()
+
+    settings = await device.set_rain_protection(enabled=True, delay_hours=3)
+
+    assert writes == [{"value": 1, "time": 3, "sen": 0}]
+    assert settings is not None
+    assert settings["rain_protection_enabled"] is True
+    assert settings["rain_delay_hours"] == 3
+
+
+@pytest.mark.asyncio
+async def test_set_rain_protection_keeps_the_delay_when_only_toggled(device):
+    """Switching rain protection off must leave the delay the device holds untouched."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result, writes = _rain_responder()
+
+    settings = await device.set_rain_protection(enabled=False)
+
+    assert writes == [{"value": 0, "time": 8, "sen": 0}]
+    assert settings is not None
+    assert settings["rain_protection_enabled"] is False
+
+
+@pytest.mark.asyncio
+async def test_set_rain_protection_preserves_the_sensitivity(device):
+    """The sensitivity the device holds has to round-trip through every write."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result, writes = _rain_responder({"WRP": [0, 0, 1]})
+
+    await device.set_rain_protection(enabled=True)
+
+    assert writes == [{"value": 1, "time": 0, "sen": 1}]
+
+
+@pytest.mark.asyncio
+async def test_set_rain_protection_rejects_a_delay_the_record_cannot_carry(device):
+    """Delays outside the accepted range are rejected before any request."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result, writes = _rain_responder()
+
+    with pytest.raises(ValueError):
+        await device.set_rain_protection(delay_hours=26)
+
+    with pytest.raises(ValueError):
+        await device.set_rain_protection(delay_hours=-1)
+
+    assert writes == []
+
+
+@pytest.mark.asyncio
+async def test_rain_protection_end_time_is_zero_while_rain_holds_nothing_back(device):
+    """The device reports zero when it is free to work, which is not a time."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result, _ = _rain_responder(end_timestamp=0)
+
+    assert await device.get_rain_protection_end_timestamp() == 0
+
+
+@pytest.mark.asyncio
+async def test_rain_protection_end_time_returns_the_reported_timestamp(device):
+    """While rain protection holds the mower back the device names the resume time."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result, _ = _rain_responder(end_timestamp=1782000000)
+
+    assert await device.get_rain_protection_end_timestamp() == 1782000000
+    _, _, parameters, _ = device._cloud_device.action_calls[-1]
+    assert parameters == [{"m": "g", "t": "RPET"}]
+
+
+@pytest.mark.asyncio
+async def test_set_rain_protection_reports_a_delay_the_device_kept(device):
+    """The device keeps its delay while protection is off; the state must say so."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+
+    served = {"WRP": [0, 8, 0]}
+
+    def responder(siid, aiid, parameters, retry_count):
+        payload = parameters[0]
+        if payload["m"] == "g":
+            return {"code": 0, "out": [{"r": 0, "d": dict(served)}]}
+        # Only the switch is taken; the stored delay stays as it is.
+        record = [payload["d"]["value"], served["WRP"][1], payload["d"]["sen"]]
+        return {"code": 0, "out": [{"r": 0, "d": {"value": record}}]}
+
+    device._cloud_device.action_result = responder
+
+    settings = await device.set_rain_protection(delay_hours=3)
+
+    assert settings is not None
+    assert settings["rain_delay_hours"] == 8
+
+
+@pytest.mark.asyncio
+async def test_set_rain_protection_fills_in_a_missing_sensitivity(device):
+    """A record that arrived without the slot still has to be written back in full."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result, writes = _rain_responder({"WRP": [1, 6]})
+
+    await device.set_rain_protection(enabled=False)
+
+    assert writes == [{"value": 0, "time": 6, "sen": 0}]

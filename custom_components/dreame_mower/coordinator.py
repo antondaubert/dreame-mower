@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import logging
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.util import dt as dt_util
 
 from homeassistant.const import CONF_NAME, CONF_PASSWORD, CONF_USERNAME
 
@@ -37,11 +39,17 @@ from .dreame.property import (
 from .dreame.const import (
     CURRENT_MAP_ID_PROPERTY_NAME,
     POWER_STATE_PROPERTY,
+    RAIN_DELAY_MIN_HOURS,
     DeviceStatus,
     MowingPreferenceMode,
     STATUS_PROPERTY,
+    rain_delay_max_hours,
     supports_cutting_height,
 )
+
+# Device codes the mower reports while rain keeps it from working. Seeing one is
+# the cue to re-read when rain protection will let it work again.
+_RAIN_DEVICE_CODES = frozenset({56, 57, 58})
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -75,6 +83,8 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._selected_spot_area_id: int | None = None
         self._consumable_values: list[int] | None = None
         self._charging_settings: dict[str, Any] | None = None
+        self._rain_settings: dict[str, Any] | None = None
+        self._rain_protection_end_timestamp: int | None = None
 
         # Initialize coordinator with no automatic polling (device will push updates)
         super().__init__(
@@ -411,6 +421,106 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return True
 
     @property
+    def supports_rain_protection(self) -> bool:
+        """Return whether the device reported rain protection settings."""
+        return self._rain_settings is not None
+
+    @property
+    def rain_protection_enabled(self) -> bool | None:
+        """Return whether rain protection is on, if it is known."""
+        if self._rain_settings is None:
+            return None
+        return bool(self._rain_settings["rain_protection_enabled"])
+
+    @property
+    def rain_delay_hours(self) -> int | None:
+        """Return how long the mower waits after rain, in whole hours."""
+        if self._rain_settings is None:
+            return None
+        return int(self._rain_settings["rain_delay_hours"])
+
+    @property
+    def rain_delay_min_hours(self) -> int:
+        """Return the shortest after-rain delay the mower accepts."""
+        return RAIN_DELAY_MIN_HOURS
+
+    @property
+    def rain_delay_max_hours(self) -> int:
+        """Return the longest after-rain delay this model accepts."""
+        return rain_delay_max_hours(self.device_model)
+
+    @property
+    def rain_protection_end_time(self) -> datetime | None:
+        """Return when rain protection lets the mower work again, if it is holding it back."""
+        if self._rain_protection_end_timestamp is None:
+            return None
+        return datetime.fromtimestamp(self._rain_protection_end_timestamp, tz=timezone.utc)
+
+    @property
+    def rain_protection_active(self) -> bool:
+        """Return whether rain is currently keeping the mower from working.
+
+        The device leaves the end time it last reported in place, so a time that
+        has passed says nothing about the mower being held back any more.
+        """
+        end_time = self.rain_protection_end_time
+        return end_time is not None and end_time > dt_util.utcnow()
+
+    async def async_fetch_rain_settings(self) -> bool:
+        """Read the rain protection settings from the device."""
+        settings = await self.device.get_rain_settings()
+        if settings is None:
+            return False
+
+        self._rain_settings = settings
+        self.async_update_listeners()
+        return True
+
+    async def async_fetch_rain_protection_end(self) -> bool:
+        """Read when rain protection lets the mower work again.
+
+        A read that did not come through leaves the known end time in place: it
+        is the state the entities report on, and dropping it would read as the
+        mower being free to work.
+        """
+        end_timestamp = await self.device.get_rain_protection_end_timestamp()
+        if end_timestamp is None:
+            return False
+
+        self._rain_protection_end_timestamp = end_timestamp or None
+        self.async_update_listeners()
+        return True
+
+    async def async_refresh_rain_state(self) -> None:
+        """Re-read both the rain protection settings and its end time."""
+        if not await self.async_fetch_rain_settings():
+            # A device with no rain settings has no protection that could expire.
+            return
+
+        await self.async_fetch_rain_protection_end()
+
+    async def async_set_rain_protection(
+        self,
+        enabled: bool | None = None,
+        delay_hours: int | None = None,
+    ) -> bool:
+        """Update rain protection, keeping every unspecified part as is."""
+        settings = await self.device.set_rain_protection(
+            enabled=enabled,
+            delay_hours=delay_hours,
+        )
+        if settings is None:
+            return False
+
+        self._rain_settings = settings
+        self.async_update_listeners()
+
+        # Switching protection off releases a mower rain is holding back, so the
+        # end time it reported no longer stands.
+        await self.async_fetch_rain_protection_end()
+        return True
+
+    @property
     def task_target_map_id(self) -> int | None:
         """Return the map targeted by the active task, if known."""
         return self.device.task_target_map_id
@@ -565,6 +675,11 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 ))
 
         elif property_name == DEVICE_CODE_INFO_PROPERTY_NAME and isinstance(value, dict):
+            if value.get(NOTIFICATION_CODE_FIELD) in _RAIN_DEVICE_CODES and self.supports_rain_protection:
+                # Rain just took the mower off the lawn, so it now knows when it
+                # may resume; read that time instead of waiting for the next poll.
+                self.hass.create_task(self._async_refresh_rain_protection_end())
+
             if NOTIFICATION_INFORMATION in notify_options:
                 code = value[NOTIFICATION_CODE_FIELD]
                 name = value[NOTIFICATION_NAME_FIELD]
@@ -601,6 +716,13 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self.async_fetch_cutting_heights()
         except Exception as ex:
             _LOGGER.warning("Cutting height refresh on map change failed: %s", ex)
+
+    async def _async_refresh_rain_protection_end(self) -> None:
+        """Re-read the rain protection end time after the mower reported rain."""
+        try:
+            await self.async_fetch_rain_protection_end()
+        except Exception as ex:
+            _LOGGER.warning("Rain protection end time refresh failed: %s", ex)
 
     async def _async_refresh_consumables_on_charging(self) -> None:
         """Fetch updated CMS counters when the device transitions to charging."""

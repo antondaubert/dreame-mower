@@ -1,5 +1,7 @@
 """Test minimal sensor entities."""
 
+from datetime import datetime, timezone
+
 import pytest
 from unittest.mock import MagicMock
 
@@ -17,6 +19,7 @@ from custom_components.dreame_mower.sensor import (
     DreameMowerDeviceCodeSensor,
     DreameMowerTaskSensor,
     DreameMowerProgressSensor,
+    DreameMowerRainProtectionEndSensor,
 )
 from custom_components.dreame_mower.config_flow import (
     CONF_ACCOUNT_TYPE,
@@ -278,3 +281,25 @@ async def test_progress_sensor_none(mock_coordinator):
     sensor = DreameMowerProgressSensor(mock_coordinator)
     assert sensor.native_value is None
 
+
+
+async def test_rain_protection_end_sensor_reports_when_mowing_resumes(mock_coordinator):
+    """While rain holds the mower back the sensor names the time it may resume."""
+    resumes_at = datetime(2026, 8, 8, 18, 0, tzinfo=timezone.utc)
+    mock_coordinator.rain_protection_active = True
+    mock_coordinator.rain_protection_end_time = resumes_at
+
+    sensor = DreameMowerRainProtectionEndSensor(mock_coordinator)
+
+    assert sensor.unique_id == "aa:bb:cc:dd:ee:ff_rain_protection_end"
+    assert sensor.native_value == resumes_at
+
+
+async def test_rain_protection_end_sensor_is_unknown_while_the_mower_is_free(mock_coordinator):
+    """An end time that has passed must not linger as the sensor state."""
+    mock_coordinator.rain_protection_active = False
+    mock_coordinator.rain_protection_end_time = datetime(2026, 8, 8, 6, 0, tzinfo=timezone.utc)
+
+    sensor = DreameMowerRainProtectionEndSensor(mock_coordinator)
+
+    assert sensor.native_value is None

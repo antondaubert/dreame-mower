@@ -20,6 +20,9 @@ Examples:
   .venv/bin/python dev/device_cli.py charging-period
     .venv/bin/python dev/device_cli.py charging-period --enable --start 22:00 --end 06:00
     .venv/bin/python dev/device_cli.py charging-period --disable
+  .venv/bin/python dev/device_cli.py rain-protection
+    .venv/bin/python dev/device_cli.py rain-protection --enable --delay 6
+    .venv/bin/python dev/device_cli.py rain-protection --disable
 """
 
 from __future__ import annotations
@@ -27,6 +30,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 import functools
 import getpass
 import json
@@ -41,7 +45,12 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from custom_components.dreame_mower.dreame import const as dreame_const
-from custom_components.dreame_mower.dreame.const import MINUTES_PER_DAY, MowingPreferenceMode, PropertyIdentifier
+from custom_components.dreame_mower.dreame.const import (
+    MINUTES_PER_DAY,
+    RAIN_DELAY_RESUME_IMMEDIATELY_HOURS,
+    MowingPreferenceMode,
+    PropertyIdentifier,
+)
 from custom_components.dreame_mower.dreame.device import DreameMowerDevice, MowingMode
 
 VALID_COUNTRIES = ["eu", "cn", "us", "ru", "sg"]
@@ -453,6 +462,37 @@ def build_parser() -> argparse.ArgumentParser:
         help="End of the charging period as HH:MM; before the start time it runs past midnight",
     )
 
+    rain_parser = subparsers.add_parser(
+        "rain-protection",
+        help="Read or change the rain protection settings",
+    )
+    add_common_args(rain_parser)
+    rain_state = rain_parser.add_mutually_exclusive_group()
+    rain_state.add_argument(
+        "--enable",
+        dest="enabled",
+        action="store_true",
+        default=None,
+        help="Turn rain protection on",
+    )
+    rain_state.add_argument(
+        "--disable",
+        dest="enabled",
+        action="store_false",
+        default=None,
+        help="Turn rain protection off",
+    )
+    rain_parser.add_argument(
+        "--delay",
+        type=int,
+        default=None,
+        help=(
+            "Hours to wait after rain before resuming; 0 stays docked until started again "
+            f"and {RAIN_DELAY_RESUME_IMMEDIATELY_HOURS} resumes as soon as the rain stops "
+            "on models that navigate by camera"
+        ),
+    )
+
     pause_parser = subparsers.add_parser("pause", help="Pause the mower")
     add_common_args(pause_parser)
 
@@ -635,6 +675,50 @@ async def run_command(device: DreameMowerDevice, args: argparse.Namespace) -> di
             "requested_start": format_time_of_day(args.start),
             "requested_end": format_time_of_day(args.end),
             "charging": describe_charging_settings(charging_settings),
+            "state": build_device_snapshot(device),
+        }
+
+    if args.command == "rain-protection":
+        requested_change = args.enabled is not None or args.delay is not None
+        try:
+            if requested_change:
+                rain_settings = await device.set_rain_protection(
+                    enabled=args.enabled,
+                    delay_hours=args.delay,
+                )
+            else:
+                rain_settings = await device.get_rain_settings()
+        except ValueError as ex:
+            return {
+                "ok": False,
+                "command": args.command,
+                "error": str(ex),
+            }
+
+        if rain_settings is None:
+            return {
+                "ok": False,
+                "command": args.command,
+                "error": "The device did not report its rain protection settings",
+            }
+
+        # The device only takes a new delay while rain protection is on, so a
+        # request can come back applied only in part.
+        applied = args.delay is None or rain_settings["rain_delay_hours"] == args.delay
+
+        end_timestamp = await device.get_rain_protection_end_timestamp()
+        return {
+            "ok": applied,
+            "command": args.command,
+            "requested_enabled": args.enabled,
+            "requested_delay_hours": args.delay,
+            "delay_applied": applied,
+            "rain": rain_settings,
+            "resumes_at": (
+                datetime.fromtimestamp(end_timestamp, tz=timezone.utc).isoformat()
+                if end_timestamp
+                else None
+            ),
             "state": build_device_snapshot(device),
         }
 

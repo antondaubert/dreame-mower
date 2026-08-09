@@ -26,14 +26,25 @@ async def async_setup_entry(
     """Set up Dreame Mower switches from a config entry."""
     coordinator: DreameMowerCoordinator = hass.data[DOMAIN][entry.entry_id][DATA_COORDINATOR]
 
-    if not coordinator.supports_charging_period:
+    switches: list[SwitchEntity] = []
+
+    if coordinator.supports_charging_period:
+        switches.append(DreameMowerChargingPeriodSwitch(coordinator))
+    else:
         _LOGGER.debug(
             "Skipping the charging period switch: device %s reported no charging settings",
             coordinator.device_name,
         )
-        return
 
-    async_add_entities([DreameMowerChargingPeriodSwitch(coordinator)])
+    if coordinator.supports_rain_protection:
+        switches.append(DreameMowerRainProtectionSwitch(coordinator))
+    else:
+        _LOGGER.debug(
+            "Skipping the rain protection switch: device %s reported no rain settings",
+            coordinator.device_name,
+        )
+
+    async_add_entities(switches)
 
 
 class DreameMowerChargingPeriodSwitch(DreameMowerEntity, SwitchEntity):
@@ -69,4 +80,40 @@ class DreameMowerChargingPeriodSwitch(DreameMowerEntity, SwitchEntity):
         if not await self.coordinator.async_set_charging_period(enabled=enabled):
             raise HomeAssistantError(
                 f"Failed to turn the charging period {'on' if enabled else 'off'}"
+            )
+
+
+class DreameMowerRainProtectionSwitch(DreameMowerEntity, SwitchEntity):
+    """Switch entity for rain protection.
+
+    While it is on the mower returns to its station when it detects rain and
+    waits out the configured delay before it picks the task back up.
+    """
+
+    _attr_translation_key = "rain_protection"
+    _attr_icon = "mdi:weather-rainy"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator: DreameMowerCoordinator) -> None:
+        """Initialize the rain protection switch."""
+        super().__init__(coordinator, "rain_protection")
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return whether rain protection is on, if it is known."""
+        return self.coordinator.rain_protection_enabled
+
+    async def async_turn_on(self, **kwargs) -> None:
+        """Turn rain protection on."""
+        await self._async_set_enabled(True)
+
+    async def async_turn_off(self, **kwargs) -> None:
+        """Turn rain protection off."""
+        await self._async_set_enabled(False)
+
+    async def _async_set_enabled(self, enabled: bool) -> None:
+        """Switch rain protection, keeping the configured delay as it is."""
+        if not await self.coordinator.async_set_rain_protection(enabled=enabled):
+            raise HomeAssistantError(
+                f"Failed to turn rain protection {'on' if enabled else 'off'}"
             )

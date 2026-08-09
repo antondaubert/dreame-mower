@@ -193,6 +193,7 @@ def cutting_height_max_cm(model: str) -> float:
 # key. Only the keys the integration understands are named here, every other key
 # is passed through as the device reports it.
 DEVICE_SETTINGS_BATTERY_KEY = "BAT"
+DEVICE_SETTINGS_RAIN_KEY = "WRP"
 
 # Battery and charging settings ("BAT")
 #
@@ -208,6 +209,39 @@ BATTERY_SETTING_CHARGING_PERIOD_ENABLED_INDEX = 3
 BATTERY_SETTING_CHARGING_PERIOD_START_INDEX = 4
 BATTERY_SETTING_CHARGING_PERIOD_END_INDEX = 5
 BATTERY_SETTING_LENGTH = 6
+
+# Rain protection settings ("WRP")
+#
+# The record holds the rain protection switch, the delay the mower waits after
+# rain before it picks an interrupted task back up, and how much water it takes
+# for the mower to consider it raining. The delay is in whole hours and only
+# takes effect the next time rain protection triggers.
+#
+# Older firmware reports the record without the sensitivity slot; the slot is
+# then assumed to be the least sensitive setting so the record can still be
+# written back in full.
+RAIN_SETTING_ENABLED_INDEX = 0
+RAIN_SETTING_DELAY_INDEX = 1
+RAIN_SETTING_SENSITIVITY_INDEX = 2
+RAIN_SETTING_LENGTH = 3
+RAIN_SETTING_MINIMUM_LENGTH = 2
+RAIN_SETTING_DEFAULT_SENSITIVITY = 0
+
+# A delay of zero means the mower stays docked after rain until it is started
+# again. Models that navigate by camera accept one step beyond the hourly range,
+# which makes them resume as soon as the rain stops instead of drying off first.
+RAIN_DELAY_MIN_HOURS = 0
+RAIN_DELAY_MAX_HOURS = 24
+RAIN_DELAY_RESUME_IMMEDIATELY_HOURS = 25
+_RESUME_IMMEDIATELY_MODELS = ("g2408", "g2420")
+
+
+def rain_delay_max_hours(model: str) -> int:
+    """Return the largest after-rain delay the model accepts."""
+    if _model_code(model).startswith(_RESUME_IMMEDIATELY_MODELS):
+        return RAIN_DELAY_RESUME_IMMEDIATELY_HOURS
+    return RAIN_DELAY_MAX_HOURS
+
 
 # Times inside the settings record are minutes since midnight.
 MINUTES_PER_DAY = 1440
