@@ -114,7 +114,7 @@ from .const import (
     DEVICE_SETTINGS_RAIN_KEY,
     MINUTES_PER_DAY,
     RAIN_DELAY_MIN_HOURS,
-    RAIN_DELAY_RESUME_IMMEDIATELY_HOURS,
+    RAIN_DELAY_MAX_HOURS,
     RAIN_SETTING_DEFAULT_SENSITIVITY,
     RAIN_SETTING_DELAY_INDEX,
     RAIN_SETTING_ENABLED_INDEX,
@@ -1669,18 +1669,22 @@ class DreameMowerDevice:
             "raw": list(record),
         }
 
-    async def get_charging_settings(self) -> dict[str, Any] | None:
-        """Read the battery and charging settings, or None when unavailable."""
-        settings = await self.get_device_settings()
-        if settings is None:
-            return None
-
+    def decode_charging_settings(self, settings: dict[str, Any]) -> dict[str, Any] | None:
+        """Pick the battery and charging settings out of a settings record."""
         record = self._normalize_battery_settings(settings.get(DEVICE_SETTINGS_BATTERY_KEY))
         if record is None:
             _LOGGER.error("Device settings carry no battery record: %s", settings)
             return None
 
         return self._decode_battery_settings(record)
+
+    async def get_charging_settings(self) -> dict[str, Any] | None:
+        """Read the battery and charging settings, or None when unavailable."""
+        settings = await self.get_device_settings()
+        if settings is None:
+            return None
+
+        return self.decode_charging_settings(settings)
 
     @staticmethod
     def _validate_time_of_day(minutes: int, label: str) -> int:
@@ -1784,18 +1788,22 @@ class DreameMowerDevice:
             "raw": list(record),
         }
 
-    async def get_rain_settings(self) -> dict[str, Any] | None:
-        """Read the rain protection settings, or None when unavailable."""
-        settings = await self.get_device_settings()
-        if settings is None:
-            return None
-
+    def decode_rain_settings(self, settings: dict[str, Any]) -> dict[str, Any] | None:
+        """Pick the rain protection settings out of a settings record."""
         record = self._normalize_rain_settings(settings.get(DEVICE_SETTINGS_RAIN_KEY))
         if record is None:
             _LOGGER.error("Device settings carry no rain protection record: %s", settings)
             return None
 
         return self._decode_rain_settings(record)
+
+    async def get_rain_settings(self) -> dict[str, Any] | None:
+        """Read the rain protection settings, or None when unavailable."""
+        settings = await self.get_device_settings()
+        if settings is None:
+            return None
+
+        return self.decode_rain_settings(settings)
 
     @staticmethod
     def _validate_rain_delay(delay_hours: int) -> int:
@@ -1807,10 +1815,10 @@ class DreameMowerDevice:
                 f"The after-rain delay must be a number of hours; got {delay_hours!r}"
             ) from ex
 
-        if not RAIN_DELAY_MIN_HOURS <= normalized_delay <= RAIN_DELAY_RESUME_IMMEDIATELY_HOURS:
+        if not RAIN_DELAY_MIN_HOURS <= normalized_delay <= RAIN_DELAY_MAX_HOURS:
             raise ValueError(
                 f"The after-rain delay must be between {RAIN_DELAY_MIN_HOURS} and "
-                f"{RAIN_DELAY_RESUME_IMMEDIATELY_HOURS} hours; got {normalized_delay}"
+                f"{RAIN_DELAY_MAX_HOURS} hours; got {normalized_delay}"
             )
 
         return normalized_delay

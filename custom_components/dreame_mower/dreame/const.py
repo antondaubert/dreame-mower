@@ -227,20 +227,22 @@ RAIN_SETTING_LENGTH = 3
 RAIN_SETTING_MINIMUM_LENGTH = 2
 RAIN_SETTING_DEFAULT_SENSITIVITY = 0
 
+# The code the device reports while rain protection is keeping it off the lawn.
+# It shows up both as a one-off announcement on the device code property and as
+# a live bit in the heartbeat.
+DEVICE_CODE_BAD_WEATHER_PROTECTING = 56
+# Codes the device reports around rain, any of which means its plans changed
+# because of the weather.
+RAIN_DEVICE_CODES = frozenset({
+    DEVICE_CODE_BAD_WEATHER_PROTECTING,
+    57,  # a scheduled task was interrupted by rain
+    58,  # a scheduled task was suspended because of rain
+})
+
 # A delay of zero means the mower stays docked after rain until it is started
-# again. Models that navigate by camera accept one step beyond the hourly range,
-# which makes them resume as soon as the rain stops instead of drying off first.
+# again, and is offered ahead of the hourly delays rather than after them.
 RAIN_DELAY_MIN_HOURS = 0
 RAIN_DELAY_MAX_HOURS = 24
-RAIN_DELAY_RESUME_IMMEDIATELY_HOURS = 25
-_RESUME_IMMEDIATELY_MODELS = ("g2408", "g2420")
-
-
-def rain_delay_max_hours(model: str) -> int:
-    """Return the largest after-rain delay the model accepts."""
-    if _model_code(model).startswith(_RESUME_IMMEDIATELY_MODELS):
-        return RAIN_DELAY_RESUME_IMMEDIATELY_HOURS
-    return RAIN_DELAY_MAX_HOURS
 
 
 # Times inside the settings record are minutes since midnight.

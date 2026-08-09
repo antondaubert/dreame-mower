@@ -6,12 +6,14 @@ from typing import Any
 
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DATA_COORDINATOR, DOMAIN
 from .coordinator import DreameMowerCoordinator
+from .dreame.const import RAIN_DELAY_MAX_HOURS, RAIN_DELAY_MIN_HOURS
 from .dreame.device import MowingMode
 from .entity import DreameMowerEntity
 
@@ -22,6 +24,17 @@ _MOWING_MODE_LABELS: dict[MowingMode, str] = {
     MowingMode.SPOT: "Spot",
 }
 
+# The after-rain delay is offered as whole hours, led by the option to stay
+# docked, which is a behaviour rather than a duration.
+_RAIN_DELAY_DO_NOT_RESUME_LABEL = "Don't mow after rain"
+
+
+def _rain_delay_label(hours: int) -> str:
+    """Return the label the after-rain delay of the given length is offered as."""
+    if hours == RAIN_DELAY_MIN_HOURS:
+        return _RAIN_DELAY_DO_NOT_RESUME_LABEL
+    return f"{hours} h"
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -30,15 +43,18 @@ async def async_setup_entry(
 ) -> None:
     """Set up Dreame Mower selects from a config entry."""
     coordinator: DreameMowerCoordinator = hass.data[DOMAIN][entry.entry_id][DATA_COORDINATOR]
-    async_add_entities(
-        [
-            DreameMowerMapSelect(coordinator),
-            DreameMowerMowingActionSelect(coordinator),
-            DreameMowerEdgeSelect(coordinator),
-            DreameMowerZoneSelect(coordinator),
-            DreameMowerSpotSelect(coordinator),
-        ]
-    )
+    selects: list[SelectEntity] = [
+        DreameMowerMapSelect(coordinator),
+        DreameMowerMowingActionSelect(coordinator),
+        DreameMowerEdgeSelect(coordinator),
+        DreameMowerZoneSelect(coordinator),
+        DreameMowerSpotSelect(coordinator),
+    ]
+
+    if coordinator.supports_rain_protection:
+        selects.append(DreameMowerRainDelaySelect(coordinator))
+
+    async_add_entities(selects)
 
 
 class DreameMowerMapSelect(DreameMowerEntity, SelectEntity):
@@ -273,3 +289,56 @@ class DreameMowerSpotSelect(DreameMowerEntity, SelectEntity):
             if self._option_label(spot_area) == option:
                 return int(spot_area["id"])
         return None
+
+
+class DreameMowerRainDelaySelect(DreameMowerEntity, SelectEntity):
+    """Select entity for how long the mower waits after rain before it resumes.
+
+    The mower offers whole hours, preceded by the option to stay docked until it
+    is started again.
+
+    A changed delay applies the next time rain protection triggers, and the mower
+    only takes a new delay while rain protection is on; with it off it keeps the
+    delay it holds.
+    """
+
+    _attr_translation_key = "rain_delay"
+    _attr_icon = "mdi:weather-rainy"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator: DreameMowerCoordinator) -> None:
+        """Initialize the after-rain delay entity."""
+        super().__init__(coordinator, "rain_delay")
+        self._hours_by_label = {
+            _rain_delay_label(hours): hours
+            for hours in range(RAIN_DELAY_MIN_HOURS, RAIN_DELAY_MAX_HOURS + 1)
+        }
+
+    @property
+    def options(self) -> list[str]:
+        """Return every after-rain delay the model offers."""
+        return list(self._hours_by_label)
+
+    @property
+    def current_option(self) -> str | None:
+        """Return the configured after-rain delay, if it is known."""
+        delay_hours = self.coordinator.rain_delay_hours
+        if delay_hours is None:
+            return None
+        return _rain_delay_label(delay_hours)
+
+    async def async_select_option(self, option: str) -> None:
+        """Set how long the mower waits after rain."""
+        delay_hours = self._hours_by_label.get(option)
+        if delay_hours is None:
+            raise ValueError(f"Unknown after-rain delay option: {option}")
+
+        if not await self.coordinator.async_set_rain_protection(delay_hours=delay_hours):
+            raise HomeAssistantError(f"Failed to set the after-rain delay to {option}")
+
+        if self.coordinator.rain_delay_hours != delay_hours:
+            raise HomeAssistantError(
+                f"The mower kept its after-rain delay of "
+                f"{_rain_delay_label(self.coordinator.rain_delay_hours or 0)} instead of "
+                f"{option}; it only takes a new delay while rain protection is on"
+            )

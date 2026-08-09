@@ -169,9 +169,6 @@
     "number": {
       "cutting_height": {
         "name": "Vágási magasság"
-      },
-      "rain_delay": {
-        "name": "Várakozás eső után"
       }
     },
     "switch": {
@@ -188,6 +185,11 @@
       },
       "charging_period_end": {
         "name": "Töltési időszak vége"
+      }
+    },
+    "select": {
+      "rain_delay": {
+        "name": "Várakozás eső után"
       }
     }
   }

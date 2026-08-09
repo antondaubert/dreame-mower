@@ -169,9 +169,6 @@
     "number": {
       "cutting_height": {
         "name": "Klipphöjd"
-      },
-      "rain_delay": {
-        "name": "Väntetid efter regn"
       }
     },
     "switch": {
@@ -188,6 +185,11 @@
       },
       "charging_period_end": {
         "name": "Laddningsperiodens slut"
+      }
+    },
+    "select": {
+      "rain_delay": {
+        "name": "Väntetid efter regn"
       }
     }
   }

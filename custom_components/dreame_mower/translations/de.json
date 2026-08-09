@@ -169,9 +169,6 @@
     "number": {
       "cutting_height": {
         "name": "Schnitthöhe"
-      },
-      "rain_delay": {
-        "name": "Wartezeit nach Regen"
       }
     },
     "switch": {
@@ -188,6 +185,11 @@
       },
       "charging_period_end": {
         "name": "Ladezeitraum Ende"
+      }
+    },
+    "select": {
+      "rain_delay": {
+        "name": "Wartezeit nach Regen"
       }
     }
   }

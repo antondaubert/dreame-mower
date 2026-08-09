@@ -169,9 +169,6 @@
     "number": {
       "cutting_height": {
         "name": "Висота скошування"
-      },
-      "rain_delay": {
-        "name": "Затримка після дощу"
       }
     },
     "switch": {
@@ -188,6 +185,11 @@
       },
       "charging_period_end": {
         "name": "Кінець періоду заряджання"
+      }
+    },
+    "select": {
+      "rain_delay": {
+        "name": "Затримка після дощу"
       }
     }
   }

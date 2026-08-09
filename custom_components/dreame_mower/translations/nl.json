@@ -169,9 +169,6 @@
     "number": {
       "cutting_height": {
         "name": "Maaihoogte"
-      },
-      "rain_delay": {
-        "name": "Wachttijd na regen"
       }
     },
     "switch": {
@@ -188,6 +185,11 @@
       },
       "charging_period_end": {
         "name": "Einde laadperiode"
+      }
+    },
+    "select": {
+      "rain_delay": {
+        "name": "Wachttijd na regen"
       }
     }
   }

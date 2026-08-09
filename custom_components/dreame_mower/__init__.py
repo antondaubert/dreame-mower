@@ -151,12 +151,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
         )
 
-    # Keep the rain protection state current: the mower reports neither when its
-    # protection expires nor when the settings are changed from elsewhere.
+    # Retire a resume time that has passed: the mower reports the time it will
+    # work again when rain stops it, but nothing when that time simply runs out.
     if coordinator.supports_rain_protection:
         async def _async_poll_rain(now=None) -> None:
             try:
-                await coordinator.async_refresh_rain_state()
+                await coordinator.async_fetch_rain_protection_end()
             except Exception as ex:
                 _LOGGER.warning("Rain protection poll failed: %s", ex)
 

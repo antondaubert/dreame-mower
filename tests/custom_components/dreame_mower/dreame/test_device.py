@@ -2692,7 +2692,7 @@ async def test_set_rain_protection_rejects_a_delay_the_record_cannot_carry(devic
     device._cloud_device.action_result, writes = _rain_responder()
 
     with pytest.raises(ValueError):
-        await device.set_rain_protection(delay_hours=26)
+        await device.set_rain_protection(delay_hours=25)
 
     with pytest.raises(ValueError):
         await device.set_rain_protection(delay_hours=-1)
@@ -2756,3 +2756,4 @@ async def test_set_rain_protection_fills_in_a_missing_sensitivity(device):
     await device.set_rain_protection(enabled=False)
 
     assert writes == [{"value": 0, "time": 6, "sen": 0}]
+

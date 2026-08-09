@@ -15,6 +15,20 @@ from ..const import PROPERTY_1_1, SETTINGS_CHANGE_PROPERTY
 # Heartbeat (prop 1:1) decoded constants
 _MAIN_STATE_MOWING = 4
 PROPERTY_1_1_TASK_STATUS_NAME = "property_1_1_task_status"
+PROPERTY_1_1_ACTIVE_CODES_NAME = "property_1_1_active_codes"
+SETTINGS_CHANGED_PROPERTY_NAME = "device_settings_changed"
+
+# The heartbeat carries the codes the device currently reports as a bitmask in
+# bytes 1 to 10: bit N of byte i stands for code i * 8 + N, the same numbering
+# the device code property (2:2) uses. Unlike that property, which announces a
+# code once as it happens, the bitmask is live state — a bit stays set for as
+# long as the condition holds and clears on its own once it no longer does.
+_ACTIVE_CODE_BITMASK_START = 1
+_ACTIVE_CODE_BITMASK_END = 11
+_BITS_PER_BYTE = 8
+# Bit 79 is set in every heartbeat regardless of what the device reports, so it
+# carries no condition and is left out.
+_ACTIVE_CODE_SENTINEL_BIT = 79
 
 # Mowing task status decoded from the heartbeat byte 13 (subState). The raw byte
 # encodes the task status as (subState - base); the resulting index maps to the
@@ -61,6 +75,7 @@ class Property11Handler:
         """Initialize property handler."""
         self._last_value: list[int] | None = None
         self._task_status: str | None = None
+        self._active_codes: frozenset[int] | None = None
 
     def parse_value(self, value: list[int], notify_callback: Callable[[str, Any], None] | None = None) -> bool:
         """Parse and log property 1:1 value."""
@@ -81,6 +96,7 @@ class Property11Handler:
                     raw_battery, main_state, sub_state,
                 )
                 self._update_task_status(main_state, sub_state, notify_callback)
+                self._update_active_codes(value, notify_callback)
             elif len(value) == 24:
                 # 24-byte variant seen on mova.mower.g2405c firmware 4.3.6_0062 (issue #18)
                 _LOGGER.debug("Property 1:1 received (24-byte variant): %s", value)
@@ -117,6 +133,43 @@ class Property11Handler:
             if notify_callback is not None:
                 notify_callback(PROPERTY_1_1_TASK_STATUS_NAME, status)
 
+    @staticmethod
+    def _decode_active_codes(value: list[int]) -> frozenset[int]:
+        """Decode the codes the heartbeat currently reports as set."""
+        active_codes = set()
+        bitmask = value[_ACTIVE_CODE_BITMASK_START:_ACTIVE_CODE_BITMASK_END]
+        for byte_index, byte in enumerate(bitmask):
+            for bit in range(_BITS_PER_BYTE):
+                if byte & (1 << bit):
+                    code = byte_index * _BITS_PER_BYTE + bit
+                    if code != _ACTIVE_CODE_SENTINEL_BIT:
+                        active_codes.add(code)
+        return frozenset(active_codes)
+
+    def _update_active_codes(
+        self,
+        value: list[int],
+        notify_callback: Callable[[str, Any], None] | None,
+    ) -> None:
+        """Update the codes the device currently reports, notifying on change."""
+        active_codes = self._decode_active_codes(value)
+        if active_codes == self._active_codes:
+            return
+
+        _LOGGER.debug(
+            "Heartbeat active codes changed: %s -> %s",
+            sorted(self._active_codes) if self._active_codes is not None else None,
+            sorted(active_codes),
+        )
+        self._active_codes = active_codes
+        if notify_callback is not None:
+            notify_callback(PROPERTY_1_1_ACTIVE_CODES_NAME, active_codes)
+
+    @property
+    def active_codes(self) -> frozenset[int] | None:
+        """Return the codes the device currently reports (None until a heartbeat is seen)."""
+        return self._active_codes
+
     @property
     def task_status(self) -> str | None:
         """Return the decoded mowing task status (None until a heartbeat is seen)."""
@@ -138,29 +191,37 @@ class Property11Handler:
 
 class SettingsChangeHandler:
     """Handler for generic settings change acknowledgment property (2:51).
-    
-    This property serves as a generic 'echo back' mechanism when any device setting
-    is changed. It reports back information about the changed setting but is not
-    tied to any specific feature.
+
+    The device announces every settings change here, whoever made it. The value
+    it carries is the changed setting on its own, without anything naming which
+    setting that is — a bare list of numbers is as consistent with the rain
+    settings as with the do-not-disturb window. It therefore only says *that*
+    something changed, which is the cue to read the settings record back.
     """
-    
+
     def __init__(self) -> None:
         """Initialize settings change handler."""
         self._last_value: dict[str, Any] | None = None
-    
-    def parse_value(self, value: Any) -> bool:
-        """Parse and log settings change acknowledgment."""
+
+    def parse_value(
+        self,
+        value: Any,
+        notify_callback: Callable[[str, Any], None] | None = None,
+    ) -> bool:
+        """Parse a settings change acknowledgment and announce it."""
         try:
             if not isinstance(value, dict):
                 _LOGGER.warning("Invalid settings change value type: %s, value: %s", type(value), value)
                 return False
-            
+
             self._last_value = value
-            
+
             # Log the settings change as info with JSON content
             _LOGGER.info("Settings change acknowledged (2:51): %s", json.dumps(value))
+            if notify_callback is not None:
+                notify_callback(SETTINGS_CHANGED_PROPERTY_NAME, value)
             return True
-                
+
         except Exception as ex:
             _LOGGER.error("Failed to parse settings change acknowledgment: %s, value: %s", ex, value)
             return False
@@ -194,13 +255,18 @@ class MiscPropertyHandler:
         """Return True while a mowing session is in progress."""
         return self._property_1_1_handler.mowing_session_active
 
+    @property
+    def active_codes(self) -> frozenset[int] | None:
+        """Return the codes the device currently reports in its heartbeat."""
+        return self._property_1_1_handler.active_codes
+
     def handle_property_update(self, siid: int, piid: int, value: Any, notify_callback: Callable[[str, Any], None]) -> bool:
         """Handle miscellaneous property updates."""
         try:
             if PROPERTY_1_1.matches(siid, piid):
                 return self._property_1_1_handler.parse_value(value, notify_callback)
             elif SETTINGS_CHANGE_PROPERTY.matches(siid, piid):
-                return self._settings_change_handler.parse_value(value)
+                return self._settings_change_handler.parse_value(value, notify_callback)
             else:
                 # Property not handled by this handler
                 return False

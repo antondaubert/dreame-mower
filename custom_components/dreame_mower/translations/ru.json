@@ -169,9 +169,6 @@
     "number": {
       "cutting_height": {
         "name": "Высота скашивания"
-      },
-      "rain_delay": {
-        "name": "Задержка после дождя"
       }
     },
     "switch": {
@@ -188,6 +185,11 @@
       },
       "charging_period_end": {
         "name": "Конец периода зарядки"
+      }
+    },
+    "select": {
+      "rain_delay": {
+        "name": "Задержка после дождя"
       }
     }
   }

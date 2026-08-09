@@ -169,9 +169,6 @@
     "number": {
       "cutting_height": {
         "name": "Altura de corte"
-      },
-      "rain_delay": {
-        "name": "Espera tras la lluvia"
       }
     },
     "switch": {
@@ -188,6 +185,11 @@
       },
       "charging_period_end": {
         "name": "Fin del periodo de carga"
+      }
+    },
+    "select": {
+      "rain_delay": {
+        "name": "Espera tras la lluvia"
       }
     }
   }

@@ -16,11 +16,9 @@ from custom_components.dreame_mower.dreame.const import (
     CURRENT_MAP_ID_PROPERTY_NAME,
     MowingPreferenceMode,
 )
-from custom_components.dreame_mower.dreame.property import (
-    DEVICE_CODE_INFO_PROPERTY_NAME,
-    NOTIFICATION_CODE_FIELD,
-    NOTIFICATION_DESCRIPTION_FIELD,
-    NOTIFICATION_NAME_FIELD,
+from custom_components.dreame_mower.dreame.property.property_misc import (
+    PROPERTY_1_1_ACTIVE_CODES_NAME,
+    SETTINGS_CHANGED_PROPERTY_NAME,
 )
 
 
@@ -410,7 +408,7 @@ async def test_coordinator_has_no_end_time_while_rain_holds_nothing_back(
 async def test_coordinator_rereads_the_end_time_when_rain_stops_the_mower(
     hass: HomeAssistant, minimal_config_entry
 ):
-    """A rain device code is the cue that the mower now knows when it may resume."""
+    """A rain code in the heartbeat is the cue that the mower knows when it may resume."""
     coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
     coordinator.device = MagicMock()
     coordinator.device.get_rain_settings = AsyncMock(return_value=_rain_settings())
@@ -419,10 +417,7 @@ async def test_coordinator_rereads_the_end_time_when_rain_stops_the_mower(
     await coordinator.async_fetch_rain_settings()
     coordinator.device.get_rain_protection_end_timestamp.reset_mock()
 
-    coordinator._handle_device_update(
-        DEVICE_CODE_INFO_PROPERTY_NAME,
-        {NOTIFICATION_CODE_FIELD: 56, NOTIFICATION_NAME_FIELD: "x", NOTIFICATION_DESCRIPTION_FIELD: "y"},
-    )
+    coordinator._handle_device_update(PROPERTY_1_1_ACTIVE_CODES_NAME, frozenset({56}))
     await hass.async_block_till_done()
 
     coordinator.device.get_rain_protection_end_timestamp.assert_awaited()
@@ -440,10 +435,7 @@ async def test_coordinator_ignores_unrelated_device_codes_for_rain(
     await coordinator.async_fetch_rain_settings()
     coordinator.device.get_rain_protection_end_timestamp.reset_mock()
 
-    coordinator._handle_device_update(
-        DEVICE_CODE_INFO_PROPERTY_NAME,
-        {NOTIFICATION_CODE_FIELD: 50, NOTIFICATION_NAME_FIELD: "x", NOTIFICATION_DESCRIPTION_FIELD: "y"},
-    )
+    coordinator._handle_device_update(PROPERTY_1_1_ACTIVE_CODES_NAME, frozenset({48, 50}))
     await hass.async_block_till_done()
 
     coordinator.device.get_rain_protection_end_timestamp.assert_not_awaited()
@@ -499,3 +491,61 @@ async def test_coordinator_clears_the_end_time_when_the_mower_is_free(
 
     assert coordinator.rain_protection_end_time is None
     assert coordinator.rain_protection_active is False
+
+
+async def test_coordinator_rereads_the_settings_when_the_device_changes_one(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """The device says a setting changed without saying which, so all are re-read."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.device.get_device_settings = AsyncMock(return_value={"WRP": [1, 6, 0]})
+    coordinator.device.decode_rain_settings = MagicMock(
+        return_value=_rain_settings(delay_hours=6)
+    )
+    coordinator.device.decode_charging_settings = MagicMock(return_value=None)
+    coordinator.async_update_listeners = MagicMock()
+
+    coordinator._handle_device_update(SETTINGS_CHANGED_PROPERTY_NAME, {"value": [1, 6, 0]})
+    await hass.async_block_till_done()
+
+    coordinator.device.get_device_settings.assert_awaited_once()
+    assert coordinator.rain_delay_hours == 6
+
+
+async def test_coordinator_ignores_the_echo_of_its_own_settings_write(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """A write already knows what it wrote, so its own echo must not cost a read."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.device.set_rain_protection = AsyncMock(return_value=_rain_settings())
+    coordinator.device.get_rain_protection_end_timestamp = AsyncMock(return_value=0)
+    coordinator.device.get_device_settings = AsyncMock(return_value={})
+    coordinator.async_update_listeners = MagicMock()
+
+    await coordinator.async_set_rain_protection(enabled=True)
+    coordinator._handle_device_update(SETTINGS_CHANGED_PROPERTY_NAME, {"value": [1, 8, 0]})
+    await hass.async_block_till_done()
+
+    coordinator.device.get_device_settings.assert_not_awaited()
+
+
+async def test_coordinator_keeps_a_setting_it_could_not_decode(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """A record missing one section must not wipe what is known about the other."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.device.get_rain_settings = AsyncMock(return_value=_rain_settings())
+    coordinator.device.get_rain_protection_end_timestamp = AsyncMock(return_value=0)
+    coordinator.async_update_listeners = MagicMock()
+    await coordinator.async_fetch_rain_settings()
+
+    coordinator.device.get_device_settings = AsyncMock(return_value={"BAT": []})
+    coordinator.device.decode_rain_settings = MagicMock(return_value=None)
+    coordinator.device.decode_charging_settings = MagicMock(return_value=None)
+
+    await coordinator.async_refresh_device_settings()
+
+    assert coordinator.rain_delay_hours == 8

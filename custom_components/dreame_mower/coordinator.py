@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import logging
+import time
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -39,17 +40,21 @@ from .dreame.property import (
 from .dreame.const import (
     CURRENT_MAP_ID_PROPERTY_NAME,
     POWER_STATE_PROPERTY,
-    RAIN_DELAY_MIN_HOURS,
+    RAIN_DEVICE_CODES,
     DeviceStatus,
     MowingPreferenceMode,
     STATUS_PROPERTY,
-    rain_delay_max_hours,
     supports_cutting_height,
 )
+from .dreame.property.property_misc import (
+    PROPERTY_1_1_ACTIVE_CODES_NAME,
+    SETTINGS_CHANGED_PROPERTY_NAME,
+)
 
-# Device codes the mower reports while rain keeps it from working. Seeing one is
-# the cue to re-read when rain protection will let it work again.
-_RAIN_DEVICE_CODES = frozenset({56, 57, 58})
+# How long a settings change the integration made itself keeps the device from
+# triggering a re-read. The device announces every change, including the ones it
+# was just told to make, and a write already knows what it wrote.
+_SETTINGS_WRITE_ECHO_SECONDS = 5.0
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -85,6 +90,7 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._charging_settings: dict[str, Any] | None = None
         self._rain_settings: dict[str, Any] | None = None
         self._rain_protection_end_timestamp: int | None = None
+        self._last_settings_write: float | None = None
 
         # Initialize coordinator with no automatic polling (device will push updates)
         super().__init__(
@@ -408,6 +414,7 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         end_minutes: int | None = None,
     ) -> bool:
         """Update the custom charging period, keeping every unspecified part as is."""
+        self._note_settings_write()
         settings = await self.device.set_charging_period(
             enabled=enabled,
             start_minutes=start_minutes,
@@ -438,16 +445,6 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if self._rain_settings is None:
             return None
         return int(self._rain_settings["rain_delay_hours"])
-
-    @property
-    def rain_delay_min_hours(self) -> int:
-        """Return the shortest after-rain delay the mower accepts."""
-        return RAIN_DELAY_MIN_HOURS
-
-    @property
-    def rain_delay_max_hours(self) -> int:
-        """Return the longest after-rain delay this model accepts."""
-        return rain_delay_max_hours(self.device_model)
 
     @property
     def rain_protection_end_time(self) -> datetime | None:
@@ -499,12 +496,33 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         await self.async_fetch_rain_protection_end()
 
+    async def async_refresh_device_settings(self) -> None:
+        """Re-read every setting the integration keeps from the device.
+
+        The settings all live in one record, so both the charging and the rain
+        settings come out of a single read.
+        """
+        settings = await self.device.get_device_settings()
+        if settings is None:
+            return
+
+        charging_settings = self.device.decode_charging_settings(settings)
+        if charging_settings is not None:
+            self._charging_settings = charging_settings
+
+        rain_settings = self.device.decode_rain_settings(settings)
+        if rain_settings is not None:
+            self._rain_settings = rain_settings
+
+        self.async_update_listeners()
+
     async def async_set_rain_protection(
         self,
         enabled: bool | None = None,
         delay_hours: int | None = None,
     ) -> bool:
         """Update rain protection, keeping every unspecified part as is."""
+        self._note_settings_write()
         settings = await self.device.set_rain_protection(
             enabled=enabled,
             delay_hours=delay_hours,
@@ -642,6 +660,15 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def _handle_device_update(self, property_name: str, value: Any) -> None:
         """Handle device property updates and notify Home Assistant."""
+        if property_name == SETTINGS_CHANGED_PROPERTY_NAME:
+            # The device announces that a setting changed without saying which,
+            # so the settings are read back whenever it does.
+            self.hass.create_task(self._async_refresh_settings_on_change())
+        if property_name == PROPERTY_1_1_ACTIVE_CODES_NAME and self.supports_rain_protection:
+            if RAIN_DEVICE_CODES & value:
+                # Rain just took the mower off the lawn, so it now knows when it
+                # may resume.
+                self.hass.create_task(self._async_refresh_rain_protection_end())
         if property_name == STATUS_PROPERTY.name and int(value) == DeviceStatus.CHARGING:
             self.hass.create_task(self._async_refresh_consumables_on_charging())
         if property_name == CURRENT_MAP_ID_PROPERTY_NAME and self.supports_cutting_height:
@@ -675,11 +702,6 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 ))
 
         elif property_name == DEVICE_CODE_INFO_PROPERTY_NAME and isinstance(value, dict):
-            if value.get(NOTIFICATION_CODE_FIELD) in _RAIN_DEVICE_CODES and self.supports_rain_protection:
-                # Rain just took the mower off the lawn, so it now knows when it
-                # may resume; read that time instead of waiting for the next poll.
-                self.hass.create_task(self._async_refresh_rain_protection_end())
-
             if NOTIFICATION_INFORMATION in notify_options:
                 code = value[NOTIFICATION_CODE_FIELD]
                 name = value[NOTIFICATION_NAME_FIELD]
@@ -723,6 +745,27 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self.async_fetch_rain_protection_end()
         except Exception as ex:
             _LOGGER.warning("Rain protection end time refresh failed: %s", ex)
+
+    async def _async_refresh_settings_on_change(self) -> None:
+        """Re-read the settings after the device announced one of them changed."""
+        if self._settings_write_was_ours():
+            _LOGGER.debug("Ignoring the echo of a settings change this integration made")
+            return
+
+        try:
+            await self.async_refresh_device_settings()
+        except Exception as ex:
+            _LOGGER.warning("Settings refresh on change failed: %s", ex)
+
+    def _settings_write_was_ours(self) -> bool:
+        """Return whether the integration wrote a setting a moment ago."""
+        if self._last_settings_write is None:
+            return False
+        return (time.monotonic() - self._last_settings_write) < _SETTINGS_WRITE_ECHO_SECONDS
+
+    def _note_settings_write(self) -> None:
+        """Remember that the integration just wrote a setting."""
+        self._last_settings_write = time.monotonic()
 
     async def _async_refresh_consumables_on_charging(self) -> None:
         """Fetch updated CMS counters when the device transitions to charging."""

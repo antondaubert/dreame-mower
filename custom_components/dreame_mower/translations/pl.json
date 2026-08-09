@@ -169,9 +169,6 @@
     "number": {
       "cutting_height": {
         "name": "Wysokość koszenia"
-      },
-      "rain_delay": {
-        "name": "Opóźnienie po deszczu"
       }
     },
     "switch": {
@@ -188,6 +185,11 @@
       },
       "charging_period_end": {
         "name": "Koniec okresu ładowania"
+      }
+    },
+    "select": {
+      "rain_delay": {
+        "name": "Opóźnienie po deszczu"
       }
     }
   }

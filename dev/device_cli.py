@@ -47,7 +47,7 @@ if str(ROOT_DIR) not in sys.path:
 from custom_components.dreame_mower.dreame import const as dreame_const
 from custom_components.dreame_mower.dreame.const import (
     MINUTES_PER_DAY,
-    RAIN_DELAY_RESUME_IMMEDIATELY_HOURS,
+    RAIN_DELAY_MAX_HOURS,
     MowingPreferenceMode,
     PropertyIdentifier,
 )
@@ -487,9 +487,8 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help=(
-            "Hours to wait after rain before resuming; 0 stays docked until started again "
-            f"and {RAIN_DELAY_RESUME_IMMEDIATELY_HOURS} resumes as soon as the rain stops "
-            "on models that navigate by camera"
+            f"Hours to wait after rain before resuming, up to {RAIN_DELAY_MAX_HOURS}; "
+            "0 stays docked until started again"
         ),
     )
 

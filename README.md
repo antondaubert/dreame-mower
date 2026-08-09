@@ -61,28 +61,23 @@ While the period is on, the mower only keeps a safe battery level when it sits i
 
 An end time earlier than the start time means the window runs past midnight into the next day, for example 22:00 to 06:00. Start and end must differ — the mower rejects a window of zero length. The times follow the clock of the mower itself, so they match Home Assistant only while both use the same time zone.
 
-The entities are created only for devices that report their charging settings; the settings are read once when the integration starts. Changes made in the Dreame or MOVA app are picked up the next time the integration reloads.
+The entities are created only for devices that report their charging settings. The mower announces every settings change it makes, whoever made it, so changes from the Dreame or MOVA app show up within seconds without reloading the integration.
 
 ### Rain Protection
 
 With rain protection on, the mower returns to its station when it detects rain and waits out a delay before it picks the interrupted task back up. Three entities cover it:
 
 - **Rain Protection** (switch) - turns rain protection on and off
-- **After-Rain Delay** (number) - how many hours the mower waits after rain
+- **After-Rain Delay** (select) - how long the mower waits after rain
 - **Mowing Resumes After Rain Protection** (sensor) - the timestamp the mower may work again, unknown at any other time
 
-The mower has no separate rain reading; it reports that rain protection has taken it off the lawn together with the time it may resume. **Mowing Resumes After Rain Protection** therefore doubles as the "rained out" state — it holds a timestamp only while rain is keeping the mower from working, and goes back to unknown once that time passes:
+The delay is chosen from the same list the app offers: **Don't mow after rain** first, then **1 h** through **24 h**.
 
-```yaml
-# True while rain is holding the mower back
-{{ has_value('sensor.my_mower_mowing_resumes_after_rain_protection') }}  # replace with your sensor entity
-```
+**Don't mow after rain** leaves the mower docked until it is started again. That is also the one setting where the mower names no time to resume at, so **Mowing Resumes After Rain Protection** stays unknown even while rain is keeping the mower docked; use the mower's own state for that case rather than this sensor.
 
-A mower configured to wait indefinitely (a delay of 0 h, below) is not expected to report a time to resume at, so the sensor would stay unknown even while rain protection holds it at the station. That case has not been confirmed on hardware. If you run that configuration, the **Device code** diagnostic sensor still reports the rain codes the mower pushes (`BAD_WEATHER_PROTECTING`, `RAIN_SCHEDULE_INTERUPTED`, `RAIN_SCHEDULE_SUSPEND`) and can stand in as the trigger.
+A changed delay applies the next time rain protection triggers, and the mower only takes a new delay while rain protection is on — with it off it keeps the delay it holds and the entity reports an error.
 
-A delay of 0 h leaves the mower docked until it is started again. Models that navigate by camera accept one step beyond 24 h, which makes them resume as soon as the rain stops instead of drying off first. A changed delay applies the next time rain protection triggers, and the mower only takes a new delay while rain protection is on — with it off it keeps the delay it holds and the entity reports an error.
-
-The entities are created only for devices that report rain settings. Both the settings and the resume time are re-read every few minutes, so changes made in the Dreame or MOVA app show up without reloading the integration.
+The entities are created only for devices that report rain settings. The mower announces every settings change it makes, whoever made it, so changes from the Dreame or MOVA app show up within seconds without reloading the integration.
 
 ### TODO: Hierarchical Mowing UI
 

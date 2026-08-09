@@ -7,7 +7,9 @@ from custom_components.dreame_mower.dreame.property.property_misc import (
     Property11Handler,
     SettingsChangeHandler,
     MiscPropertyHandler,
+    PROPERTY_1_1_ACTIVE_CODES_NAME,
     PROPERTY_1_1_TASK_STATUS_NAME,
+    SETTINGS_CHANGED_PROPERTY_NAME,
     TASK_STATUS_OPTIONS,
 )
 
@@ -293,12 +295,12 @@ class TestMiscPropertyHandler:
         assert handler.task_status == "paused"
 
     def test_handle_settings_change(self):
-        """Test that 2:51 update is handled successfully."""
+        """A settings change is announced so the settings can be read back."""
         handler = MiscPropertyHandler()
         notify = MagicMock()
         result = handler.handle_property_update(2, 51, {'value': 1}, notify)
         assert result is True
-        notify.assert_not_called()  # Settings change doesn't emit a notification
+        notify.assert_called_once_with(SETTINGS_CHANGED_PROPERTY_NAME, {'value': 1})
 
     def test_handle_unknown_property_returns_false(self):
         """Test that an unknown property returns False."""
@@ -311,3 +313,74 @@ class TestMiscPropertyHandler:
         """MiscPropertyHandler.task_status is None by default."""
         assert MiscPropertyHandler().task_status is None
 
+
+
+class TestActiveCodes:
+    """The heartbeat reports the conditions the device is under right now."""
+
+    @staticmethod
+    def _with_codes(*codes: int) -> list[int]:
+        """Build a heartbeat whose bitmask carries the given codes."""
+        data = _heartbeat(_IDLE_BYTE, 0)
+        for code in codes:
+            data[1 + code // 8] |= 1 << (code % 8)
+        return data
+
+    def test_active_codes_initially_unknown(self):
+        """Nothing is known about the device until a heartbeat arrives."""
+        assert Property11Handler().active_codes is None
+
+    def test_decodes_the_codes_the_bitmask_carries(self):
+        """Each set bit stands for the code at its position."""
+        handler = Property11Handler()
+        handler.parse_value(self._with_codes(56, 24))
+
+        assert handler.active_codes == frozenset({24, 56})
+
+    def test_ignores_the_bit_every_heartbeat_sets(self):
+        """Bit 79 is set regardless of what the device reports and means nothing."""
+        handler = Property11Handler()
+        handler.parse_value(self._with_codes(79))
+
+        assert handler.active_codes == frozenset()
+
+    def test_a_code_clears_when_the_device_stops_reporting_it(self):
+        """The bitmask is live state, so a cleared bit has to drop the code."""
+        handler = Property11Handler()
+        handler.parse_value(self._with_codes(56))
+        handler.parse_value(self._with_codes())
+
+        assert handler.active_codes == frozenset()
+
+    def test_announces_the_codes_when_they_change(self):
+        """A change in what the device reports is announced once."""
+        handler = Property11Handler()
+        notify = MagicMock()
+        handler.parse_value(self._with_codes(56), notify)
+
+        notify.assert_any_call(PROPERTY_1_1_ACTIVE_CODES_NAME, frozenset({56}))
+
+    def test_does_not_announce_unchanged_codes(self):
+        """Every heartbeat repeats the bitmask; only changes are worth announcing."""
+        handler = Property11Handler()
+        notify = MagicMock()
+        handler.parse_value(self._with_codes(56), notify)
+        notify.reset_mock()
+        handler.parse_value(self._with_codes(56), notify)
+
+        code_calls = [
+            call for call in notify.call_args_list
+            if call.args[0] == PROPERTY_1_1_ACTIVE_CODES_NAME
+        ]
+        assert code_calls == []
+
+    def test_a_captured_heartbeat_decodes_to_the_reported_conditions(self):
+        """A heartbeat as the device sends it decodes to the codes it stands for."""
+        handler = Property11Handler()
+        # Captured while the device was docked after finishing a task: it reports
+        # the task having started and finished, plus the ever-present bit 79.
+        handler.parse_value(
+            [206, 0, 0, 0, 0, 0, 0, 5, 0, 0, 128, 100, 129, 255, 0, 0, 128, 189, 186, 206]
+        )
+
+        assert handler.active_codes == frozenset({48, 50})
