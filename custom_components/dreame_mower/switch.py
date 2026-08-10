@@ -44,6 +44,23 @@ async def async_setup_entry(
             coordinator.device_name,
         )
 
+    if coordinator.supports_anti_theft:
+        switches.append(DreameMowerLiftAlarmSwitch(coordinator))
+        switches.append(DreameMowerOffMapAlarmSwitch(coordinator))
+        switches.append(DreameMowerLocationReportingSwitch(coordinator))
+        if coordinator.supports_anti_theft_pin_check:
+            switches.append(DreameMowerAntiTheftPinCheckSwitch(coordinator))
+        else:
+            _LOGGER.debug(
+                "Skipping the PIN code switch: device %s does not ask for a PIN before power-off",
+                coordinator.device_name,
+            )
+    else:
+        _LOGGER.debug(
+            "Skipping the anti-theft switches: device %s reported no anti-theft settings",
+            coordinator.device_name,
+        )
+
     if coordinator.supports_edge_mowing_settings:
         switches.append(DreameMowerAutomaticEdgeMowingSwitch(coordinator))
         switches.append(DreameMowerEdgeBladeOffsetSwitch(coordinator))
@@ -133,6 +150,129 @@ class DreameMowerRainProtectionSwitch(DreameMowerEntity, SwitchEntity):
             raise HomeAssistantError(
                 f"Failed to turn rain protection {'on' if enabled else 'off'}"
             )
+
+
+class DreameMowerAntiTheftSwitch(DreameMowerEntity, SwitchEntity):
+    """Base switch for one of the mower's anti-theft settings.
+
+    The settings live in a single record that is written back as a whole, so
+    every switch changes its own setting and leaves the others as they are.
+    """
+
+    _attr_entity_category = EntityCategory.CONFIG
+    # Name of the set_anti_theft_settings argument the switch drives, alongside
+    # how the setting reads in an error message.
+    _setting: str
+    _setting_description: str
+
+    async def async_turn_on(self, **kwargs) -> None:
+        """Turn the setting on."""
+        await self._async_set_enabled(True)
+
+    async def async_turn_off(self, **kwargs) -> None:
+        """Turn the setting off."""
+        await self._async_set_enabled(False)
+
+    async def _async_set_enabled(self, enabled: bool) -> None:
+        """Switch the setting, keeping the other anti-theft settings as they are."""
+        try:
+            updated = await self.coordinator.async_set_anti_theft_settings(**{self._setting: enabled})
+        except ValueError as ex:
+            raise HomeAssistantError(str(ex)) from ex
+
+        if not updated:
+            raise HomeAssistantError(
+                f"Failed to turn {self._setting_description} {'on' if enabled else 'off'}"
+            )
+
+
+class DreameMowerLiftAlarmSwitch(DreameMowerAntiTheftSwitch):
+    """Switch entity for the lift alarm.
+
+    While it is on the mower locks itself and sounds an alarm as soon as it is
+    lifted off the ground.
+    """
+
+    _attr_translation_key = "lift_alarm"
+    _attr_icon = "mdi:alarm-light"
+    _setting = "lift_alarm"
+    _setting_description = "the lift alarm"
+
+    def __init__(self, coordinator: DreameMowerCoordinator) -> None:
+        """Initialize the lift alarm switch."""
+        super().__init__(coordinator, "lift_alarm")
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return whether the mower alarms when it is lifted, if it is known."""
+        return self.coordinator.lift_alarm_enabled
+
+
+class DreameMowerOffMapAlarmSwitch(DreameMowerAntiTheftSwitch):
+    """Switch entity for the off-map alarm.
+
+    While it is on the mower locks itself and sounds an alarm as soon as it is
+    carried away from its map. The mower needs a cellular module to notice that.
+    """
+
+    _attr_translation_key = "off_map_alarm"
+    _attr_icon = "mdi:map-marker-alert"
+    _setting = "off_map_alarm"
+    _setting_description = "the off-map alarm"
+
+    def __init__(self, coordinator: DreameMowerCoordinator) -> None:
+        """Initialize the off-map alarm switch."""
+        super().__init__(coordinator, "off_map_alarm")
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return whether the mower alarms when it leaves the map, if it is known."""
+        return self.coordinator.off_map_alarm_enabled
+
+
+class DreameMowerLocationReportingSwitch(DreameMowerAntiTheftSwitch):
+    """Switch entity for the mower's position reports.
+
+    While it is on the mower reports where it is, which is what makes a stolen
+    mower traceable. The mower needs a cellular module to report from off the
+    lawn.
+    """
+
+    _attr_translation_key = "location_reporting"
+    _attr_icon = "mdi:crosshairs-gps"
+    _setting = "location_reporting"
+    _setting_description = "location reporting"
+
+    def __init__(self, coordinator: DreameMowerCoordinator) -> None:
+        """Initialize the location reporting switch."""
+        super().__init__(coordinator, "location_reporting")
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return whether the mower reports its position, if it is known."""
+        return self.coordinator.location_reporting_enabled
+
+
+class DreameMowerAntiTheftPinCheckSwitch(DreameMowerAntiTheftSwitch):
+    """Switch entity for the PIN code check before power-off.
+
+    While it is on the mower only switches off once its PIN code has been
+    entered on the device itself.
+    """
+
+    _attr_translation_key = "anti_theft_pin_check"
+    _attr_icon = "mdi:form-textbox-password"
+    _setting = "pin_check"
+    _setting_description = "the PIN code check"
+
+    def __init__(self, coordinator: DreameMowerCoordinator) -> None:
+        """Initialize the PIN code check switch."""
+        super().__init__(coordinator, "anti_theft_pin_check")
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return whether the mower asks for its PIN before power-off, if it is known."""
+        return self.coordinator.anti_theft_pin_check_enabled
 
 
 class DreameMowerEdgeMowingSwitch(DreameMowerEntity, SwitchEntity):

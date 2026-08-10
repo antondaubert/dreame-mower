@@ -178,6 +178,18 @@
       "rain_protection": {
         "name": "Regenschutz"
       },
+      "lift_alarm": {
+        "name": "Hebealarm"
+      },
+      "off_map_alarm": {
+        "name": "Alarm bei Verlassen der Karte"
+      },
+      "location_reporting": {
+        "name": "Standort in Echtzeit"
+      },
+      "anti_theft_pin_check": {
+        "name": "PIN-Abfrage vor dem Ausschalten"
+      },
       "edge_mowing_auto": {
         "name": "Automatisches Randmähen"
       },

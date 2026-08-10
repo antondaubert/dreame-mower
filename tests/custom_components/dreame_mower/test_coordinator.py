@@ -766,3 +766,154 @@ async def test_coordinator_keeps_a_setting_it_could_not_decode(
     await coordinator.async_refresh_device_settings()
 
     assert coordinator.rain_delay_hours == 8
+
+
+def _anti_theft_settings(lift=False, off_map=False, location=True, pin_check=None):
+    """Build an anti-theft settings payload as the device decodes it."""
+    raw = [int(lift), int(off_map), int(location)]
+    if pin_check is not None:
+        raw.append(int(pin_check))
+    return {
+        "lift_alarm_enabled": lift,
+        "off_map_alarm_enabled": off_map,
+        "location_reporting_enabled": location,
+        "pin_check_enabled": pin_check,
+        "raw": raw,
+    }
+
+
+async def test_coordinator_caches_the_anti_theft_settings_it_reads(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """The switches read the cached settings, so a fetch has to fill the cache."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.device.get_anti_theft_settings = AsyncMock(return_value=_anti_theft_settings())
+    coordinator.async_update_listeners = MagicMock()
+
+    assert coordinator.supports_anti_theft is False
+    assert coordinator.lift_alarm_enabled is None
+
+    assert await coordinator.async_fetch_anti_theft_settings() is True
+
+    assert coordinator.supports_anti_theft is True
+    assert coordinator.lift_alarm_enabled is False
+    assert coordinator.off_map_alarm_enabled is False
+    assert coordinator.location_reporting_enabled is True
+    coordinator.async_update_listeners.assert_called_once()
+
+
+async def test_coordinator_reports_a_device_without_anti_theft_settings(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """A device that cannot report the settings must not claim to support them."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.device.get_anti_theft_settings = AsyncMock(return_value=None)
+
+    assert await coordinator.async_fetch_anti_theft_settings() is False
+    assert coordinator.supports_anti_theft is False
+    assert coordinator.supports_anti_theft_pin_check is False
+
+
+async def test_coordinator_reports_a_mower_without_a_pin_check(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """Only a record that names the PIN switch may offer it as a control."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.device.get_anti_theft_settings = AsyncMock(return_value=_anti_theft_settings())
+    coordinator.async_update_listeners = MagicMock()
+    await coordinator.async_fetch_anti_theft_settings()
+
+    assert coordinator.supports_anti_theft_pin_check is False
+    assert coordinator.anti_theft_pin_check_enabled is None
+
+    coordinator.device.get_anti_theft_settings = AsyncMock(
+        return_value=_anti_theft_settings(pin_check=True)
+    )
+    await coordinator.async_fetch_anti_theft_settings()
+
+    assert coordinator.supports_anti_theft_pin_check is True
+    assert coordinator.anti_theft_pin_check_enabled is True
+
+
+async def test_coordinator_caches_the_anti_theft_settings_it_writes(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """A write returns the settings that took effect; they become the new state."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.device.set_anti_theft_settings = AsyncMock(
+        return_value=_anti_theft_settings(lift=True)
+    )
+    coordinator.async_update_listeners = MagicMock()
+
+    assert await coordinator.async_set_anti_theft_settings(lift_alarm=True) is True
+
+    coordinator.device.set_anti_theft_settings.assert_awaited_once_with(
+        lift_alarm=True,
+        off_map_alarm=None,
+        location_reporting=None,
+        pin_check=None,
+    )
+    assert coordinator.lift_alarm_enabled is True
+    coordinator.async_update_listeners.assert_called()
+
+
+async def test_coordinator_keeps_the_anti_theft_settings_when_a_write_is_rejected(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """A rejected write must not leave the switches showing the requested value."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.device.get_anti_theft_settings = AsyncMock(return_value=_anti_theft_settings())
+    coordinator.device.set_anti_theft_settings = AsyncMock(return_value=None)
+    coordinator.async_update_listeners = MagicMock()
+    await coordinator.async_fetch_anti_theft_settings()
+
+    assert await coordinator.async_set_anti_theft_settings(lift_alarm=True) is False
+
+    assert coordinator.lift_alarm_enabled is False
+
+
+async def test_coordinator_reads_the_anti_theft_settings_from_the_shared_record(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """The anti-theft settings live in the same record as the charging ones."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.device.get_device_settings = AsyncMock(return_value={"ATA": [1, 0, 1]})
+    coordinator.device.decode_charging_settings = MagicMock(return_value=None)
+    coordinator.device.decode_rain_settings = MagicMock(return_value=None)
+    coordinator.device.decode_anti_theft_settings = MagicMock(
+        return_value=_anti_theft_settings(lift=True)
+    )
+    coordinator.async_update_listeners = MagicMock()
+
+    await coordinator.async_refresh_device_settings()
+
+    coordinator.device.get_device_settings.assert_awaited_once()
+    assert coordinator.supports_anti_theft is True
+    assert coordinator.lift_alarm_enabled is True
+
+
+async def test_coordinator_keeps_the_anti_theft_settings_it_could_not_decode(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """A record the device could not decode must not wipe what is known."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.device.get_anti_theft_settings = AsyncMock(return_value=_anti_theft_settings())
+    coordinator.async_update_listeners = MagicMock()
+    await coordinator.async_fetch_anti_theft_settings()
+
+    coordinator.device.get_device_settings = AsyncMock(return_value={"BAT": []})
+    coordinator.device.decode_charging_settings = MagicMock(return_value=None)
+    coordinator.device.decode_rain_settings = MagicMock(return_value=None)
+    coordinator.device.decode_anti_theft_settings = MagicMock(return_value=None)
+
+    await coordinator.async_refresh_device_settings()
+
+    assert coordinator.supports_anti_theft is True
+    assert coordinator.location_reporting_enabled is True

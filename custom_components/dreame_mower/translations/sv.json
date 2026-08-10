@@ -178,6 +178,18 @@
       "rain_protection": {
         "name": "Regnskydd"
       },
+      "lift_alarm": {
+        "name": "Lyftlarm"
+      },
+      "off_map_alarm": {
+        "name": "Larm utanför kartan"
+      },
+      "location_reporting": {
+        "name": "Position i realtid"
+      },
+      "anti_theft_pin_check": {
+        "name": "PIN-kontroll före avstängning"
+      },
       "edge_mowing_auto": {
         "name": "Automatisk kantklippning"
       },

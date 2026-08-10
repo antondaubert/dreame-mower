@@ -207,6 +207,7 @@ def cutting_height_max_cm(model: str) -> float:
 # is passed through as the device reports it.
 DEVICE_SETTINGS_BATTERY_KEY = "BAT"
 DEVICE_SETTINGS_RAIN_KEY = "WRP"
+DEVICE_SETTINGS_ANTI_THEFT_KEY = "ATA"
 
 # Battery and charging settings ("BAT")
 #
@@ -256,6 +257,23 @@ RAIN_DEVICE_CODES = frozenset({
 # again, and is offered ahead of the hourly delays rather than after them.
 RAIN_DELAY_MIN_HOURS = 0
 RAIN_DELAY_MAX_HOURS = 24
+
+# Anti-theft settings ("ATA")
+#
+# The record holds one slot per anti-theft switch: the alarm that goes off when
+# the mower is lifted, the alarm that goes off when it leaves the map, and
+# whether the mower reports its position while it is away. Models that ask for
+# the PIN code before the mower may be switched off carry that switch as a
+# fourth slot; every other model reports the record without it.
+#
+# Locking the mower and raising an alarm is all the mower does on its own. The
+# off-map alarm and the position reports need the cellular module, and stay
+# without effect on a mower that has none.
+ANTI_THEFT_SETTING_LIFT_ALARM_INDEX = 0
+ANTI_THEFT_SETTING_OFF_MAP_ALARM_INDEX = 1
+ANTI_THEFT_SETTING_LOCATION_INDEX = 2
+ANTI_THEFT_SETTING_PIN_CHECK_INDEX = 3
+ANTI_THEFT_SETTING_LENGTH = 3
 
 
 # Times inside the settings record are minutes since midnight.

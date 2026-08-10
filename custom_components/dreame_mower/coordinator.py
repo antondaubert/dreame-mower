@@ -99,6 +99,7 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._consumable_values: list[int] | None = None
         self._charging_settings: dict[str, Any] | None = None
         self._rain_settings: dict[str, Any] | None = None
+        self._anti_theft_settings: dict[str, Any] | None = None
         self._rain_protection_end_timestamp: int | None = None
         self._last_writes: dict[str, float] = {}
         self._preference_refresh: asyncio.Task[bool] | None = None
@@ -595,14 +596,88 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.async_update_listeners()
         return True
 
+    @property
+    def supports_anti_theft(self) -> bool:
+        """Return whether the device reported anti-theft settings."""
+        return self._anti_theft_settings is not None
+
+    @property
+    def supports_anti_theft_pin_check(self) -> bool:
+        """Return whether the device asks for a PIN code before it is switched off."""
+        return (
+            self._anti_theft_settings is not None
+            and self._anti_theft_settings["pin_check_enabled"] is not None
+        )
+
+    @property
+    def lift_alarm_enabled(self) -> bool | None:
+        """Return whether the alarm goes off when the mower is lifted, if it is known."""
+        if self._anti_theft_settings is None:
+            return None
+        return bool(self._anti_theft_settings["lift_alarm_enabled"])
+
+    @property
+    def off_map_alarm_enabled(self) -> bool | None:
+        """Return whether the alarm goes off when the mower leaves the map, if it is known."""
+        if self._anti_theft_settings is None:
+            return None
+        return bool(self._anti_theft_settings["off_map_alarm_enabled"])
+
+    @property
+    def location_reporting_enabled(self) -> bool | None:
+        """Return whether the mower reports its position, if it is known."""
+        if self._anti_theft_settings is None:
+            return None
+        return bool(self._anti_theft_settings["location_reporting_enabled"])
+
+    @property
+    def anti_theft_pin_check_enabled(self) -> bool | None:
+        """Return whether the mower asks for its PIN code before it is switched off."""
+        if self._anti_theft_settings is None:
+            return None
+        pin_check_enabled = self._anti_theft_settings["pin_check_enabled"]
+        return None if pin_check_enabled is None else bool(pin_check_enabled)
+
+    async def async_fetch_anti_theft_settings(self) -> bool:
+        """Read the anti-theft settings from the device."""
+        settings = await self.device.get_anti_theft_settings()
+        if settings is None:
+            return False
+
+        self._anti_theft_settings = settings
+        self.async_update_listeners()
+        return True
+
+    async def async_set_anti_theft_settings(
+        self,
+        lift_alarm: bool | None = None,
+        off_map_alarm: bool | None = None,
+        location_reporting: bool | None = None,
+        pin_check: bool | None = None,
+    ) -> bool:
+        """Update the anti-theft settings, keeping every unspecified switch as is."""
+        self._note_write(_WRITE_DEVICE_SETTINGS)
+        settings = await self.device.set_anti_theft_settings(
+            lift_alarm=lift_alarm,
+            off_map_alarm=off_map_alarm,
+            location_reporting=location_reporting,
+            pin_check=pin_check,
+        )
+        if settings is None:
+            return False
+
+        self._anti_theft_settings = settings
+        self.async_update_listeners()
+        return True
+
     async def async_fetch_device_settings(self) -> None:
         """Read the settings record and everything that hangs off it.
 
-        The charging and the rain settings share one record, so one read serves
-        both, and it doubles as the probe that decides which of them the device
-        offers at all. The time rain protection lets the mower work again is kept
-        outside the record, so it is read after it and only when the device turns
-        out to have rain protection.
+        The charging, rain and anti-theft settings share one record, so one read
+        serves them all, and it doubles as the probe that decides which of them
+        the device offers at all. The time rain protection lets the mower work
+        again is kept outside the record, so it is read after it and only when
+        the device turns out to have rain protection.
         """
         await self.async_refresh_device_settings()
 
@@ -615,7 +690,7 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def async_refresh_device_settings(self) -> None:
         """Re-read every setting the integration keeps from the device.
 
-        The settings all live in one record, so both the charging and the rain
+        The settings all live in one record, so the charging, rain and anti-theft
         settings come out of a single read.
         """
         settings = await self.device.get_device_settings()
@@ -629,6 +704,10 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         rain_settings = self.device.decode_rain_settings(settings)
         if rain_settings is not None:
             self._rain_settings = rain_settings
+
+        anti_theft_settings = self.device.decode_anti_theft_settings(settings)
+        if anti_theft_settings is not None:
+            self._anti_theft_settings = anti_theft_settings
 
         self.async_update_listeners()
 

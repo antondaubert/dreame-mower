@@ -120,6 +120,12 @@ from .const import (
     BATTERY_SETTING_RECHARGE_LEVEL_INDEX,
     BATTERY_SETTING_RESUME_AFTER_CHARGING_INDEX,
     BATTERY_SETTING_RESUME_LEVEL_INDEX,
+    ANTI_THEFT_SETTING_LIFT_ALARM_INDEX,
+    ANTI_THEFT_SETTING_LENGTH,
+    ANTI_THEFT_SETTING_LOCATION_INDEX,
+    ANTI_THEFT_SETTING_OFF_MAP_ALARM_INDEX,
+    ANTI_THEFT_SETTING_PIN_CHECK_INDEX,
+    DEVICE_SETTINGS_ANTI_THEFT_KEY,
     DEVICE_SETTINGS_BATTERY_KEY,
     DEVICE_SETTINGS_RAIN_KEY,
     MINUTES_PER_DAY,
@@ -1459,6 +1465,16 @@ class DreameMowerDevice:
             },
         }
 
+    def _build_set_anti_theft_payload(self, record: Sequence[int]) -> dict[str, Any]:
+        """Build the setter payload for the anti-theft settings."""
+        return {
+            "m": "s",
+            "t": DEVICE_SETTINGS_ANTI_THEFT_KEY,
+            "d": {
+                "value": [int(value) for value in record],
+            },
+        }
+
     def _build_get_rain_protection_end_payload(self) -> dict[str, Any]:
         """Build the getter payload for the time rain protection releases the mower."""
         return {
@@ -1902,6 +1918,106 @@ class DreameMowerDevice:
             record[RAIN_SETTING_DELAY_INDEX],
         )
         return self._decode_rain_settings(record)
+
+    @staticmethod
+    def _normalize_anti_theft_settings(data: Any) -> list[int] | None:
+        """Coerce a settings value into an anti-theft record."""
+        if isinstance(data, dict):
+            data = data.get("value")
+
+        if not isinstance(data, list) or len(data) < ANTI_THEFT_SETTING_LENGTH:
+            return None
+
+        try:
+            # The record is written back in full, extra slots included: a model
+            # that keeps more switches than the known ones loses them otherwise.
+            return [int(value) for value in data]
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _decode_anti_theft_settings(record: Sequence[int]) -> dict[str, Any]:
+        """Describe the anti-theft settings a record carries."""
+        return {
+            "lift_alarm_enabled": bool(record[ANTI_THEFT_SETTING_LIFT_ALARM_INDEX]),
+            "off_map_alarm_enabled": bool(record[ANTI_THEFT_SETTING_OFF_MAP_ALARM_INDEX]),
+            "location_reporting_enabled": bool(record[ANTI_THEFT_SETTING_LOCATION_INDEX]),
+            "pin_check_enabled": (
+                bool(record[ANTI_THEFT_SETTING_PIN_CHECK_INDEX])
+                if len(record) > ANTI_THEFT_SETTING_PIN_CHECK_INDEX
+                else None
+            ),
+            "raw": list(record),
+        }
+
+    def decode_anti_theft_settings(self, settings: dict[str, Any]) -> dict[str, Any] | None:
+        """Pick the anti-theft settings out of a settings record."""
+        record = self._normalize_anti_theft_settings(settings.get(DEVICE_SETTINGS_ANTI_THEFT_KEY))
+        if record is None:
+            _LOGGER.error("Device settings carry no anti-theft record: %s", settings)
+            return None
+
+        return self._decode_anti_theft_settings(record)
+
+    async def get_anti_theft_settings(self) -> dict[str, Any] | None:
+        """Read the anti-theft settings, or None when unavailable."""
+        settings = await self.get_device_settings()
+        if settings is None:
+            return None
+
+        return self.decode_anti_theft_settings(settings)
+
+    async def set_anti_theft_settings(
+        self,
+        lift_alarm: bool | None = None,
+        off_map_alarm: bool | None = None,
+        location_reporting: bool | None = None,
+        pin_check: bool | None = None,
+    ) -> dict[str, Any] | None:
+        """Update the anti-theft settings and return the ones that took effect.
+
+        Every unspecified switch keeps the value the device currently holds, so
+        one switch can be changed without restating the others. Returns None when
+        the settings could not be read or the write was rejected.
+        """
+        current_settings = await self.get_anti_theft_settings()
+        if current_settings is None:
+            return None
+
+        if pin_check is not None and current_settings["pin_check_enabled"] is None:
+            raise ValueError("This mower does not ask for a PIN code before it is switched off")
+
+        next_record = list(current_settings["raw"])
+        for index, requested in (
+            (ANTI_THEFT_SETTING_LIFT_ALARM_INDEX, lift_alarm),
+            (ANTI_THEFT_SETTING_OFF_MAP_ALARM_INDEX, off_map_alarm),
+            (ANTI_THEFT_SETTING_LOCATION_INDEX, location_reporting),
+            (ANTI_THEFT_SETTING_PIN_CHECK_INDEX, pin_check),
+        ):
+            if requested is not None:
+                next_record[index] = int(bool(requested))
+
+        result = await self._send_task_payload(
+            "anti-theft settings write",
+            self._build_set_anti_theft_payload(next_record),
+        )
+        record = self._normalize_anti_theft_settings(self._extract_custom_action_data(result))
+        if record is None:
+            _LOGGER.error(
+                "Failed to write the anti-theft settings %s: %s",
+                next_record,
+                result,
+            )
+            return None
+
+        updated_settings = self._decode_anti_theft_settings(record)
+        _LOGGER.info(
+            "Anti-theft settings are now lift alarm %s, off-map alarm %s, location reporting %s",
+            "enabled" if updated_settings["lift_alarm_enabled"] else "disabled",
+            "enabled" if updated_settings["off_map_alarm_enabled"] else "disabled",
+            "enabled" if updated_settings["location_reporting_enabled"] else "disabled",
+        )
+        return updated_settings
 
     async def get_rain_protection_end_timestamp(self) -> int | None:
         """Read when rain protection lets the mower work again.

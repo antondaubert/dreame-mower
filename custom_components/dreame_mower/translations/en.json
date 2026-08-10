@@ -178,6 +178,18 @@
       "rain_protection": {
         "name": "Rain Protection"
       },
+      "lift_alarm": {
+        "name": "Lift Alarm"
+      },
+      "off_map_alarm": {
+        "name": "Off-Map Alarm"
+      },
+      "location_reporting": {
+        "name": "Real-Time Location"
+      },
+      "anti_theft_pin_check": {
+        "name": "PIN Check Before Power-Off"
+      },
       "edge_mowing_auto": {
         "name": "Automatic Edge Mowing"
       },

@@ -178,6 +178,18 @@
       "rain_protection": {
         "name": "Защита от дождя"
       },
+      "lift_alarm": {
+        "name": "Сигнал при подъёме"
+      },
+      "off_map_alarm": {
+        "name": "Сигнал при выходе за карту"
+      },
+      "location_reporting": {
+        "name": "Местоположение в реальном времени"
+      },
+      "anti_theft_pin_check": {
+        "name": "Запрос PIN-кода перед выключением"
+      },
       "edge_mowing_auto": {
         "name": "Автоматическая краевая стрижка"
       },

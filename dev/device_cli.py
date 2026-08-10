@@ -23,6 +23,9 @@ Examples:
   .venv/bin/python dev/device_cli.py rain-protection
     .venv/bin/python dev/device_cli.py rain-protection --enable --delay 6
     .venv/bin/python dev/device_cli.py rain-protection --disable
+  .venv/bin/python dev/device_cli.py anti-theft
+    .venv/bin/python dev/device_cli.py anti-theft --lift-alarm on --off-map-alarm off
+    .venv/bin/python dev/device_cli.py anti-theft --location off
 """
 
 from __future__ import annotations
@@ -186,6 +189,17 @@ def parse_time_of_day(value: str) -> int:
         raise argparse.ArgumentTypeError(f"Time out of range: {value}")
 
     return hours * 60 + minutes
+
+
+def parse_switch(value: str) -> bool:
+    """Parse an on/off argument into a boolean."""
+    normalized_value = value.strip().lower()
+    if normalized_value in ("on", "true", "yes", "1", "enable", "enabled"):
+        return True
+    if normalized_value in ("off", "false", "no", "0", "disable", "disabled"):
+        return False
+
+    raise argparse.ArgumentTypeError(f"Expected on or off; got {value}")
 
 
 def format_time_of_day(minutes: int | None) -> str | None:
@@ -492,6 +506,36 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
 
+    anti_theft_parser = subparsers.add_parser(
+        "anti-theft",
+        help="Read or change the anti-theft settings",
+    )
+    add_common_args(anti_theft_parser)
+    anti_theft_parser.add_argument(
+        "--lift-alarm",
+        type=parse_switch,
+        default=None,
+        help="Alarm when the mower is lifted: on or off",
+    )
+    anti_theft_parser.add_argument(
+        "--off-map-alarm",
+        type=parse_switch,
+        default=None,
+        help="Alarm when the mower leaves its map: on or off",
+    )
+    anti_theft_parser.add_argument(
+        "--location",
+        type=parse_switch,
+        default=None,
+        help="Report the mower's position: on or off",
+    )
+    anti_theft_parser.add_argument(
+        "--pin-check",
+        type=parse_switch,
+        default=None,
+        help="Ask for the PIN code before power-off: on or off, where the mower keeps that switch",
+    )
+
     pause_parser = subparsers.add_parser("pause", help="Pause the mower")
     add_common_args(pause_parser)
 
@@ -718,6 +762,39 @@ async def run_command(device: DreameMowerDevice, args: argparse.Namespace) -> di
                 if end_timestamp
                 else None
             ),
+            "state": build_device_snapshot(device),
+        }
+
+    if args.command == "anti-theft":
+        requested_change = any(
+            requested is not None
+            for requested in (args.lift_alarm, args.off_map_alarm, args.location, args.pin_check)
+        )
+        try:
+            if requested_change:
+                anti_theft_settings = await device.set_anti_theft_settings(
+                    lift_alarm=args.lift_alarm,
+                    off_map_alarm=args.off_map_alarm,
+                    location_reporting=args.location,
+                    pin_check=args.pin_check,
+                )
+            else:
+                anti_theft_settings = await device.get_anti_theft_settings()
+        except ValueError as ex:
+            return {
+                "ok": False,
+                "command": args.command,
+                "error": str(ex),
+            }
+
+        return {
+            "ok": anti_theft_settings is not None,
+            "command": args.command,
+            "requested_lift_alarm": args.lift_alarm,
+            "requested_off_map_alarm": args.off_map_alarm,
+            "requested_location_reporting": args.location,
+            "requested_pin_check": args.pin_check,
+            "anti_theft": anti_theft_settings,
             "state": build_device_snapshot(device),
         }
 

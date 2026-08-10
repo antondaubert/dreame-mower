@@ -7,9 +7,13 @@ from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.dreame_mower.const import DATA_COORDINATOR, DOMAIN
 from custom_components.dreame_mower.switch import (
+    DreameMowerAntiTheftPinCheckSwitch,
     DreameMowerAutomaticEdgeMowingSwitch,
     DreameMowerChargingPeriodSwitch,
     DreameMowerEdgeBladeOffsetSwitch,
+    DreameMowerLiftAlarmSwitch,
+    DreameMowerLocationReportingSwitch,
+    DreameMowerOffMapAlarmSwitch,
     DreameMowerRainProtectionSwitch,
     DreameMowerSafeEdgeMowingSwitch,
     async_setup_entry,
@@ -30,6 +34,8 @@ def _make_coordinator(supported=True, enabled=True):
     coordinator.charging_period_enabled = enabled
     coordinator.async_set_charging_period = AsyncMock(return_value=True)
     coordinator.supports_rain_protection = False
+    coordinator.supports_anti_theft = False
+    coordinator.supports_anti_theft_pin_check = False
     coordinator.supports_edge_mowing_settings = False
     coordinator.supports_safe_edge_mowing = False
     return coordinator
@@ -269,3 +275,120 @@ async def test_switching_an_unsupported_edge_setting_raises():
 
     with pytest.raises(HomeAssistantError, match="safe edge mowing"):
         await DreameMowerSafeEdgeMowingSwitch(coordinator).async_turn_off()
+
+
+def _make_anti_theft_coordinator(supported=True, pin_check_supported=False, settings=None):
+    coordinator = _make_coordinator()
+    coordinator.supports_charging_period = False
+    coordinator.supports_anti_theft = supported
+    coordinator.supports_anti_theft_pin_check = pin_check_supported
+    state = {
+        "lift_alarm_enabled": False,
+        "off_map_alarm_enabled": False,
+        "location_reporting_enabled": True,
+        "anti_theft_pin_check_enabled": None,
+        **(settings or {}),
+    }
+    coordinator.lift_alarm_enabled = state["lift_alarm_enabled"]
+    coordinator.off_map_alarm_enabled = state["off_map_alarm_enabled"]
+    coordinator.location_reporting_enabled = state["location_reporting_enabled"]
+    coordinator.anti_theft_pin_check_enabled = state["anti_theft_pin_check_enabled"]
+    coordinator.async_set_anti_theft_settings = AsyncMock(return_value=True)
+    return coordinator
+
+
+@pytest.mark.asyncio
+async def test_setup_adds_the_anti_theft_switches():
+    """A device that reports anti-theft settings gets a switch per setting."""
+    entities = await _setup_entry(_make_anti_theft_coordinator())
+
+    assert [type(entity) for entity in entities] == [
+        DreameMowerLiftAlarmSwitch,
+        DreameMowerOffMapAlarmSwitch,
+        DreameMowerLocationReportingSwitch,
+    ]
+
+
+@pytest.mark.asyncio
+async def test_setup_adds_the_pin_check_switch_where_the_mower_keeps_one():
+    """Only a mower that asks for a PIN before power-off gets that switch."""
+    entities = await _setup_entry(
+        _make_anti_theft_coordinator(
+            pin_check_supported=True,
+            settings={"anti_theft_pin_check_enabled": True},
+        )
+    )
+
+    assert isinstance(entities[-1], DreameMowerAntiTheftPinCheckSwitch)
+    assert entities[-1].is_on is True
+
+
+@pytest.mark.asyncio
+async def test_setup_skips_devices_without_anti_theft_settings():
+    """Devices that never reported the settings must not get the switches."""
+    assert await _setup_entry(_make_anti_theft_coordinator(supported=False)) == []
+
+
+@pytest.mark.asyncio
+async def test_the_anti_theft_switches_report_their_own_setting():
+    """Each switch has to read the setting it drives, not one of the others."""
+    entities = await _setup_entry(
+        _make_anti_theft_coordinator(settings={"lift_alarm_enabled": True})
+    )
+
+    assert [entity.is_on for entity in entities] == [True, False, True]
+
+
+@pytest.mark.asyncio
+async def test_the_anti_theft_switches_are_unknown_until_the_settings_are_read():
+    """Unread settings leave the switches without a state."""
+    coordinator = _make_anti_theft_coordinator(
+        settings={
+            "lift_alarm_enabled": None,
+            "off_map_alarm_enabled": None,
+            "location_reporting_enabled": None,
+        }
+    )
+
+    assert [entity.is_on for entity in await _setup_entry(coordinator)] == [None, None, None]
+
+
+@pytest.mark.asyncio
+async def test_switching_an_anti_theft_setting_leaves_the_others_alone():
+    """A switch names only its own setting, so the device keeps the others."""
+    coordinator = _make_anti_theft_coordinator()
+    entity = DreameMowerOffMapAlarmSwitch(coordinator)
+    entity.hass = MagicMock()
+
+    await entity.async_turn_on()
+    coordinator.async_set_anti_theft_settings.assert_awaited_once_with(off_map_alarm=True)
+
+    coordinator.async_set_anti_theft_settings.reset_mock()
+    await entity.async_turn_off()
+    coordinator.async_set_anti_theft_settings.assert_awaited_once_with(off_map_alarm=False)
+
+
+@pytest.mark.asyncio
+async def test_switching_an_anti_theft_setting_raises_when_the_device_rejects_it():
+    """A rejected write should surface as an error instead of passing silently."""
+    coordinator = _make_anti_theft_coordinator()
+    coordinator.async_set_anti_theft_settings = AsyncMock(return_value=False)
+    entity = DreameMowerLiftAlarmSwitch(coordinator)
+    entity.hass = MagicMock()
+
+    with pytest.raises(HomeAssistantError):
+        await entity.async_turn_on()
+
+
+@pytest.mark.asyncio
+async def test_switching_an_anti_theft_setting_raises_when_the_mower_lacks_it():
+    """A setting the mower does not keep must surface as an error, not a silent pass."""
+    coordinator = _make_anti_theft_coordinator(pin_check_supported=True)
+    coordinator.async_set_anti_theft_settings = AsyncMock(
+        side_effect=ValueError("This mower does not ask for a PIN code before it is switched off")
+    )
+    entity = DreameMowerAntiTheftPinCheckSwitch(coordinator)
+    entity.hass = MagicMock()
+
+    with pytest.raises(HomeAssistantError):
+        await entity.async_turn_on()

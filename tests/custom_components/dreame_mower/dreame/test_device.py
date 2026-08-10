@@ -2680,6 +2680,7 @@ async def test_set_edge_mowing_settings_without_a_change_writes_nothing(device):
 
 # The settings record as the device reports it; only the keys under test matter.
 _DEVICE_SETTINGS = {
+    "ATA": [0, 0, 1],
     "BAT": [15, 95, 1, 0, 660, 1080],
     "DND": [0, 1080, 480],
     "VOL": 10,
@@ -2983,3 +2984,162 @@ async def test_set_rain_protection_fills_in_a_missing_sensitivity(device):
 
     assert writes == [{"value": 0, "time": 6, "sen": 0}]
 
+
+
+def _anti_theft_responder(settings=None):
+    """Build an action responder serving the anti-theft settings and its writes."""
+    served_settings = dict(_DEVICE_SETTINGS if settings is None else settings)
+    writes: list[dict] = []
+
+    def responder(siid, aiid, parameters, retry_count):
+        payload = parameters[0]
+        if payload["m"] == "g":
+            return {"code": 0, "out": [{"r": 0, "d": dict(served_settings)}]}
+
+        writes.append(payload["d"])
+        record = list(payload["d"]["value"])
+        served_settings["ATA"] = record
+        return {"code": 0, "out": [{"r": 0, "d": {"value": list(record)}}]}
+
+    return responder, writes
+
+
+@pytest.mark.asyncio
+async def test_get_anti_theft_settings_decodes_the_record(device):
+    """The anti-theft record carries the two alarms and the position reports."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result, _ = _anti_theft_responder()
+
+    settings = await device.get_anti_theft_settings()
+
+    assert settings == {
+        "lift_alarm_enabled": False,
+        "off_map_alarm_enabled": False,
+        "location_reporting_enabled": True,
+        "pin_check_enabled": None,
+        "raw": [0, 0, 1],
+    }
+
+
+@pytest.mark.asyncio
+async def test_get_anti_theft_settings_reads_the_pin_check_slot(device):
+    """Models that ask for a PIN before power-off report it as a fourth slot."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result, _ = _anti_theft_responder({"ATA": [1, 1, 1, 1]})
+
+    settings = await device.get_anti_theft_settings()
+
+    assert settings is not None
+    assert settings["pin_check_enabled"] is True
+
+
+@pytest.mark.asyncio
+async def test_get_anti_theft_settings_fails_without_a_record(device):
+    """A settings record without the anti-theft key carries nothing to decode."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result, _ = _anti_theft_responder({"VOL": 10})
+
+    assert await device.get_anti_theft_settings() is None
+
+
+@pytest.mark.asyncio
+async def test_get_anti_theft_settings_fails_on_a_short_record(device):
+    """A record that names fewer switches than the known ones cannot be decoded."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result, _ = _anti_theft_responder({"ATA": [1, 0]})
+
+    assert await device.get_anti_theft_settings() is None
+
+
+@pytest.mark.asyncio
+async def test_set_anti_theft_settings_keeps_the_untouched_switches(device):
+    """Changing one switch has to write the others back as the device holds them."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result, writes = _anti_theft_responder()
+
+    settings = await device.set_anti_theft_settings(lift_alarm=True)
+
+    assert writes == [{"value": [1, 0, 1]}]
+    assert settings is not None
+    assert settings["lift_alarm_enabled"] is True
+    assert settings["location_reporting_enabled"] is True
+
+
+@pytest.mark.asyncio
+async def test_set_anti_theft_settings_writes_several_switches_at_once(device):
+    """Every named switch goes into the same write."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result, writes = _anti_theft_responder()
+
+    settings = await device.set_anti_theft_settings(
+        lift_alarm=True,
+        off_map_alarm=True,
+        location_reporting=False,
+    )
+
+    assert writes == [{"value": [1, 1, 0]}]
+    assert settings is not None
+    assert settings["off_map_alarm_enabled"] is True
+    assert settings["location_reporting_enabled"] is False
+
+
+@pytest.mark.asyncio
+async def test_set_anti_theft_settings_preserves_a_pin_check_slot(device):
+    """A slot the integration does not drive must round-trip through every write."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result, writes = _anti_theft_responder({"ATA": [0, 0, 0, 1]})
+
+    await device.set_anti_theft_settings(lift_alarm=True)
+
+    assert writes == [{"value": [1, 0, 0, 1]}]
+
+
+@pytest.mark.asyncio
+async def test_set_anti_theft_settings_writes_the_pin_check(device):
+    """The PIN check is written like any other switch where the mower keeps one."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result, writes = _anti_theft_responder({"ATA": [0, 0, 0, 0]})
+
+    settings = await device.set_anti_theft_settings(pin_check=True)
+
+    assert writes == [{"value": [0, 0, 0, 1]}]
+    assert settings is not None
+    assert settings["pin_check_enabled"] is True
+
+
+@pytest.mark.asyncio
+async def test_set_anti_theft_settings_rejects_a_pin_check_the_mower_lacks(device):
+    """A mower without the PIN slot cannot be given one by writing a longer record."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result, writes = _anti_theft_responder()
+
+    with pytest.raises(ValueError):
+        await device.set_anti_theft_settings(pin_check=True)
+
+    assert writes == []
+
+
+@pytest.mark.asyncio
+async def test_set_anti_theft_settings_reports_a_rejected_write(device):
+    """A write the device does not echo back leaves the caller without settings."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+
+    def responder(siid, aiid, parameters, retry_count):
+        payload = parameters[0]
+        if payload["m"] == "g":
+            return {"code": 0, "out": [{"r": 0, "d": dict(_DEVICE_SETTINGS)}]}
+        return {"code": 0, "out": [{"r": 1, "d": {}}]}
+
+    device._cloud_device.action_result = responder
+
+    assert await device.set_anti_theft_settings(lift_alarm=True) is None

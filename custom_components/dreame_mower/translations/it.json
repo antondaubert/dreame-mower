@@ -178,6 +178,18 @@
       "rain_protection": {
         "name": "Protezione pioggia"
       },
+      "lift_alarm": {
+        "name": "Allarme di sollevamento"
+      },
+      "off_map_alarm": {
+        "name": "Allarme fuori mappa"
+      },
+      "location_reporting": {
+        "name": "Posizione in tempo reale"
+      },
+      "anti_theft_pin_check": {
+        "name": "Verifica del PIN prima dello spegnimento"
+      },
       "edge_mowing_auto": {
         "name": "Falciatura automatica dei bordi"
       },

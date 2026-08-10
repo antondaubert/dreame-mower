@@ -93,9 +93,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         except Exception as ex:
             _LOGGER.warning("Initial mowing preference fetch failed: %s", ex)
 
-    # Read the settings record once: the charging period and rain protection
-    # both live in it, and it doubles as the probe that decides which of them
-    # the device offers at all.
+    # Read the settings record once: the charging period, rain protection and
+    # the anti-theft settings all live in it, and it doubles as the probe that
+    # decides which of them the device offers at all.
     if coordinator.device_type != DEVICE_TYPE_SWBOT:
         try:
             await coordinator.async_fetch_device_settings()

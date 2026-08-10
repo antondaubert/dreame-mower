@@ -23,6 +23,7 @@ Provided "as-is" under the MIT License for personal, non-commercial use with dev
 - **Edge Mowing** - Read and set how the mower treats the edges, per map or per zone
 - **Charging Period** - Read and set the time window the mower is allowed to fully charge in
 - **Rain Protection** - See when rain keeps the mower docked, and set how long it waits afterwards
+- **Anti-Theft Alarm** - Read and set the lift alarm, the off-map alarm and the mower's position reports
 - **Battery Status** - Current battery level and charging info
 - **Mowing Progress** - Coverage percentage and session duration
 - **Do Not Disturb** - View quiet hours settings
@@ -95,6 +96,19 @@ The delay is chosen from the same list the app offers: **Don't mow after rain** 
 A changed delay applies the next time rain protection triggers, and the mower only takes a new delay while rain protection is on — with it off it keeps the delay it holds and the entity reports an error.
 
 The entities are created only for devices that report rain settings. The mower announces every settings change it makes, whoever made it, so changes from the Dreame or MOVA app show up within seconds without reloading the integration.
+
+### Anti-Theft Alarm
+
+The mower's anti-theft settings are exposed as switches:
+
+- **Lift Alarm** - the mower locks itself and sounds an alarm as soon as it is lifted off the ground
+- **Off-Map Alarm** - the mower locks itself and sounds an alarm as soon as it is carried away from its map
+- **Real-Time Location** - the mower reports where it is, which is what makes a stolen mower traceable
+- **PIN Check Before Power-Off** - the mower only switches off once its PIN code has been entered on it
+
+Locking the mower and sounding the alarm is all the mower does on its own. **Off-Map Alarm** and **Real-Time Location** need the mower's cellular module to work away from home, and stay without effect on a mower that has none. **PIN Check Before Power-Off** exists only on models that keep such a switch, and is omitted elsewhere rather than offered as a control that cannot write.
+
+The switches are created only for devices that report anti-theft settings. The mower announces every settings change it makes, whoever made it, so changes from the Dreame or MOVA app show up within seconds without reloading the integration.
 
 ### TODO: Hierarchical Mowing UI
 
