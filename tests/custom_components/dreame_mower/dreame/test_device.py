@@ -1,6 +1,8 @@
 """Basic tests for the DreameMowerDevice class."""
 
 import asyncio
+import base64
+import json
 import logging
 import pytest
 from datetime import datetime
@@ -3143,3 +3145,388 @@ async def test_set_anti_theft_settings_reports_a_rejected_write(device):
     device._cloud_device.action_result = responder
 
     assert await device.set_anti_theft_settings(lift_alarm=True) is None
+
+
+def _encode_schedule_task(week_day, task_type, start_time, elements=()):
+    """Encode one scheduled task the way the mower stores it."""
+    elements = list(elements)
+    start_time_hex = f"{start_time:03x}"
+    element_count_hex = f"{len(elements):03x}"
+    body = [
+        f"{(week_day << 4) | task_type:02x}",
+        start_time_hex[1:],
+        element_count_hex[2] + start_time_hex[0],
+        element_count_hex[:2],
+        *(f"{element:02x}" for element in elements),
+    ]
+    # The frame is the marker, its own length, the body and the end marker.
+    return bytes.fromhex("aa" + f"{len(body) + 3:02x}" + "".join(body) + "ed")
+
+
+def _schedule_plan(slot, enabled, name="", tasks=()):
+    """Build one plan of the document the mower serves."""
+    plan = [slot, int(enabled), name]
+    if tasks:
+        plan.append(base64.b64encode(b"".join(tasks)).decode())
+    return plan
+
+
+def _schedule_responder(plans=None, version=4711, write_status=0):
+    """Build an action responder serving a map's schedules and their writes."""
+    served = {
+        "version": version,
+        "plans": [
+            _schedule_plan(0, True, "Summer", [_encode_schedule_task(1, 0, 480)]),
+            _schedule_plan(1, False),
+        ] if plans is None else plans,
+    }
+    writes: list[dict] = []
+
+    def responder(siid, aiid, parameters, retry_count):
+        payload = parameters[0]
+        document = json.dumps({"d": served["plans"], "v": served["version"]})
+
+        if payload["t"] == "SCHDIV3":
+            return {"code": 0, "out": [{"r": 0, "d": {
+                "i": payload["d"]["i"],
+                "l": len(document.encode("utf-8")),
+                "v": served["version"],
+            }}]}
+
+        if payload["t"] == "SCHDDV3":
+            chunk = document.encode("utf-8")[payload["d"]["s"]:payload["d"]["s"] + payload["d"]["l"]]
+            return {"code": 0, "out": [{"r": 0, "d": {
+                "d": chunk.decode("utf-8"),
+                "l": len(chunk),
+                "s": payload["d"]["s"],
+            }}]}
+
+        if payload["t"] == "SCHDSV3":
+            writes.append(payload["d"])
+            if write_status == 0:
+                served["version"] += 1
+                served["plans"] = [
+                    [plan[0], flag, *plan[2:]]
+                    for plan, flag in zip(served["plans"], payload["d"]["s"])
+                ]
+            return {"code": 0, "out": [{"r": 0, "d": {
+                "r": write_status,
+                "v": served["version"],
+            }}]}
+
+        raise AssertionError(f"Unexpected schedule payload: {payload}")
+
+    return responder, writes, served
+
+
+async def _connected_schedule_device(device, **kwargs):
+    """Connect a device serving a map's schedules on its current map."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._current_map_id = 1
+    responder, writes, served = _schedule_responder(**kwargs)
+    device._cloud_device.action_result = responder
+    return writes, served
+
+
+@pytest.mark.asyncio
+async def test_refresh_schedules_decodes_the_plans_of_a_map(device):
+    """A map's plans carry their slot, their name and the tasks they run."""
+    await _connected_schedule_device(device)
+
+    schedules = await device.refresh_schedules()
+
+    assert schedules == [
+        {
+            "slot": 0,
+            "enabled": True,
+            "name": "Summer",
+            "tasks": [{"week_day": "monday", "type": "all_area", "start_time": 480}],
+            "tasks_stored": True,
+        },
+        {"slot": 1, "enabled": False, "name": None, "tasks": [], "tasks_stored": False},
+    ]
+    assert device.schedules == schedules
+
+
+@pytest.mark.asyncio
+async def test_refresh_schedules_decodes_zone_and_edge_tasks(device):
+    """A task names the zones it covers, or the zone and side for an edge run."""
+    await _connected_schedule_device(
+        device,
+        plans=[
+            _schedule_plan(0, True, "Zones", [
+                _encode_schedule_task(3, 1, 1295, [3, 5]),
+                _encode_schedule_task(0, 2, 375, [2, 1]),
+            ]),
+        ],
+    )
+
+    schedules = await device.refresh_schedules()
+
+    assert schedules is not None
+    assert schedules[0]["tasks"] == [
+        {"week_day": "wednesday", "type": "zone", "start_time": 1295, "zone_ids": [3, 5]},
+        {"week_day": "sunday", "type": "edge", "start_time": 375, "edges": [[2, 1]]},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_refresh_schedules_reads_a_long_document_in_chunks(device):
+    """A document longer than one chunk is read until every byte has come in."""
+    await _connected_schedule_device(
+        device,
+        plans=[
+            _schedule_plan(0, True, "A very long schedule name " * 8, [_encode_schedule_task(1, 0, 480)]),
+            _schedule_plan(1, False, "The other one " * 8),
+        ],
+    )
+
+    schedules = await device.refresh_schedules()
+
+    assert schedules is not None
+    assert [schedule["slot"] for schedule in schedules] == [0, 1]
+    reads = [call[2][0] for call in device._cloud_device.action_calls if call[2][0]["t"] == "SCHDDV3"]
+    assert len(reads) > 1
+    assert all(read["d"]["l"] <= 100 for read in reads)
+
+
+@pytest.mark.asyncio
+async def test_refresh_schedules_survives_an_undecodable_task(device):
+    """A plan whose tasks cannot be read is still reported so it can be switched."""
+    await _connected_schedule_device(
+        device,
+        plans=[[0, 1, "Summer", "not base64 at all"], _schedule_plan(1, False)],
+    )
+
+    schedules = await device.refresh_schedules()
+
+    assert schedules is not None
+    assert schedules[0] == {
+        "slot": 0,
+        "enabled": True,
+        "name": "Summer",
+        "tasks": [],
+        # The mower stores tasks for the plan even though they could not be read.
+        "tasks_stored": True,
+    }
+
+
+@pytest.mark.asyncio
+async def test_refresh_schedules_fails_when_the_document_carries_no_plans(device):
+    """A document without plans leaves the caller without schedules."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._current_map_id = 1
+    device._cloud_device.action_result = {"code": 0, "out": [{"r": 0, "d": {"i": 0, "l": 0, "v": 7}}]}
+
+    assert await device.refresh_schedules() is None
+    assert device.schedules is None
+
+
+@pytest.mark.asyncio
+async def test_set_schedule_enabled_switches_the_other_slots_off(device):
+    """The mower runs one schedule at a time, so switching one on switches the rest off."""
+    writes, _ = await _connected_schedule_device(
+        device,
+        plans=[
+            _schedule_plan(0, True, "Summer", [_encode_schedule_task(1, 0, 480)]),
+            _schedule_plan(1, False, "Winter", [_encode_schedule_task(2, 0, 600)]),
+        ],
+    )
+
+    schedules = await device.set_schedule_enabled(1, True)
+
+    assert writes == [{"i": 0, "v": 4711, "s": [0, 1]}]
+    assert schedules is not None
+    assert [schedule["enabled"] for schedule in schedules] == [False, True]
+    assert [schedule["enabled"] for schedule in device.schedules or []] == [False, True]
+
+
+@pytest.mark.asyncio
+async def test_set_schedule_enabled_leaves_the_other_slots_alone_when_switching_off(device):
+    """Switching a slot off says nothing about the others."""
+    writes, _ = await _connected_schedule_device(
+        device,
+        plans=[
+            _schedule_plan(0, True, "Summer", [_encode_schedule_task(1, 0, 480)]),
+            _schedule_plan(1, False, "Winter", [_encode_schedule_task(2, 0, 600)]),
+        ],
+    )
+
+    await device.set_schedule_enabled(0, False)
+
+    assert writes == [{"i": 0, "v": 4711, "s": [0, 0]}]
+
+
+@pytest.mark.asyncio
+async def test_set_schedule_enabled_quotes_the_version_the_mower_holds(device):
+    """Every write carries the version of the plans it was built from."""
+    writes, served = await _connected_schedule_device(device, version=99)
+
+    await device.set_schedule_enabled(0, False)
+    await device.set_schedule_enabled(0, True)
+
+    # The mower moves the version on every write, and the next one has to quote it.
+    assert [write["v"] for write in writes] == [99, 100]
+    assert served["version"] == 101
+
+
+@pytest.mark.asyncio
+async def test_set_schedule_enabled_takes_a_stale_write_again(device):
+    """A write the mower rejects for a stale version is retried against a fresh read."""
+    writes, _ = await _connected_schedule_device(device, write_status=1)
+
+    assert await device.set_schedule_enabled(0, False) is None
+    assert len(writes) == 2
+
+
+@pytest.mark.asyncio
+async def test_set_schedule_enabled_refuses_a_slot_the_map_does_not_hold(device):
+    """A slot the map never reported cannot be switched."""
+    await _connected_schedule_device(device)
+
+    with pytest.raises(ValueError):
+        await device.set_schedule_enabled(4, True)
+
+
+@pytest.mark.asyncio
+async def test_set_schedule_enabled_refuses_a_schedule_without_tasks(device):
+    """An empty schedule has nothing to run, so switching it on is refused."""
+    writes, _ = await _connected_schedule_device(device)
+
+    with pytest.raises(ValueError):
+        await device.set_schedule_enabled(1, True)
+
+    assert writes == []
+
+
+@pytest.mark.asyncio
+async def test_refresh_changed_schedules_only_reads_the_plans_back_once_they_changed(device):
+    """A poll asks for the version and leaves the plans alone while it stands."""
+    _, served = await _connected_schedule_device(device)
+    await device.refresh_schedules()
+    device._cloud_device.action_calls.clear()
+
+    assert await device.refresh_changed_schedules() == device.schedules
+    assert [call[2][0]["t"] for call in device._cloud_device.action_calls] == ["SCHDIV3"]
+
+    served["version"] += 1
+    served["plans"] = [_schedule_plan(0, False, "Summer"), _schedule_plan(1, True, "Winter")]
+    device._cloud_device.action_calls.clear()
+
+    schedules = await device.refresh_changed_schedules()
+
+    assert [call[2][0]["t"] for call in device._cloud_device.action_calls][0] == "SCHDIV3"
+    assert "SCHDDV3" in [call[2][0]["t"] for call in device._cloud_device.action_calls]
+    assert schedules is not None
+    assert [schedule["enabled"] for schedule in schedules] == [False, True]
+
+
+@pytest.mark.asyncio
+async def test_the_schedules_are_dropped_when_the_map_changes(device):
+    """The plans describe one map, so they say nothing after a map switch."""
+    await _connected_schedule_device(device)
+    await device.refresh_schedules()
+
+    device._reset_cutting_height_cache()
+
+    assert device.schedules is None
+
+
+@pytest.mark.asyncio
+async def test_a_schedule_whose_tasks_cannot_be_read_can_still_be_switched_on(device):
+    """Only the mower knows what its tasks mean, so an unreadable plan still runs.
+
+    Refusing it would leave every schedule stuck off the moment the mower stores
+    a task this decode does not understand.
+    """
+    writes, _ = await _connected_schedule_device(
+        device,
+        plans=[
+            _schedule_plan(0, False, "Summer", [b"\xaa\x02not a task frame"]),
+            _schedule_plan(1, False, "Winter"),
+        ],
+    )
+
+    schedules = await device.set_schedule_enabled(0, True)
+
+    assert writes == [{"i": 0, "v": 4711, "s": [1, 0]}]
+    assert schedules is not None
+    assert schedules[0]["tasks"] == []
+
+
+@pytest.mark.asyncio
+async def test_set_schedule_enabled_refuses_a_map_with_a_plan_it_could_not_read(device):
+    """The mower addresses the slots by position, so a hole must not shift them.
+
+    Writing around a plan that could not be decoded would put the state meant for
+    one slot onto another, which is a wrong schedule running on real hardware.
+    """
+    writes, _ = await _connected_schedule_device(
+        device,
+        plans=[
+            ["not a plan record"],
+            _schedule_plan(1, False, "Winter", [_encode_schedule_task(2, 0, 600)]),
+        ],
+    )
+
+    assert await device.set_schedule_enabled(1, True) is None
+    assert writes == []
+
+
+@pytest.mark.asyncio
+async def test_refresh_schedules_keeps_a_name_that_spans_two_chunks(device):
+    """A name can carry characters that take more than one byte to store.
+
+    The mower counts the document in bytes, so a chunk can end mid-character and
+    the document only reads as text once every byte has come in.
+    """
+    name = "ü" * 60
+    await _connected_schedule_device(
+        device,
+        plans=[_schedule_plan(0, True, name, [_encode_schedule_task(1, 0, 480)]), _schedule_plan(1, False)],
+    )
+
+    schedules = await device.refresh_schedules()
+
+    assert schedules is not None
+    assert schedules[0]["name"] == name
+    reads = [call[2][0] for call in device._cloud_device.action_calls if call[2][0]["t"] == "SCHDDV3"]
+    assert len(reads) > 1
+
+
+@pytest.mark.asyncio
+async def test_refresh_schedules_keeps_only_the_bytes_a_chunk_reports(device):
+    """A chunk carrying more than it accounts for must not shift the rest along."""
+    await _connected_schedule_device(device)
+    responder = device._cloud_device.action_result
+
+    def padding_responder(siid, aiid, parameters, retry_count):
+        result = responder(siid, aiid, parameters, retry_count)
+        if parameters[0]["t"] == "SCHDDV3":
+            # The chunk carries trailing bytes it does not count.
+            result["out"][0]["d"]["d"] += "!!"
+        return result
+
+    device._cloud_device.action_result = padding_responder
+
+    schedules = await device.refresh_schedules()
+
+    assert schedules is not None
+    assert [schedule["slot"] for schedule in schedules] == [0, 1]
+
+
+@pytest.mark.asyncio
+async def test_refresh_changed_schedules_reads_another_map_back_in_full(device):
+    """Every map counts its own version, so a match across maps means nothing."""
+    await _connected_schedule_device(device, version=4711)
+    await device.refresh_schedules()
+
+    # The mower moved to a map that happens to hold the same version.
+    device._current_map_id = 2
+    device._cloud_device.action_calls.clear()
+
+    await device.refresh_changed_schedules()
+
+    assert "SCHDDV3" in [call[2][0]["t"] for call in device._cloud_device.action_calls]

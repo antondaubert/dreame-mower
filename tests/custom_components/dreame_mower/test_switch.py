@@ -1,5 +1,6 @@
 """Tests for Dreame Mower switch entities."""
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -16,6 +17,7 @@ from custom_components.dreame_mower.switch import (
     DreameMowerOffMapAlarmSwitch,
     DreameMowerRainProtectionSwitch,
     DreameMowerSafeEdgeMowingSwitch,
+    DreameMowerScheduleSwitch,
     async_setup_entry,
 )
 
@@ -38,6 +40,10 @@ def _make_coordinator(supported=True, enabled=True):
     coordinator.supports_anti_theft_pin_check = False
     coordinator.supports_edge_mowing_settings = False
     coordinator.supports_safe_edge_mowing = False
+    coordinator.supports_schedules = False
+    coordinator.schedule_slots = []
+    coordinator.schedule = lambda slot: None
+    coordinator.schedule_enabled = lambda slot: None
     return coordinator
 
 
@@ -57,10 +63,19 @@ async def _setup_entry(coordinator):
     return added_entities
 
 
+async def _setup_entry_without_schedules(coordinator):
+    """Set up the platform and drop the schedule switches every mower gets."""
+    return [
+        entity
+        for entity in await _setup_entry(coordinator)
+        if not isinstance(entity, DreameMowerScheduleSwitch)
+    ]
+
+
 @pytest.mark.asyncio
 async def test_setup_adds_the_charging_period_switch():
     """A device that reports charging settings gets the switch."""
-    entities = await _setup_entry(_make_coordinator())
+    entities = await _setup_entry_without_schedules(_make_coordinator())
 
     assert len(entities) == 1
     assert isinstance(entities[0], DreameMowerChargingPeriodSwitch)
@@ -69,7 +84,7 @@ async def test_setup_adds_the_charging_period_switch():
 @pytest.mark.asyncio
 async def test_setup_skips_devices_without_charging_settings():
     """Devices that never reported the settings must not get the switch."""
-    entities = await _setup_entry(_make_coordinator(supported=False))
+    entities = await _setup_entry_without_schedules(_make_coordinator(supported=False))
 
     assert entities == []
 
@@ -131,7 +146,7 @@ def _make_rain_switch(coordinator=None):
 @pytest.mark.asyncio
 async def test_setup_adds_the_rain_protection_switch():
     """A device that reports rain settings gets the switch."""
-    entities = await _setup_entry(_make_rain_coordinator())
+    entities = await _setup_entry_without_schedules(_make_rain_coordinator())
 
     assert len(entities) == 1
     assert isinstance(entities[0], DreameMowerRainProtectionSwitch)
@@ -140,7 +155,7 @@ async def test_setup_adds_the_rain_protection_switch():
 @pytest.mark.asyncio
 async def test_setup_skips_devices_without_rain_settings():
     """Devices that never reported the settings must not get the switch."""
-    assert await _setup_entry(_make_rain_coordinator(supported=False)) == []
+    assert await _setup_entry_without_schedules(_make_rain_coordinator(supported=False)) == []
 
 
 def test_the_rain_switch_reports_whether_protection_is_on():
@@ -195,7 +210,7 @@ def _make_edge_coordinator(supported=True, safe_supported=True, settings=None):
 @pytest.mark.asyncio
 async def test_setup_adds_the_edge_mowing_switches():
     """A device that reports its mowing settings gets all three switches."""
-    entities = await _setup_entry(_make_edge_coordinator())
+    entities = await _setup_entry_without_schedules(_make_edge_coordinator())
 
     assert [type(entity) for entity in entities] == [
         DreameMowerAutomaticEdgeMowingSwitch,
@@ -207,7 +222,7 @@ async def test_setup_adds_the_edge_mowing_switches():
 @pytest.mark.asyncio
 async def test_setup_skips_safe_edge_mowing_when_the_device_has_no_such_setting():
     """Firmware without safe edge mowing must not get a switch that cannot write."""
-    entities = await _setup_entry(_make_edge_coordinator(safe_supported=False))
+    entities = await _setup_entry_without_schedules(_make_edge_coordinator(safe_supported=False))
 
     assert [type(entity) for entity in entities] == [
         DreameMowerAutomaticEdgeMowingSwitch,
@@ -218,7 +233,7 @@ async def test_setup_skips_safe_edge_mowing_when_the_device_has_no_such_setting(
 @pytest.mark.asyncio
 async def test_setup_skips_the_edge_switches_without_mowing_settings():
     """Devices whose mowing settings were never read must not get the switches."""
-    assert await _setup_entry(_make_edge_coordinator(supported=False)) == []
+    assert await _setup_entry_without_schedules(_make_edge_coordinator(supported=False)) == []
 
 
 def test_the_edge_switches_report_what_the_coordinator_holds():
@@ -300,7 +315,7 @@ def _make_anti_theft_coordinator(supported=True, pin_check_supported=False, sett
 @pytest.mark.asyncio
 async def test_setup_adds_the_anti_theft_switches():
     """A device that reports anti-theft settings gets a switch per setting."""
-    entities = await _setup_entry(_make_anti_theft_coordinator())
+    entities = await _setup_entry_without_schedules(_make_anti_theft_coordinator())
 
     assert [type(entity) for entity in entities] == [
         DreameMowerLiftAlarmSwitch,
@@ -312,7 +327,7 @@ async def test_setup_adds_the_anti_theft_switches():
 @pytest.mark.asyncio
 async def test_setup_adds_the_pin_check_switch_where_the_mower_keeps_one():
     """Only a mower that asks for a PIN before power-off gets that switch."""
-    entities = await _setup_entry(
+    entities = await _setup_entry_without_schedules(
         _make_anti_theft_coordinator(
             pin_check_supported=True,
             settings={"anti_theft_pin_check_enabled": True},
@@ -326,13 +341,13 @@ async def test_setup_adds_the_pin_check_switch_where_the_mower_keeps_one():
 @pytest.mark.asyncio
 async def test_setup_skips_devices_without_anti_theft_settings():
     """Devices that never reported the settings must not get the switches."""
-    assert await _setup_entry(_make_anti_theft_coordinator(supported=False)) == []
+    assert await _setup_entry_without_schedules(_make_anti_theft_coordinator(supported=False)) == []
 
 
 @pytest.mark.asyncio
 async def test_the_anti_theft_switches_report_their_own_setting():
     """Each switch has to read the setting it drives, not one of the others."""
-    entities = await _setup_entry(
+    entities = await _setup_entry_without_schedules(
         _make_anti_theft_coordinator(settings={"lift_alarm_enabled": True})
     )
 
@@ -350,7 +365,9 @@ async def test_the_anti_theft_switches_are_unknown_until_the_settings_are_read()
         }
     )
 
-    assert [entity.is_on for entity in await _setup_entry(coordinator)] == [None, None, None]
+    assert [
+        entity.is_on for entity in await _setup_entry_without_schedules(coordinator)
+    ] == [None, None, None]
 
 
 @pytest.mark.asyncio
@@ -392,3 +409,209 @@ async def test_switching_an_anti_theft_setting_raises_when_the_mower_lacks_it():
 
     with pytest.raises(HomeAssistantError):
         await entity.async_turn_on()
+
+def _make_schedule_coordinator(schedules=None):
+    coordinator = _make_coordinator()
+    coordinator.supports_charging_period = False
+    served_schedules = [
+        {"slot": 0, "enabled": True, "name": "Summer", "tasks": [{"week_day": "monday", "type": "all_area", "start_time": 480}]},
+        {"slot": 1, "enabled": False, "name": None, "tasks": []},
+    ] if schedules is None else schedules
+    coordinator.supports_schedules = True
+    coordinator.schedule_slots = [schedule["slot"] for schedule in served_schedules]
+    coordinator.schedules = served_schedules
+    coordinator.schedule = lambda slot: next(
+        (schedule for schedule in served_schedules if schedule["slot"] == slot), None
+    )
+    coordinator.schedule_enabled = lambda slot: (
+        None if coordinator.schedule(slot) is None else bool(coordinator.schedule(slot)["enabled"])
+    )
+    coordinator.current_map_id = 1
+    coordinator.async_set_schedule_enabled = AsyncMock(return_value=True)
+    return coordinator
+
+
+@pytest.mark.asyncio
+async def test_setup_adds_a_switch_per_schedule_slot():
+    """Every schedule slot the map holds gets its own switch."""
+    entities = await _setup_entry(_make_schedule_coordinator())
+
+    assert [type(entity) for entity in entities] == [
+        DreameMowerScheduleSwitch,
+        DreameMowerScheduleSwitch,
+    ]
+    assert [entity.unique_id for entity in entities] == [
+        "AA:BB:CC:DD:EE:FF_schedule_1",
+        "AA:BB:CC:DD:EE:FF_schedule_2",
+    ]
+    assert [entity.translation_placeholders for entity in entities] == [
+        {"number": "1"},
+        {"number": "2"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_setup_adds_the_schedule_switches_before_they_could_be_read():
+    """Every mower keeps schedules, so a failed read must not cost the switches.
+
+    They report unavailable until a read lands, which the poll takes care of
+    without the user having to reload the integration.
+    """
+    entities = await _setup_entry(_make_coordinator(supported=False))
+
+    assert [type(entity) for entity in entities] == [
+        DreameMowerScheduleSwitch,
+        DreameMowerScheduleSwitch,
+    ]
+    assert [entity.is_on for entity in entities] == [None, None]
+    assert [entity.available for entity in entities] == [False, False]
+
+
+@pytest.mark.asyncio
+async def test_the_schedule_switches_report_which_schedule_is_on():
+    """Each switch mirrors the state of the slot it stands for."""
+    entities = await _setup_entry(_make_schedule_coordinator())
+
+    assert [entity.is_on for entity in entities] == [True, False]
+
+
+@pytest.mark.asyncio
+async def test_the_schedule_switch_reports_the_name_and_the_tasks():
+    """The attributes describe what the schedule holds."""
+    entity = DreameMowerScheduleSwitch(_make_schedule_coordinator(), 0)
+
+    assert entity.extra_state_attributes == {
+        "schedule_name": "Summer",
+        "map_id": 1,
+        "tasks": [{"week_day": "monday", "type": "all_area", "start_time": 480}],
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_schedule_switch_of_a_slot_the_map_lost_goes_unavailable():
+    """A map that holds fewer slots leaves the switches of the missing ones without state."""
+    coordinator = _make_schedule_coordinator(
+        schedules=[{"slot": 0, "enabled": False, "name": None, "tasks": []}]
+    )
+    entity = DreameMowerScheduleSwitch(coordinator, 1)
+
+    assert entity.available is False
+    assert entity.extra_state_attributes == {}
+
+
+@pytest.mark.asyncio
+async def test_switching_a_schedule_names_its_own_slot():
+    """A switch only ever addresses the slot it stands for."""
+    coordinator = _make_schedule_coordinator()
+    entity = DreameMowerScheduleSwitch(coordinator, 1)
+    entity.hass = MagicMock()
+
+    await entity.async_turn_on()
+    coordinator.async_set_schedule_enabled.assert_awaited_once_with(1, True)
+
+    coordinator.async_set_schedule_enabled.reset_mock()
+    await entity.async_turn_off()
+    coordinator.async_set_schedule_enabled.assert_awaited_once_with(1, False)
+
+
+@pytest.mark.asyncio
+async def test_switching_a_schedule_raises_when_the_device_rejects_it():
+    """A rejected write should surface as an error instead of passing silently."""
+    coordinator = _make_schedule_coordinator()
+    coordinator.async_set_schedule_enabled = AsyncMock(return_value=False)
+    entity = DreameMowerScheduleSwitch(coordinator, 0)
+    entity.hass = MagicMock()
+
+    with pytest.raises(HomeAssistantError, match="schedule 1"):
+        await entity.async_turn_on()
+
+
+@pytest.mark.asyncio
+async def test_switching_on_an_empty_schedule_raises():
+    """A schedule without tasks has nothing to run, which must not pass silently."""
+    coordinator = _make_schedule_coordinator()
+    coordinator.async_set_schedule_enabled = AsyncMock(
+        side_effect=ValueError("The schedule in slot 1 holds no tasks to run")
+    )
+    entity = DreameMowerScheduleSwitch(coordinator, 1)
+    entity.hass = MagicMock()
+
+    with pytest.raises(HomeAssistantError, match="no tasks"):
+        await entity.async_turn_on()
+
+
+# The entity name falls back to the translated one, which only resolves once the
+# entity sits on a platform holding the translations.
+_SCHEDULE_NAME_KEY = "component.dreame_mower.entity.switch.schedule.name"
+
+# Home Assistant keeps the user's language for the displayed name and English for
+# the entity ID, so the two differ here on purpose.
+_SCHEDULE_NAME_TRANSLATIONS = {_SCHEDULE_NAME_KEY: "Zeitplan {number}"}
+_SCHEDULE_OBJECT_ID_TRANSLATIONS = {_SCHEDULE_NAME_KEY: "Schedule {number}"}
+
+
+def _on_platform(entity):
+    """Attach an entity to a stub platform so its translated name resolves."""
+    entity.platform_data = SimpleNamespace(
+        platform_name="dreame_mower",
+        domain="switch",
+        platform_translations=_SCHEDULE_NAME_TRANSLATIONS,
+        object_id_platform_translations=_SCHEDULE_OBJECT_ID_TRANSLATIONS,
+        component_translations={},
+    )
+    return entity
+
+
+def test_a_schedule_switch_is_named_after_the_schedule():
+    """The name the mower stores is what the schedule is called in the app."""
+    coordinator = _make_schedule_coordinator()
+
+    entity = _on_platform(DreameMowerScheduleSwitch(coordinator, 0))
+
+    assert entity.name == "Summer"
+
+
+def test_an_unnamed_schedule_switch_falls_back_to_its_slot():
+    """A map the mower holds no saved schedule for leaves the slot to stand in."""
+    entities = [
+        _on_platform(DreameMowerScheduleSwitch(_make_schedule_coordinator(), slot))
+        for slot in (0, 1)
+    ]
+
+    # Slot 0 carries a name, slot 1 does not.
+    assert [entity.name for entity in entities] == ["Summer", "Zeitplan 2"]
+
+
+def test_a_schedule_switch_of_a_missing_slot_falls_back_to_its_slot():
+    """A switch whose slot the active map lost still has to answer with a name."""
+    coordinator = _make_schedule_coordinator(
+        schedules=[{"slot": 0, "enabled": False, "name": None, "tasks": []}]
+    )
+
+    entity = _on_platform(DreameMowerScheduleSwitch(coordinator, 1))
+
+    assert entity.name == "Zeitplan 2"
+
+
+def test_the_schedule_entity_id_follows_the_slot_not_the_name():
+    """The entity ID has to stay put when the schedule is renamed or the app differs.
+
+    Home Assistant builds it from the entity name unless told otherwise, and that
+    name is whatever language the schedule was saved in.
+    """
+    entity = _on_platform(DreameMowerScheduleSwitch(_make_schedule_coordinator(), 0))
+
+    assert entity.name == "Summer"
+    assert entity.suggested_object_id == "Schedule 1"
+
+
+def test_an_unnamed_schedule_keeps_the_same_entity_id():
+    """A slot with no stored name must land on the same entity ID as a named one."""
+    coordinator = _make_schedule_coordinator()
+
+    assert _on_platform(DreameMowerScheduleSwitch(coordinator, 1)).suggested_object_id == "Schedule 2"
+
+
+def test_the_schedule_tasks_are_kept_out_of_the_recorder():
+    """The tasks are a nested structure with nothing worth recording over time."""
+    assert "tasks" in DreameMowerScheduleSwitch._unrecorded_attributes

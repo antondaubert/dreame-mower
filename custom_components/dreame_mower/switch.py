@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
@@ -10,9 +11,11 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.typing import UndefinedType
 
 from .const import DATA_COORDINATOR, DOMAIN
 from .coordinator import DreameMowerCoordinator
+from .dreame.const import SCHEDULE_SLOT_COUNT
 from .entity import DreameMowerEntity
 
 _LOGGER = logging.getLogger(__name__)
@@ -60,6 +63,15 @@ async def async_setup_entry(
             "Skipping the anti-theft switches: device %s reported no anti-theft settings",
             coordinator.device_name,
         )
+
+    # Every mower keeps the same fixed set of schedule slots, so the switches are
+    # created even when the schedules could not be read at startup: they report
+    # unavailable until a read lands, and the poll brings them to life without a
+    # reload. A mower that turns out to keep more slots than that gets a switch
+    # per slot it reported.
+    schedule_slots = coordinator.schedule_slots or list(range(SCHEDULE_SLOT_COUNT))
+    for slot in schedule_slots:
+        switches.append(DreameMowerScheduleSwitch(coordinator, slot))
 
     if coordinator.supports_edge_mowing_settings:
         switches.append(DreameMowerAutomaticEdgeMowingSwitch(coordinator))
@@ -273,6 +285,96 @@ class DreameMowerAntiTheftPinCheckSwitch(DreameMowerAntiTheftSwitch):
     def is_on(self) -> bool | None:
         """Return whether the mower asks for its PIN before power-off, if it is known."""
         return self.coordinator.anti_theft_pin_check_enabled
+
+
+class DreameMowerScheduleSwitch(DreameMowerEntity, SwitchEntity):
+    """Switch entity for one schedule of the active map.
+
+    Schedules are stored per map, so the switch always stands for the slot of the
+    map the mower currently works on. The mower runs a single schedule at a time,
+    so switching one on switches the others off.
+    """
+
+    _attr_translation_key = "schedule"
+    _attr_icon = "mdi:calendar-clock"
+    _attr_entity_category = EntityCategory.CONFIG
+    # The tasks are a nested structure that only changes when the schedule is
+    # edited, so there is nothing for the recorder to keep.
+    _unrecorded_attributes = frozenset({"tasks"})
+
+    def __init__(self, coordinator: DreameMowerCoordinator, slot: int) -> None:
+        """Initialize the switch for one schedule slot."""
+        super().__init__(coordinator, f"schedule_{slot + 1}")
+        self._slot = slot
+        self._attr_translation_placeholders = {"number": str(slot + 1)}
+
+    @property
+    def name(self) -> str | UndefinedType | None:
+        """Return the name the schedule carries, falling back to its slot.
+
+        The mower stores the name a schedule was given, so the switch reads as it
+        does in the app. A map the mower holds no saved schedule for carries no
+        name, and the slot number stands in until it does.
+        """
+        schedule = self.coordinator.schedule(self._slot)
+        if schedule is not None and schedule["name"]:
+            return str(schedule["name"])
+
+        return super().name
+
+    @property
+    def suggested_object_id(self) -> str | None:
+        """Build the entity ID from the slot rather than from the name.
+
+        Home Assistant derives the entity ID from the entity name unless it is
+        told otherwise, and the name a schedule carries is whatever language the
+        app was in when it was saved. The slot keeps the entity ID the same
+        everywhere, and unchanged when the schedule is renamed.
+        """
+        return f"Schedule {self._slot + 1}"
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return whether the schedule is on, if it is known."""
+        return self.coordinator.schedule_enabled(self._slot)
+
+    @property
+    def available(self) -> bool:
+        """Return whether the active map holds the schedule this switch stands for."""
+        return super().available and self.coordinator.schedule(self._slot) is not None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the name and the mowing tasks the schedule holds."""
+        schedule = self.coordinator.schedule(self._slot)
+        if schedule is None:
+            return {}
+
+        return {
+            "schedule_name": schedule["name"],
+            "map_id": self.coordinator.current_map_id,
+            "tasks": schedule["tasks"],
+        }
+
+    async def async_turn_on(self, **kwargs) -> None:
+        """Turn the schedule on, which turns the other schedules off."""
+        await self._async_set_enabled(True)
+
+    async def async_turn_off(self, **kwargs) -> None:
+        """Turn the schedule off."""
+        await self._async_set_enabled(False)
+
+    async def _async_set_enabled(self, enabled: bool) -> None:
+        """Switch the schedule of the active map."""
+        try:
+            updated = await self.coordinator.async_set_schedule_enabled(self._slot, enabled)
+        except ValueError as ex:
+            raise HomeAssistantError(str(ex)) from ex
+
+        if not updated:
+            raise HomeAssistantError(
+                f"Failed to turn schedule {self._slot + 1} {'on' if enabled else 'off'}"
+            )
 
 
 class DreameMowerEdgeMowingSwitch(DreameMowerEntity, SwitchEntity):

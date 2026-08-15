@@ -23,6 +23,7 @@ from custom_components.dreame_mower.const import (
     DATA_COORDINATOR,
     DOMAIN,
     RAIN_POLL_INTERVAL_SECONDS,
+    SCHEDULE_POLL_INTERVAL_SECONDS,
 )
 
 
@@ -63,7 +64,9 @@ def _make_coordinator() -> MagicMock:
     coordinator.async_fetch_consumable_data = AsyncMock(return_value=None)
     coordinator.async_fetch_mowing_preferences = AsyncMock(return_value=True)
     coordinator.async_fetch_device_settings = AsyncMock(return_value=None)
+    coordinator.async_fetch_schedules = AsyncMock(return_value=True)
     coordinator.supports_rain_protection = True
+    coordinator.supports_schedules = True
     coordinator.async_fetch_firmware_status = AsyncMock(return_value=None)
     coordinator.async_update_online_status = AsyncMock(return_value=None)
     return coordinator
@@ -89,6 +92,7 @@ async def test_async_setup_entry_fetches_vector_map_for_mowers(hass):
     coordinator.async_request_refresh.assert_awaited_once()
     coordinator.async_fetch_mowing_preferences.assert_awaited_once()
     coordinator.async_fetch_device_settings.assert_awaited_once()
+    coordinator.async_fetch_schedules.assert_awaited_once()
     forward_entry_setups.assert_awaited_once()
     assert hass.data[DOMAIN][entry.entry_id][DATA_COORDINATOR] is coordinator
 
@@ -175,3 +179,37 @@ async def test_async_setup_entry_skips_the_settings_fetch_for_swbot(hass):
     await _setup_with(hass, coordinator)
 
     coordinator.async_fetch_device_settings.assert_not_awaited()
+
+
+async def test_async_setup_entry_polls_the_schedules(hass):
+    """A changed schedule is the one thing the device does not announce."""
+    intervals = await _setup_with(hass, _make_coordinator())
+
+    assert timedelta(seconds=SCHEDULE_POLL_INTERVAL_SECONDS) in intervals
+
+
+async def test_async_setup_entry_polls_the_schedules_after_a_failed_read(hass):
+    """The poll is what recovers a mower that was unreachable at startup.
+
+    Gating it on the startup read would leave the schedules unread until the user
+    reloaded the integration by hand.
+    """
+    coordinator = _make_coordinator()
+    coordinator.supports_schedules = False
+    coordinator.async_fetch_schedules = AsyncMock(side_effect=Exception("device asleep"))
+
+    intervals = await _setup_with(hass, coordinator)
+
+    assert timedelta(seconds=SCHEDULE_POLL_INTERVAL_SECONDS) in intervals
+
+
+async def test_async_setup_entry_skips_the_schedule_fetch_for_swbot(hass):
+    """Sweeping robots keep no schedules to read."""
+    coordinator = _make_coordinator()
+    coordinator.device_type = DEVICE_TYPE_SWBOT
+    coordinator.supports_rain_protection = False
+    coordinator.supports_schedules = False
+
+    await _setup_with(hass, coordinator)
+
+    coordinator.async_fetch_schedules.assert_not_awaited()

@@ -459,6 +459,50 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.async_update_listeners()
         return settings
 
+    @property
+    def supports_schedules(self) -> bool:
+        """Return whether the device reported the schedules of a map."""
+        return self.device.schedules is not None
+
+    @property
+    def schedule_slots(self) -> list[int]:
+        """Return the schedule slots the current map holds."""
+        schedules = self.device.schedules
+        return [] if schedules is None else [int(schedule["slot"]) for schedule in schedules]
+
+    def schedule(self, slot: int) -> dict[str, Any] | None:
+        """Return one schedule slot of the current map, if it is known."""
+        for schedule in self.device.schedules or []:
+            if int(schedule["slot"]) == slot:
+                return schedule
+        return None
+
+    def schedule_enabled(self, slot: int) -> bool | None:
+        """Return whether one schedule slot of the current map is on, if it is known."""
+        schedule = self.schedule(slot)
+        return None if schedule is None else bool(schedule["enabled"])
+
+    async def async_fetch_schedules(self, *, changed_only: bool = False) -> bool:
+        """Read the current map's schedule slots from the device.
+
+        A poll only asks for the version the mower holds them under and reads the
+        slots back when that moved; a full read is what decides whether the device
+        offers schedules at all.
+        """
+        if changed_only:
+            schedules = await self.device.refresh_changed_schedules()
+        else:
+            schedules = await self.device.refresh_schedules()
+
+        self.async_update_listeners()
+        return schedules is not None
+
+    async def async_set_schedule_enabled(self, slot: int, enabled: bool) -> bool:
+        """Switch one schedule slot of the current map on or off."""
+        schedules = await self.device.set_schedule_enabled(slot, enabled)
+        self.async_update_listeners()
+        return schedules is not None
+
     async def async_set_edge_mowing_settings(
         self,
         auto: bool | None = None,
@@ -938,6 +982,13 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self.async_fetch_mowing_preferences()
         except Exception as ex:
             _LOGGER.warning("Mowing preference refresh on map change failed: %s", ex)
+
+        # The schedules are stored per map as well, so the new map's slots are
+        # what the switches now stand for.
+        try:
+            await self.async_fetch_schedules()
+        except Exception as ex:
+            _LOGGER.warning("Schedule refresh on map change failed: %s", ex)
 
     async def _async_refresh_rain_protection_end(self) -> None:
         """Re-read the rain protection end time after the mower reported rain."""

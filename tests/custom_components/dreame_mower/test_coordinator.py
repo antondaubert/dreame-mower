@@ -917,3 +917,125 @@ async def test_coordinator_keeps_the_anti_theft_settings_it_could_not_decode(
 
     assert coordinator.supports_anti_theft is True
     assert coordinator.location_reporting_enabled is True
+
+
+def _schedules(first_enabled=True, second_enabled=False):
+    """Build the schedule slots of a map as the device decodes them."""
+    return [
+        {
+            "slot": 0,
+            "enabled": first_enabled,
+            "name": "Summer",
+            "tasks": [{"week_day": "monday", "type": "all_area", "start_time": 480}],
+        },
+        {"slot": 1, "enabled": second_enabled, "name": None, "tasks": []},
+    ]
+
+
+async def test_coordinator_reads_the_schedules_from_the_device(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """The switches read the slots the device caches, so a fetch has to take them."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.device.schedules = None
+    coordinator.async_update_listeners = MagicMock()
+
+    assert coordinator.supports_schedules is False
+    assert coordinator.schedule_slots == []
+
+    async def _serve_schedules():
+        coordinator.device.schedules = _schedules()
+        return coordinator.device.schedules
+
+    coordinator.device.refresh_schedules = AsyncMock(side_effect=_serve_schedules)
+
+    assert await coordinator.async_fetch_schedules() is True
+
+    assert coordinator.supports_schedules is True
+    assert coordinator.schedule_slots == [0, 1]
+    assert coordinator.schedule_enabled(0) is True
+    assert coordinator.schedule_enabled(1) is False
+    assert coordinator.schedule(0)["name"] == "Summer"
+    coordinator.async_update_listeners.assert_called_once()
+
+
+async def test_coordinator_reports_a_device_without_schedules(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """A device that cannot report its schedules must not claim to have any."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.device.schedules = None
+    coordinator.device.refresh_schedules = AsyncMock(return_value=None)
+    coordinator.async_update_listeners = MagicMock()
+
+    assert await coordinator.async_fetch_schedules() is False
+    assert coordinator.supports_schedules is False
+    assert coordinator.schedule(0) is None
+    assert coordinator.schedule_enabled(0) is None
+
+
+async def test_coordinator_polls_the_schedules_by_version(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """A poll only asks the device to read the slots back once they changed."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.device.schedules = _schedules()
+    coordinator.device.refresh_changed_schedules = AsyncMock(return_value=_schedules())
+    coordinator.device.refresh_schedules = AsyncMock(return_value=_schedules())
+    coordinator.async_update_listeners = MagicMock()
+
+    assert await coordinator.async_fetch_schedules(changed_only=True) is True
+
+    coordinator.device.refresh_changed_schedules.assert_awaited_once()
+    coordinator.device.refresh_schedules.assert_not_awaited()
+
+
+async def test_coordinator_switches_a_schedule_on_the_device(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """Switching a slot is delegated to the device, which reports what took effect."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.device.schedules = _schedules()
+    coordinator.device.set_schedule_enabled = AsyncMock(
+        return_value=_schedules(first_enabled=False, second_enabled=True)
+    )
+    coordinator.async_update_listeners = MagicMock()
+
+    assert await coordinator.async_set_schedule_enabled(1, True) is True
+
+    coordinator.device.set_schedule_enabled.assert_awaited_once_with(1, True)
+    coordinator.async_update_listeners.assert_called()
+
+
+async def test_coordinator_reports_a_rejected_schedule_write(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """A rejected write must not read as a switch that took effect."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.device.schedules = _schedules()
+    coordinator.device.set_schedule_enabled = AsyncMock(return_value=None)
+    coordinator.async_update_listeners = MagicMock()
+
+    assert await coordinator.async_set_schedule_enabled(1, True) is False
+
+
+async def test_coordinator_refreshes_the_schedules_when_the_map_changes(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """The schedules are stored per map, so a map switch must re-read them."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.device.schedules = _schedules()
+    coordinator.device.refresh_mowing_preferences = AsyncMock(return_value=True)
+    coordinator.device.refresh_zone_mowing_preferences = AsyncMock(return_value={})
+    coordinator.device.refresh_schedules = AsyncMock(return_value=_schedules())
+
+    coordinator._handle_device_update(CURRENT_MAP_ID_PROPERTY_NAME, 2)
+    await hass.async_block_till_done()
+
+    coordinator.device.refresh_schedules.assert_awaited_once()

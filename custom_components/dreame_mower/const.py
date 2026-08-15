@@ -30,3 +30,9 @@ ONLINE_POLL_INTERVAL_SECONDS = 60
 # nothing when it simply runs out, so the poll is what retires a time that has
 # passed. Settings are not polled: the device announces every change to those.
 RAIN_POLL_INTERVAL_SECONDS = 300
+
+# How often to check whether the schedules changed. A changed schedule is the one
+# thing the device does not announce, and asking for the version it holds them
+# under is a single command, so the schedules themselves are only read back once
+# that version moved.
+SCHEDULE_POLL_INTERVAL_SECONDS = 900

@@ -190,6 +190,9 @@
       "anti_theft_pin_check": {
         "name": "Запит PIN-коду перед вимкненням"
       },
+      "schedule": {
+        "name": "Розклад {number}"
+      },
       "edge_mowing_auto": {
         "name": "Автоматичне обкошування країв"
       },

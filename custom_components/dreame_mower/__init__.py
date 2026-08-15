@@ -24,6 +24,7 @@ from .const import (
     FIRMWARE_POLL_INTERVAL_HOURS,
     ONLINE_POLL_INTERVAL_SECONDS,
     RAIN_POLL_INTERVAL_SECONDS,
+    SCHEDULE_POLL_INTERVAL_SECONDS,
 )
 from .coordinator import DreameMowerCoordinator
 from .config_flow import DEVICE_TYPE_SWBOT
@@ -102,6 +103,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         except Exception as ex:
             _LOGGER.warning("Initial device settings fetch failed: %s", ex)
 
+    # Read the schedules of the active map once, which also decides whether the
+    # device offers any.
+    if coordinator.device_type != DEVICE_TYPE_SWBOT:
+        try:
+            await coordinator.async_fetch_schedules()
+        except Exception as ex:
+            _LOGGER.warning("Initial schedule fetch failed: %s", ex)
+
     # Store coordinator in hass data
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         DATA_COORDINATOR: coordinator,
@@ -161,6 +170,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 hass,
                 _async_poll_rain,
                 timedelta(seconds=RAIN_POLL_INTERVAL_SECONDS),
+                cancel_on_shutdown=True,
+            )
+        )
+
+    # Keep the schedules in step with edits made elsewhere. The device announces
+    # every settings change but says nothing about a changed schedule, so the poll
+    # asks for the version it holds them under and only reads them back when that
+    # version moved. It runs whether or not the read at startup came through: a
+    # mower that was unreachable then is picked up by the next poll.
+    if coordinator.device_type != DEVICE_TYPE_SWBOT:
+        async def _async_poll_schedules(now=None) -> None:
+            try:
+                await coordinator.async_fetch_schedules(changed_only=True)
+            except Exception as ex:
+                _LOGGER.warning("Schedule poll failed: %s", ex)
+
+        entry.async_on_unload(
+            async_track_time_interval(
+                hass,
+                _async_poll_schedules,
+                timedelta(seconds=SCHEDULE_POLL_INTERVAL_SECONDS),
                 cancel_on_shutdown=True,
             )
         )

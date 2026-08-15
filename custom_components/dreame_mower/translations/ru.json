@@ -190,6 +190,9 @@
       "anti_theft_pin_check": {
         "name": "Запрос PIN-кода перед выключением"
       },
+      "schedule": {
+        "name": "Расписание {number}"
+      },
       "edge_mowing_auto": {
         "name": "Автоматическая краевая стрижка"
       },

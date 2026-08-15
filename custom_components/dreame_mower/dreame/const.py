@@ -275,6 +275,82 @@ ANTI_THEFT_SETTING_LOCATION_INDEX = 2
 ANTI_THEFT_SETTING_PIN_CHECK_INDEX = 3
 ANTI_THEFT_SETTING_LENGTH = 3
 
+# Schedules
+#
+# Every map holds a fixed set of schedule slots, each a named plan of weekly
+# mowing tasks. Only one slot runs at a time: switching one on switches the
+# others off, which is how the mower keeps one plan per season.
+#
+# The plans of a map are read in three steps. An info read reports the byte
+# length of the plan document and the version the mower currently holds, the
+# document itself is then read in chunks of that many bytes, and the version has
+# to be quoted in every following read or write so the mower can tell that the
+# document has not changed underneath. A write that quotes a stale version is
+# rejected and has to be taken again after a fresh read.
+SCHEDULE_INFO_KEY = "SCHDIV3"
+SCHEDULE_DATA_KEY = "SCHDDV3"
+SCHEDULE_ENABLE_KEY = "SCHDSV3"
+
+# Schedule slots every map is known to hold. The mower reports the slots it
+# keeps, so this only stands in while they have not been read yet.
+SCHEDULE_SLOT_COUNT = 2
+
+# Bytes the mower returns per chunk of the plan document.
+SCHEDULE_CHUNK_SIZE = 100
+
+# Status the mower reports on a write it accepted, alongside the one it reports
+# for a write that quoted a version it no longer holds.
+SCHEDULE_STATUS_SUCCESS = 0
+SCHEDULE_STATUS_VERSION_ERROR = 1
+
+# Layout of one plan inside the document: the slot it occupies, whether it is
+# enabled, the name it was given, and the base64 encoded tasks. A plan without
+# tasks is reported without that last field.
+SCHEDULE_PLAN_SLOT_INDEX = 0
+SCHEDULE_PLAN_ENABLED_INDEX = 1
+SCHEDULE_PLAN_NAME_INDEX = 2
+SCHEDULE_PLAN_TASKS_INDEX = 3
+
+# Task layout inside the decoded tasks blob. Every task is framed by a marker
+# byte and its own length, so the tasks can be walked without knowing how many
+# there are:
+#
+#   0xaa | length | week day + type | start time and element count | elements | 0xed
+#
+# The start time is minutes since midnight spread over three nibbles, and the
+# element count over the remaining three. The elements are the zones a zone task
+# covers, or the (zone, side) pairs an edge task covers, and the length counts the
+# whole frame, so a task without elements is the shortest one there can be.
+SCHEDULE_TASK_START_MARKER = 0xAA
+SCHEDULE_TASK_MINIMUM_LENGTH = 7
+
+
+class ScheduleTaskType(IntEnum):
+    """What a scheduled task tells the mower to do."""
+    ALL_AREA = 0
+    ZONE = 1
+    EDGE = 2
+    PATROL = 3
+
+
+SCHEDULE_TASK_TYPE_MAPPING: dict[int, str] = {
+    ScheduleTaskType.ALL_AREA: "all_area",
+    ScheduleTaskType.ZONE: "zone",
+    ScheduleTaskType.EDGE: "edge",
+    ScheduleTaskType.PATROL: "patrol",
+}
+
+# Week days as the mower numbers them, starting at Sunday.
+SCHEDULE_WEEK_DAYS = (
+    "sunday",
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+)
+
 
 # Times inside the settings record are minutes since midnight.
 MINUTES_PER_DAY = 1440
@@ -383,6 +459,7 @@ ZONE_CUTTING_HEIGHTS_PROPERTY_NAME = "zone_cutting_heights"
 MOWING_PREFERENCE_MODE_PROPERTY_NAME = "mowing_preference_mode"
 EDGE_MOWING_SETTINGS_PROPERTY_NAME = "edge_mowing_settings"
 ZONE_EDGE_MOWING_SETTINGS_PROPERTY_NAME = "zone_edge_mowing_settings"
+SCHEDULES_PROPERTY_NAME = "schedules"
 
 # Keys the edge mowing settings of one mowing preference record are reported
 # under. Safe edge mowing is missing from the record of firmware that predates

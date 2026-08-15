@@ -26,6 +26,9 @@ Examples:
   .venv/bin/python dev/device_cli.py anti-theft
     .venv/bin/python dev/device_cli.py anti-theft --lift-alarm on --off-map-alarm off
     .venv/bin/python dev/device_cli.py anti-theft --location off
+  .venv/bin/python dev/device_cli.py schedules
+    .venv/bin/python dev/device_cli.py schedules --map-id 2
+    .venv/bin/python dev/device_cli.py schedules --slot 0 --set on
 """
 
 from __future__ import annotations
@@ -220,6 +223,16 @@ def describe_charging_settings(settings: dict[str, Any] | None) -> dict[str, Any
     described_settings["charging_period_start"] = format_time_of_day(settings.get("charging_period_start_minutes"))
     described_settings["charging_period_end"] = format_time_of_day(settings.get("charging_period_end_minutes"))
     return described_settings
+
+
+def describe_schedule(schedule: dict[str, Any]) -> dict[str, Any]:
+    """Add readable start times to the tasks of a schedule slot."""
+    described_schedule = dict(schedule)
+    described_schedule["tasks"] = [
+        {**task, "start_time": format_time_of_day(task.get("start_time"))}
+        for task in schedule.get("tasks", [])
+    ]
+    return described_schedule
 
 
 def known_property_identifiers() -> list[PropertyIdentifier]:
@@ -536,6 +549,36 @@ def build_parser() -> argparse.ArgumentParser:
         help="Ask for the PIN code before power-off: on or off, where the mower keeps that switch",
     )
 
+    schedules_parser = subparsers.add_parser(
+        "schedules",
+        help="List a map's schedules, or switch one of them on or off",
+    )
+    add_common_args(schedules_parser)
+    schedules_parser.add_argument(
+        "--map-id",
+        type=int,
+        default=None,
+        help="Map whose schedules to address, defaulting to the current map",
+    )
+    schedules_parser.add_argument(
+        "--slot",
+        type=int,
+        default=0,
+        help="Schedule slot to switch, counted from zero",
+    )
+    schedules_parser.add_argument(
+        "--set",
+        dest="enabled",
+        type=parse_switch,
+        default=None,
+        help="Switch the slot on or off; switching one on switches the others off",
+    )
+    schedules_parser.add_argument(
+        "--skip-map-fetch",
+        action="store_true",
+        help="Do not load vector map metadata before addressing the schedules",
+    )
+
     pause_parser = subparsers.add_parser("pause", help="Pause the mower")
     add_common_args(pause_parser)
 
@@ -796,6 +839,32 @@ async def run_command(device: DreameMowerDevice, args: argparse.Namespace) -> di
             "requested_pin_check": args.pin_check,
             "anti_theft": anti_theft_settings,
             "state": build_device_snapshot(device),
+        }
+
+    if args.command == "schedules":
+        # The schedules are stored per map, so the map has to be known before the
+        # slots can be addressed.
+        fetched = None if args.skip_map_fetch else await fetch_vector_map_async(device)
+        try:
+            if args.enabled is None:
+                schedules = await device.refresh_schedules(args.map_id)
+            else:
+                schedules = await device.set_schedule_enabled(args.slot, args.enabled, args.map_id)
+        except ValueError as ex:
+            return {
+                "ok": False,
+                "command": args.command,
+                "error": str(ex),
+            }
+
+        return {
+            "ok": schedules is not None,
+            "command": args.command,
+            "map_fetched": fetched,
+            "map_id": args.map_id if args.map_id is not None else device.current_map_id,
+            "requested_slot": args.slot if args.enabled is not None else None,
+            "requested_enabled": args.enabled,
+            "schedules": [describe_schedule(schedule) for schedule in schedules or []],
         }
 
     if args.command == "pause":

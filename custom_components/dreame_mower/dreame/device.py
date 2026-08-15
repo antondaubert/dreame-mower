@@ -10,7 +10,9 @@ TODO: Implement connection retry logic
 from __future__ import annotations
 
 import asyncio
+import base64
 from collections.abc import Iterable, Mapping, Sequence
+from copy import deepcopy
 from enum import Enum
 import json
 import logging
@@ -128,6 +130,22 @@ from .const import (
     DEVICE_SETTINGS_ANTI_THEFT_KEY,
     DEVICE_SETTINGS_BATTERY_KEY,
     DEVICE_SETTINGS_RAIN_KEY,
+    SCHEDULE_CHUNK_SIZE,
+    SCHEDULE_DATA_KEY,
+    SCHEDULE_ENABLE_KEY,
+    SCHEDULE_INFO_KEY,
+    SCHEDULE_PLAN_ENABLED_INDEX,
+    SCHEDULE_PLAN_NAME_INDEX,
+    SCHEDULE_PLAN_SLOT_INDEX,
+    SCHEDULE_PLAN_TASKS_INDEX,
+    SCHEDULE_STATUS_SUCCESS,
+    SCHEDULE_STATUS_VERSION_ERROR,
+    SCHEDULE_TASK_MINIMUM_LENGTH,
+    SCHEDULE_TASK_START_MARKER,
+    SCHEDULE_TASK_TYPE_MAPPING,
+    SCHEDULE_WEEK_DAYS,
+    SCHEDULES_PROPERTY_NAME,
+    ScheduleTaskType,
     MINUTES_PER_DAY,
     RAIN_DELAY_MIN_HOURS,
     RAIN_DELAY_MAX_HOURS,
@@ -164,6 +182,10 @@ CONSUMABLE_COUNTER_INDEX: dict[str, int] = {
     "maintenance": 2,
     "robot_maintenance": 2,
 }
+
+
+class _StaleScheduleVersion(Exception):
+    """Raised when a schedule write quotes a version the mower has moved on from."""
 
 
 class MowingMode(str, Enum):
@@ -269,6 +291,13 @@ class DreameMowerDevice:
         self._edge_mowing_settings: dict[str, bool] | None = None
         self._zone_edge_mowing_settings: dict[int, dict[str, bool]] = {}
         self._mowing_preference_mode: MowingPreferenceMode | None = None
+
+        # Schedule slots of the current map, alongside the map they were read
+        # from and the version the mower holds them under. Also read on demand;
+        # the device does not push them.
+        self._schedules: list[dict[str, Any]] | None = None
+        self._schedule_map_index: int | None = None
+        self._schedule_version: int | None = None
 
         # Property change callbacks
         self._property_callbacks: list[Callable[[str, Any], None]] = []
@@ -563,6 +592,13 @@ class DreameMowerDevice:
     def mowing_preference_mode(self) -> MowingPreferenceMode | None:
         """Return whether the current map applies map-wide or per-zone preferences."""
         return self._mowing_preference_mode
+
+    @property
+    def schedules(self) -> list[dict[str, Any]] | None:
+        """Return the current map's schedule slots, if they have been read."""
+        if self._schedules is None:
+            return None
+        return [deepcopy(schedule) for schedule in self._schedules]
 
     @property
     def task_target_map_id(self) -> int | None:
@@ -1482,6 +1518,45 @@ class DreameMowerDevice:
             "t": "RPET",
         }
 
+    def _build_get_schedule_info_payload(self, map_index: int) -> dict[str, Any]:
+        """Build the getter payload for a map's schedule size and version."""
+        return {
+            "m": "g",
+            "t": SCHEDULE_INFO_KEY,
+            "d": {
+                "i": int(map_index),
+            },
+        }
+
+    def _build_get_schedule_data_payload(self, start: int, size: int, version: int) -> dict[str, Any]:
+        """Build the getter payload for one chunk of the schedule document."""
+        return {
+            "m": "g",
+            "t": SCHEDULE_DATA_KEY,
+            "d": {
+                "s": int(start),
+                "l": int(size),
+                "v": int(version),
+            },
+        }
+
+    def _build_set_schedule_enabled_payload(
+        self,
+        map_index: int,
+        version: int,
+        enabled_flags: Sequence[bool],
+    ) -> dict[str, Any]:
+        """Build the setter payload for which schedule slots of a map are enabled."""
+        return {
+            "m": "s",
+            "t": SCHEDULE_ENABLE_KEY,
+            "d": {
+                "i": int(map_index),
+                "v": int(version),
+                "s": [int(bool(flag)) for flag in enabled_flags],
+            },
+        }
+
     @staticmethod
     def _extract_custom_action_data(result: Any) -> dict[str, Any] | None:
         """Extract the first successful data payload from a custom action result."""
@@ -2045,6 +2120,348 @@ class DreameMowerDevice:
         # The device reports zero whenever rain protection is not holding it back.
         return end_timestamp if end_timestamp > 0 else 0
 
+    @staticmethod
+    def _decode_schedule_tasks(payload: str) -> list[dict[str, Any]]:
+        """Decode the tasks of one schedule plan.
+
+        Every task is framed by a marker byte and its own length, so a task the
+        mower encodes with fields this decode does not know still carries its
+        length and does not throw the rest of the plan off. A frame that does not
+        start with the marker ends the walk: the remaining bytes cannot be
+        located without it.
+        """
+        blob = base64.b64decode(payload, validate=True)
+        tasks: list[dict[str, Any]] = []
+        offset = 0
+        while offset + SCHEDULE_TASK_MINIMUM_LENGTH <= len(blob):
+            if blob[offset] != SCHEDULE_TASK_START_MARKER:
+                _LOGGER.debug("Schedule task at byte %d carries no start marker: %s", offset, blob.hex())
+                break
+
+            task_length = blob[offset + 1]
+            if task_length < SCHEDULE_TASK_MINIMUM_LENGTH or offset + task_length > len(blob):
+                _LOGGER.debug("Schedule task at byte %d claims %d bytes: %s", offset, task_length, blob.hex())
+                break
+
+            week_day_and_type = blob[offset + 2]
+            # The start time is minutes since midnight, spread over the low byte
+            # and the low nibble of the byte that follows it.
+            start_time = ((blob[offset + 4] & 0x0F) << 8) | blob[offset + 3]
+            elements = list(blob[offset + 6:offset + task_length - 1])
+
+            task_type = week_day_and_type & 0x0F
+            week_day = week_day_and_type >> 4
+            task: dict[str, Any] = {
+                "week_day": (
+                    SCHEDULE_WEEK_DAYS[week_day] if week_day < len(SCHEDULE_WEEK_DAYS) else "unknown"
+                ),
+                "type": SCHEDULE_TASK_TYPE_MAPPING.get(task_type, "unknown"),
+                "start_time": start_time,
+            }
+            if task_type == ScheduleTaskType.ZONE:
+                task["zone_ids"] = elements
+            elif task_type == ScheduleTaskType.EDGE:
+                # Edge tasks carry the zone and the side of it to mow as a pair.
+                task["edges"] = [list(pair) for pair in zip(elements[::2], elements[1::2])]
+
+            tasks.append(task)
+            offset += task_length
+
+        return tasks
+
+    @classmethod
+    def _decode_schedule_plan(cls, plan: Any) -> dict[str, Any] | None:
+        """Describe one schedule plan of a map, or None when it cannot be read."""
+        if not isinstance(plan, (list, tuple)) or len(plan) <= SCHEDULE_PLAN_NAME_INDEX:
+            _LOGGER.error("Schedule plan is not a plan record: %s", plan)
+            return None
+
+        try:
+            slot = int(plan[SCHEDULE_PLAN_SLOT_INDEX])
+            enabled = bool(plan[SCHEDULE_PLAN_ENABLED_INDEX])
+        except (TypeError, ValueError):
+            _LOGGER.error("Schedule plan carries no slot and state: %s", plan)
+            return None
+
+        name = plan[SCHEDULE_PLAN_NAME_INDEX]
+        # A plan the mower stores tasks for is told apart from one that holds
+        # none: only the mower knows what its tasks mean, so a blob this decode
+        # cannot read still describes a plan there is something to run.
+        tasks_stored = (
+            len(plan) > SCHEDULE_PLAN_TASKS_INDEX
+            and isinstance(plan[SCHEDULE_PLAN_TASKS_INDEX], str)
+            and bool(plan[SCHEDULE_PLAN_TASKS_INDEX])
+        )
+        tasks: list[dict[str, Any]] = []
+        if tasks_stored:
+            try:
+                tasks = cls._decode_schedule_tasks(plan[SCHEDULE_PLAN_TASKS_INDEX])
+            except Exception as ex:
+                # The tasks only describe the plan; the slot can still be switched
+                # without them.
+                _LOGGER.warning("Failed to decode the tasks of schedule slot %s: %s", slot, ex)
+
+        return {
+            "slot": slot,
+            "enabled": enabled,
+            "name": str(name) if isinstance(name, str) and name else None,
+            "tasks": tasks,
+            "tasks_stored": tasks_stored,
+        }
+
+    async def _get_schedule_info(self, map_index: int) -> tuple[int, int] | None:
+        """Read the byte length and version of a map's schedule document."""
+        result = await self._send_task_payload(
+            "schedule info read",
+            self._build_get_schedule_info_payload(map_index),
+        )
+        data = self._extract_custom_action_data(result)
+        if not isinstance(data, dict):
+            _LOGGER.error("Failed to read the schedule info of map index %s: %s", map_index, result)
+            return None
+
+        try:
+            return int(data["l"]), int(data["v"])
+        except (KeyError, TypeError, ValueError):
+            _LOGGER.error("Schedule info of map index %s carries no size and version: %s", map_index, data)
+            return None
+
+    async def _get_schedule_document(self, length: int, version: int) -> Any | None:
+        """Read a map's schedule document, one chunk at a time.
+
+        The mower counts the document in bytes, and a plan name can carry
+        characters that take more than one, so the chunks are put back together as
+        bytes and only read as text once the whole document has come in.
+        """
+        chunks: list[bytes] = []
+        offset = 0
+        while offset < length:
+            result = await self._send_task_payload(
+                "schedule data read",
+                self._build_get_schedule_data_payload(offset, min(length - offset, SCHEDULE_CHUNK_SIZE), version),
+            )
+            data = self._extract_custom_action_data(result)
+            if not isinstance(data, dict) or not isinstance(data.get("d"), str):
+                _LOGGER.error("Failed to read the schedule document at byte %d: %s", offset, result)
+                return None
+
+            chunk = data["d"].encode("utf-8")
+            # The mower reports how many bytes the chunk covers, which is what the
+            # next read has to continue from. Only those bytes are kept, so the
+            # document cannot end up longer than the offsets say it is.
+            try:
+                chunk_length = int(data["l"])
+            except (KeyError, TypeError, ValueError):
+                chunk_length = len(chunk)
+
+            if chunk_length <= 0:
+                _LOGGER.error("Schedule document read at byte %d returned no bytes: %s", offset, data)
+                return None
+
+            chunks.append(chunk[:chunk_length])
+            offset += chunk_length
+
+        try:
+            return json.loads(b"".join(chunks).decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as ex:
+            _LOGGER.error("Schedule document could not be read: %s", ex)
+            return None
+
+    async def _read_schedules(self, map_index: int) -> tuple[list[dict[str, Any]], int] | None:
+        """Read a map's schedule slots alongside the version they are held under."""
+        try:
+            info = await self._get_schedule_info(map_index)
+            if info is None:
+                return None
+
+            length, version = info
+            document = await self._get_schedule_document(length, version)
+        except Exception as ex:
+            _LOGGER.warning("Failed to read the schedules of map index %s: %s", map_index, ex)
+            return None
+
+        if not isinstance(document, dict) or not isinstance(document.get("d"), list):
+            _LOGGER.error("Schedule document of map index %s carries no plans: %s", map_index, document)
+            return None
+
+        schedules: list[dict[str, Any]] = []
+        for plan in document["d"]:
+            schedule = self._decode_schedule_plan(plan)
+            if schedule is not None:
+                schedules.append(schedule)
+
+        schedules.sort(key=lambda schedule: schedule["slot"])
+        self._update_schedule_cache(map_index, schedules, version)
+        return schedules, version
+
+    async def refresh_schedules(self, map_id: int | None = None) -> list[dict[str, Any]] | None:
+        """Read a map's schedule slots, defaulting to the current map."""
+        map_index = self._preference_map_index(map_id)
+        if map_index is None:
+            return None
+
+        read = await self._read_schedules(map_index)
+        return None if read is None else read[0]
+
+    async def refresh_changed_schedules(self, map_id: int | None = None) -> list[dict[str, Any]] | None:
+        """Read a map's schedule slots only when the mower holds a new version.
+
+        The mower does not announce a changed schedule, so noticing an edit made
+        elsewhere takes asking. Its version comes out of a single read, which is
+        cheap enough to ask for regularly, and the plans themselves are only read
+        back once that version moved.
+        """
+        map_index = self._preference_map_index(map_id)
+        if map_index is None:
+            return None
+
+        # The version only says anything about the map it was read from: every
+        # map counts its own, so the same number on another map means nothing.
+        if self._schedules is not None and self._schedule_map_index == map_index:
+            try:
+                info = await self._get_schedule_info(map_index)
+            except Exception as ex:
+                _LOGGER.warning("Failed to read the schedule version of map index %s: %s", map_index, ex)
+                return None
+
+            if info is not None and info[1] == self._schedule_version:
+                return self.schedules
+
+        return await self.refresh_schedules(map_id)
+
+    def _update_schedule_cache(
+        self,
+        map_index: int,
+        schedules: Sequence[Mapping[str, Any]],
+        version: int,
+    ) -> None:
+        """Cache the schedule slots of a map, which only describe the current one."""
+        if not self._targets_current_map(map_index):
+            return
+
+        self._schedules = [deepcopy(dict(schedule)) for schedule in schedules]
+        self._schedule_map_index = map_index
+        self._schedule_version = version
+        self._notify_property_change(SCHEDULES_PROPERTY_NAME, deepcopy(self._schedules))
+
+    async def set_schedule_enabled(
+        self,
+        slot: int,
+        enabled: bool,
+        map_id: int | None = None,
+    ) -> list[dict[str, Any]] | None:
+        """Switch one schedule slot of a map on or off.
+
+        The mower runs a single schedule at a time, so switching a slot on
+        switches every other slot of that map off. Returns the slots that took
+        effect, or None when they could not be read or the write was rejected.
+        """
+        map_index = self._preference_map_index(map_id)
+        if map_index is None:
+            return None
+
+        # The write has to quote the version the mower holds its schedules under,
+        # so the slots are read back before every write. A write the mower rejects
+        # for a stale version is taken once more against the version it reports
+        # then, which is all a client can do about a schedule that changed
+        # underneath it.
+        for _ in range(2):
+            read = await self._read_schedules(map_index)
+            if read is None:
+                return None
+
+            schedules, version = read
+            try:
+                return await self._write_schedule_states(map_index, schedules, version, slot, enabled)
+            except _StaleScheduleVersion:
+                _LOGGER.debug(
+                    "Schedule write of map index %s quoted a version the mower no longer holds",
+                    map_index,
+                )
+
+        _LOGGER.error(
+            "Failed to switch schedule slot %s of map index %s: the stored schedule keeps changing",
+            slot,
+            map_index,
+        )
+        return None
+
+    async def _write_schedule_states(
+        self,
+        map_index: int,
+        schedules: list[dict[str, Any]],
+        version: int,
+        slot: int,
+        enabled: bool,
+    ) -> list[dict[str, Any]] | None:
+        """Write which schedule slots of a map are enabled, switching one of them.
+
+        Raises _StaleScheduleVersion when the mower rejects the write because the
+        stored schedule moved on from the version the write quotes.
+        """
+        target = next((schedule for schedule in schedules if schedule["slot"] == slot), None)
+        if target is None:
+            raise ValueError(f"This mower keeps no schedule in slot {slot}")
+
+        if enabled and not target["tasks_stored"]:
+            raise ValueError(f"The schedule in slot {slot} holds no tasks to run")
+
+        # The mower addresses the slots by position, so the states are only
+        # writable while every slot it reported is accounted for. A plan that
+        # could not be read leaves a hole, and writing around it would move every
+        # state that follows onto the wrong slot.
+        if [schedule["slot"] for schedule in schedules] != list(range(len(schedules))):
+            _LOGGER.error(
+                "Refusing to switch schedule slot %s of map index %s: the mower reported the slots %s",
+                slot,
+                map_index,
+                [schedule["slot"] for schedule in schedules],
+            )
+            return None
+
+        flags = [
+            (schedule["slot"] == slot) if enabled else (schedule["enabled"] and schedule["slot"] != slot)
+            for schedule in schedules
+        ]
+
+        result = await self._send_task_payload(
+            "schedule state write",
+            self._build_set_schedule_enabled_payload(map_index, version, flags),
+        )
+        data = self._extract_custom_action_data(result)
+        status = data.get("r") if isinstance(data, dict) else None
+        if status == SCHEDULE_STATUS_VERSION_ERROR:
+            raise _StaleScheduleVersion
+
+        if status != SCHEDULE_STATUS_SUCCESS or not isinstance(data, dict):
+            _LOGGER.error(
+                "Failed to switch schedule slot %s of map index %s %s: %s",
+                slot,
+                map_index,
+                "on" if enabled else "off",
+                result,
+            )
+            return None
+
+        for schedule, flag in zip(schedules, flags):
+            schedule["enabled"] = flag
+
+        # The mower moves the version on every write it accepts, and the next
+        # write has to quote the one it reports here.
+        try:
+            version = int(data["v"])
+        except (KeyError, TypeError, ValueError):
+            _LOGGER.debug("Schedule write of map index %s reported no new version: %s", map_index, data)
+
+        self._update_schedule_cache(map_index, schedules, version)
+        _LOGGER.info(
+            "Schedule slot %s of map index %s is now %s",
+            slot,
+            map_index,
+            "enabled" if enabled else "disabled",
+        )
+        return schedules
+
     def refresh_current_map_id(self) -> bool:
         """Refresh the current map by querying the MAPL getter."""
         try:
@@ -2278,12 +2695,12 @@ class DreameMowerDevice:
         return True
 
     def _preference_map_index(self, map_id: int | None) -> int | None:
-        """Resolve the map index a mowing preference request targets."""
+        """Resolve the map index a per-map request targets."""
         if map_id is None:
             map_id = self.current_map_id
 
         if map_id is None:
-            _LOGGER.error("No map is selected, so the mowing preference cannot be addressed")
+            _LOGGER.error("No map is selected, so a per-map record cannot be addressed")
             return None
 
         if not self._validate_map_id(map_id):
@@ -2340,6 +2757,11 @@ class DreameMowerDevice:
         self._edge_mowing_settings = None
         self._zone_edge_mowing_settings = {}
         self._mowing_preference_mode = None
+        # The schedules are stored per map too, so what is cached describes a map
+        # that is no longer the current one.
+        self._schedules = None
+        self._schedule_map_index = None
+        self._schedule_version = None
 
     def _update_cutting_height_cache(
         self,

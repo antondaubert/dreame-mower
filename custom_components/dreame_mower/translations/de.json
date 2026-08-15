@@ -190,6 +190,9 @@
       "anti_theft_pin_check": {
         "name": "PIN-Abfrage vor dem Ausschalten"
       },
+      "schedule": {
+        "name": "Zeitplan {number}"
+      },
       "edge_mowing_auto": {
         "name": "Automatisches Randmähen"
       },

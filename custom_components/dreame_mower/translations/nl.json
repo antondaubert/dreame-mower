@@ -190,6 +190,9 @@
       "anti_theft_pin_check": {
         "name": "Pincontrole voor uitschakelen"
       },
+      "schedule": {
+        "name": "Schema {number}"
+      },
       "edge_mowing_auto": {
         "name": "Automatisch randen maaien"
       },

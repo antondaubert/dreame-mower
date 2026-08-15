@@ -24,6 +24,7 @@ Provided "as-is" under the MIT License for personal, non-commercial use with dev
 - **Charging Period** - Read and set the time window the mower is allowed to fully charge in
 - **Rain Protection** - See when rain keeps the mower docked, and set how long it waits afterwards
 - **Anti-Theft Alarm** - Read and set the lift alarm, the off-map alarm and the mower's position reports
+- **Schedules** - See the mowing schedules of the active map and switch them on and off
 - **Battery Status** - Current battery level and charging info
 - **Mowing Progress** - Coverage percentage and session duration
 - **Do Not Disturb** - View quiet hours settings
@@ -109,6 +110,33 @@ The mower's anti-theft settings are exposed as switches:
 Locking the mower and sounding the alarm is all the mower does on its own. **Off-Map Alarm** and **Real-Time Location** need the mower's cellular module to work away from home, and stay without effect on a mower that has none. **PIN Check Before Power-Off** exists only on models that keep such a switch, and is omitted elsewhere rather than offered as a control that cannot write.
 
 The switches are created only for devices that report anti-theft settings. The mower announces every settings change it makes, whoever made it, so changes from the Dreame or MOVA app show up within seconds without reloading the integration.
+
+### Schedules
+
+Each map holds two mowing schedules, meant as one plan per season, and each of
+them is exposed as a switch. A switch carries the name its schedule was given,
+so it reads the same as in the Dreame or MOVA app — *Spr & Sum Schedule* and
+*Aut & Win Schedule* by default, in the language the app used when the schedule
+was first saved. A map the mower holds no saved schedule for has no name to go
+by, and the switch is called **Schedule 1** or **Schedule 2** until it does.
+
+The mower runs a single schedule at a time, so switching one on switches the
+other off. A schedule that holds no mowing tasks has nothing to run, and the
+switch reports an error rather than enabling an empty plan — the tasks
+themselves are created in the app.
+
+Both switches carry what the schedule holds as attributes: `schedule_name` is
+the name the schedule was given in the app, `map_id` the map it belongs to, and
+`tasks` the weekly mowing tasks with their day, kind and start time in minutes
+since midnight.
+
+Schedules are stored per map, so the switches always stand for the schedules of
+the map the mower currently works on, and follow along when the active map
+changes — including their names. A changed schedule is the one thing the mower
+does not announce, so edits made in the app are picked up by a check every 15
+minutes rather than within seconds. A mower that was unreachable when the
+integration started leaves its switches unavailable until that check first
+reaches it, rather than losing them until a reload.
 
 ### TODO: Hierarchical Mowing UI
 
