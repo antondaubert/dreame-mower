@@ -14,7 +14,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DATA_COORDINATOR, DOMAIN
 from .coordinator import DreameMowerCoordinator
-from .entity import DreameMowerEntity
+from .entity import DreameMowerEntity, device_errors_as_ha_errors
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -87,7 +87,10 @@ class DreameMowerChargingPeriodStartTime(DreameMowerChargingPeriodTime):
 
     async def async_set_value(self, value: time) -> None:
         """Set the start of the charging period."""
-        if not await self.coordinator.async_set_charging_period(start_minutes=time_to_minutes(value)):
+        with device_errors_as_ha_errors():
+            updated = await self.coordinator.async_set_charging_period(start_minutes=time_to_minutes(value))
+
+        if not updated:
             raise HomeAssistantError(
                 f"Failed to set the charging period start time to {value.strftime('%H:%M')}"
             )
@@ -110,7 +113,10 @@ class DreameMowerChargingPeriodEndTime(DreameMowerChargingPeriodTime):
 
     async def async_set_value(self, value: time) -> None:
         """Set the end of the charging period."""
-        if not await self.coordinator.async_set_charging_period(end_minutes=time_to_minutes(value)):
+        with device_errors_as_ha_errors():
+            updated = await self.coordinator.async_set_charging_period(end_minutes=time_to_minutes(value))
+
+        if not updated:
             raise HomeAssistantError(
                 f"Failed to set the charging period end time to {value.strftime('%H:%M')}"
             )

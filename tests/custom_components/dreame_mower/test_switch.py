@@ -7,6 +7,7 @@ import pytest
 from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.dreame_mower.const import DATA_COORDINATOR, DOMAIN
+from custom_components.dreame_mower.dreame.device import DreameCommandError
 from custom_components.dreame_mower.switch import (
     DreameMowerAntiTheftPinCheckSwitch,
     DreameMowerAutomaticEdgeMowingSwitch,
@@ -615,3 +616,51 @@ def test_an_unnamed_schedule_keeps_the_same_entity_id():
 def test_the_schedule_tasks_are_kept_out_of_the_recorder():
     """The tasks are a nested structure with nothing worth recording over time."""
     assert "tasks" in DreameMowerScheduleSwitch._unrecorded_attributes
+
+
+@pytest.mark.asyncio
+async def test_switching_an_anti_theft_setting_reports_why_it_never_reached_the_mower():
+    """A command that never completed reaches the interface with the reason it gave."""
+    coordinator = _make_anti_theft_coordinator()
+    coordinator.async_set_anti_theft_settings = AsyncMock(
+        side_effect=DreameCommandError(
+            "Failed to send the anti-theft settings write command: Device offline"
+        )
+    )
+    entity = DreameMowerLiftAlarmSwitch(coordinator)
+    entity.hass = MagicMock()
+
+    with pytest.raises(HomeAssistantError, match="Device offline"):
+        await entity.async_turn_on()
+
+
+@pytest.mark.asyncio
+async def test_switching_a_schedule_reports_why_it_never_reached_the_mower():
+    """A schedule that could not be switched says why rather than only that it failed."""
+    coordinator = _make_schedule_coordinator()
+    coordinator.async_set_schedule_enabled = AsyncMock(
+        side_effect=DreameCommandError(
+            "Failed to send the schedule state write command: Cloud API error 5: timeout"
+        )
+    )
+    entity = DreameMowerScheduleSwitch(coordinator, 0)
+    entity.hass = MagicMock()
+
+    with pytest.raises(HomeAssistantError, match="Cloud API error 5: timeout"):
+        await entity.async_turn_off()
+
+
+@pytest.mark.asyncio
+async def test_switching_the_charging_period_reports_why_it_never_reached_the_mower():
+    """The charging period switch passes the reason on like the other switches do."""
+    coordinator = _make_coordinator()
+    coordinator.async_set_charging_period = AsyncMock(
+        side_effect=DreameCommandError(
+            "Failed to send the charging period write command: No response from cloud API"
+        )
+    )
+    entity = DreameMowerChargingPeriodSwitch(coordinator)
+    entity.hass = MagicMock()
+
+    with pytest.raises(HomeAssistantError, match="No response from cloud API"):
+        await entity.async_turn_on()

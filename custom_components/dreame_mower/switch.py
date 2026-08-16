@@ -16,7 +16,7 @@ from homeassistant.helpers.typing import UndefinedType
 from .const import DATA_COORDINATOR, DOMAIN
 from .coordinator import DreameMowerCoordinator
 from .dreame.const import SCHEDULE_SLOT_COUNT
-from .entity import DreameMowerEntity
+from .entity import DreameMowerEntity, device_errors_as_ha_errors
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -122,7 +122,10 @@ class DreameMowerChargingPeriodSwitch(DreameMowerEntity, SwitchEntity):
 
     async def _async_set_enabled(self, enabled: bool) -> None:
         """Switch the charging period, keeping the configured times as they are."""
-        if not await self.coordinator.async_set_charging_period(enabled=enabled):
+        with device_errors_as_ha_errors():
+            updated = await self.coordinator.async_set_charging_period(enabled=enabled)
+
+        if not updated:
             raise HomeAssistantError(
                 f"Failed to turn the charging period {'on' if enabled else 'off'}"
             )
@@ -158,7 +161,10 @@ class DreameMowerRainProtectionSwitch(DreameMowerEntity, SwitchEntity):
 
     async def _async_set_enabled(self, enabled: bool) -> None:
         """Switch rain protection, keeping the configured delay as it is."""
-        if not await self.coordinator.async_set_rain_protection(enabled=enabled):
+        with device_errors_as_ha_errors():
+            updated = await self.coordinator.async_set_rain_protection(enabled=enabled)
+
+        if not updated:
             raise HomeAssistantError(
                 f"Failed to turn rain protection {'on' if enabled else 'off'}"
             )
@@ -187,10 +193,8 @@ class DreameMowerAntiTheftSwitch(DreameMowerEntity, SwitchEntity):
 
     async def _async_set_enabled(self, enabled: bool) -> None:
         """Switch the setting, keeping the other anti-theft settings as they are."""
-        try:
+        with device_errors_as_ha_errors():
             updated = await self.coordinator.async_set_anti_theft_settings(**{self._setting: enabled})
-        except ValueError as ex:
-            raise HomeAssistantError(str(ex)) from ex
 
         if not updated:
             raise HomeAssistantError(
@@ -366,10 +370,8 @@ class DreameMowerScheduleSwitch(DreameMowerEntity, SwitchEntity):
 
     async def _async_set_enabled(self, enabled: bool) -> None:
         """Switch the schedule of the active map."""
-        try:
+        with device_errors_as_ha_errors():
             updated = await self.coordinator.async_set_schedule_enabled(self._slot, enabled)
-        except ValueError as ex:
-            raise HomeAssistantError(str(ex)) from ex
 
         if not updated:
             raise HomeAssistantError(
@@ -401,10 +403,8 @@ class DreameMowerEdgeMowingSwitch(DreameMowerEntity, SwitchEntity):
 
     async def _async_set_enabled(self, enabled: bool) -> None:
         """Switch the setting for the active map, keeping the other settings as they are."""
-        try:
+        with device_errors_as_ha_errors():
             updated = await self.coordinator.async_set_edge_mowing_settings(**{self._setting: enabled})
-        except ValueError as ex:
-            raise HomeAssistantError(str(ex)) from ex
 
         if not updated:
             raise HomeAssistantError(

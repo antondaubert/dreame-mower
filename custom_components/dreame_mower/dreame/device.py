@@ -81,6 +81,7 @@ from .const import (
     DEVICE_FILE_PATH_PROPERTY_20,
     FIRMWARE_VALIDATION_EVENT,
     MISSION_COMPLETION_EVENT,
+    ActionIdentifier,
     ACTION_START_MOWING,
     ACTION_PAUSE,
     ACTION_STOP,
@@ -184,6 +185,22 @@ CONSUMABLE_COUNTER_INDEX: dict[str, int] = {
 }
 
 
+class DreameCommandError(Exception):
+    """Raised when a command to the mower did not complete a round trip.
+
+    This covers every way the exchange itself can fail: a dropped connection, a
+    request that timed out, a mower that is offline, or an error the cloud
+    reported in place of the mower's reply. The message carries the reason the
+    connection gave, which is the only account there is of why the command did
+    not happen.
+
+    It is deliberately distinct from a falsy return value. A device method that
+    returns None or False has been answered: the mower refused the write, or
+    replied with something that could not be read. Only this exception means the
+    command's outcome is unknown, so the two are never treated alike.
+    """
+
+
 class _StaleScheduleVersion(Exception):
     """Raised when a schedule write quotes a version the mower has moved on from."""
 
@@ -200,9 +217,18 @@ class MowingMode(str, Enum):
 
 class DreameMowerDevice:
     """Device communication handler for Dreame Mower.
-    
+
     This class manages the connection and communication with the physical mower device.
     It provides a high-level interface for controlling the mower and receiving status updates.
+
+    Every method that talks to the mower reports failure the same way. A falsy
+    return value is the mower's own answer: it refused the command, or replied
+    with something that could not be read, and the method has logged what it
+    saw. A DreameCommandError means the exchange never completed and the outcome
+    is unknown; it carries the reason the connection gave, which is the only
+    account of why the command did not happen and is therefore never traded for
+    a return value here. Callers with nobody waiting on the result — the polls
+    and the reads at startup — are the ones that decide to carry on regardless.
     """
 
     def __init__(
@@ -1325,9 +1351,7 @@ class DreameMowerDevice:
         START_MOWING action and lets the robot run whatever is configured in the
         app. Used as an all-area fallback when the map-aware payload fails.
         """
-        if not await asyncio.get_event_loop().run_in_executor(
-            None, lambda: self._cloud_device.execute_action(ACTION_START_MOWING)
-        ):
+        if not await self._send_action(ACTION_START_MOWING):
             _LOGGER.error("Failed to send START_MOWING command")
             return False
         
@@ -1725,7 +1749,7 @@ class DreameMowerDevice:
         }
 
     async def get_device_settings(self) -> dict[str, Any] | None:
-        """Read the whole settings record the device keeps, or None on failure.
+        """Read the whole settings record the device keeps, or None when unreadable.
 
         The record carries every setting the app exposes, keyed by its protocol
         name; values are returned exactly as the device reports them.
@@ -1739,7 +1763,7 @@ class DreameMowerDevice:
         return settings
 
     async def get_device_information(self) -> dict[str, Any] | None:
-        """Read the device's hardware information, or None on failure.
+        """Read the device's hardware information, or None when unreadable.
 
         Reports the serial number, Bluetooth MAC and the running firmware
         version as the device itself knows them.
@@ -1825,7 +1849,7 @@ class DreameMowerDevice:
 
         Every unspecified part keeps the value the device currently holds, so the
         period can be switched on and off without restating its times. Returns
-        None when the settings could not be read or the write was rejected.
+        None when the mower refused the write or answered unreadably.
         """
         current_settings = await self.get_charging_settings()
         if current_settings is None:
@@ -1945,7 +1969,7 @@ class DreameMowerDevice:
 
         Every unspecified part keeps the value the device currently holds, so
         rain protection can be switched without restating its delay. Returns None
-        when the settings could not be read or the write was rejected.
+        when the mower refused the write or answered unreadably.
         """
         current_settings = await self.get_rain_settings()
         if current_settings is None:
@@ -2053,7 +2077,7 @@ class DreameMowerDevice:
 
         Every unspecified switch keeps the value the device currently holds, so
         one switch can be changed without restating the others. Returns None when
-        the settings could not be read or the write was rejected.
+        the mower refused the write or answered unreadably.
         """
         current_settings = await self.get_anti_theft_settings()
         if current_settings is None:
@@ -2269,17 +2293,12 @@ class DreameMowerDevice:
 
     async def _read_schedules(self, map_index: int) -> tuple[list[dict[str, Any]], int] | None:
         """Read a map's schedule slots alongside the version they are held under."""
-        try:
-            info = await self._get_schedule_info(map_index)
-            if info is None:
-                return None
-
-            length, version = info
-            document = await self._get_schedule_document(length, version)
-        except Exception as ex:
-            _LOGGER.warning("Failed to read the schedules of map index %s: %s", map_index, ex)
+        info = await self._get_schedule_info(map_index)
+        if info is None:
             return None
 
+        length, version = info
+        document = await self._get_schedule_document(length, version)
         if not isinstance(document, dict) or not isinstance(document.get("d"), list):
             _LOGGER.error("Schedule document of map index %s carries no plans: %s", map_index, document)
             return None
@@ -2318,12 +2337,7 @@ class DreameMowerDevice:
         # The version only says anything about the map it was read from: every
         # map counts its own, so the same number on another map means nothing.
         if self._schedules is not None and self._schedule_map_index == map_index:
-            try:
-                info = await self._get_schedule_info(map_index)
-            except Exception as ex:
-                _LOGGER.warning("Failed to read the schedule version of map index %s: %s", map_index, ex)
-                return None
-
+            info = await self._get_schedule_info(map_index)
             if info is not None and info[1] == self._schedule_version:
                 return self.schedules
 
@@ -2354,7 +2368,7 @@ class DreameMowerDevice:
 
         The mower runs a single schedule at a time, so switching a slot on
         switches every other slot of that map off. Returns the slots that took
-        effect, or None when they could not be read or the write was rejected.
+        effect, or None when the mower refused the write or answered unreadably.
         """
         map_index = self._preference_map_index(map_id)
         if map_index is None:
@@ -2951,12 +2965,7 @@ class DreameMowerDevice:
 
     async def _refresh_map_wide_record(self, map_index: int) -> list[int] | None:
         """Read a map's map-wide record and cache every setting it carries."""
-        try:
-            record = await self._get_mowing_preference(map_index)
-        except Exception as ex:
-            _LOGGER.warning("Failed to read the mowing preference for map index %s: %s", map_index, ex)
-            return None
-
+        record = await self._get_mowing_preference(map_index)
         if record is None:
             return None
 
@@ -2999,12 +3008,7 @@ class DreameMowerDevice:
         if map_index is None:
             return {}
 
-        try:
-            mode, configured_area_ids = await self._get_preference_info(map_index)
-        except Exception as ex:
-            _LOGGER.warning("Failed to read the preference info for map index %s: %s", map_index, ex)
-            return {}
-
+        mode, configured_area_ids = await self._get_preference_info(map_index)
         if mode is not None:
             self._update_preference_mode_cache(map_index, mode)
 
@@ -3013,12 +3017,7 @@ class DreameMowerDevice:
             if area_id == MOWING_PREFERENCE_GLOBAL_AREA_ID:
                 continue
 
-            try:
-                record = await self._get_mowing_preference(map_index, area_id)
-            except Exception as ex:
-                _LOGGER.warning("Failed to read the mowing preference of zone %s: %s", area_id, ex)
-                continue
-
+            record = await self._get_mowing_preference(map_index, area_id)
             if record is not None:
                 zone_records[area_id] = record
 
@@ -3058,12 +3057,7 @@ class DreameMowerDevice:
         if map_index is None:
             return None
 
-        try:
-            mode, _ = await self._get_preference_info(map_index)
-        except Exception as ex:
-            _LOGGER.warning("Failed to read the preference mode for map index %s: %s", map_index, ex)
-            return None
-
+        mode, _ = await self._get_preference_info(map_index)
         if mode is not None:
             self._update_preference_mode_cache(map_index, mode)
 
@@ -3079,11 +3073,7 @@ class DreameMowerDevice:
         if map_index is None:
             return False
 
-        try:
-            if not await self._set_preference_mode(map_index, mode):
-                return False
-        except Exception as ex:
-            _LOGGER.error("Failed to send the preference mode command: %s", ex)
+        if not await self._set_preference_mode(map_index, mode):
             return False
 
         _LOGGER.info("Map index %s now applies its %s mowing preferences", map_index, mode.name)
@@ -3116,20 +3106,16 @@ class DreameMowerDevice:
                     zone_id,
                     self._cutting_height_slots(map_wide_height),
                 )
-                try:
-                    if not await self._set_mowing_preference(seeded_record):
-                        _LOGGER.warning(
-                            "Zone %s keeps no mowing preference of its own; it may fall back to device defaults",
-                            zone_id,
-                        )
-                except Exception as ex:
-                    _LOGGER.warning("Failed to seed the mowing preference of zone %s: %s", zone_id, ex)
+                # A zone the mower declines to seed keeps no record of its own and
+                # falls back to the device defaults; that is worth a warning but
+                # not worth abandoning the remaining zones over.
+                if not await self._set_mowing_preference(seeded_record):
+                    _LOGGER.warning(
+                        "Zone %s keeps no mowing preference of its own; it may fall back to device defaults",
+                        zone_id,
+                    )
 
-        try:
-            if not await self._set_preference_mode(map_index, MowingPreferenceMode.PER_ZONE):
-                return False
-        except Exception as ex:
-            _LOGGER.error("Failed to switch map index %s to per-zone preferences: %s", map_index, ex)
+        if not await self._set_preference_mode(map_index, MowingPreferenceMode.PER_ZONE):
             return False
 
         self._update_preference_mode_cache(map_index, MowingPreferenceMode.PER_ZONE)
@@ -3160,19 +3146,15 @@ class DreameMowerDevice:
         if zone_id is not None and not self._validate_preference_zone_id(zone_id, map_id):
             return False
 
-        try:
-            map_wide_record = await self._get_mowing_preference(map_index)
-            configured_area_ids: list[int] = []
-            mode: MowingPreferenceMode | None = None
-            base_record = map_wide_record
+        map_wide_record = await self._get_mowing_preference(map_index)
+        configured_area_ids: list[int] = []
+        mode: MowingPreferenceMode | None = None
+        base_record = map_wide_record
 
-            if zone_id is not None:
-                mode, configured_area_ids = await self._get_preference_info(map_index)
-                if zone_id in configured_area_ids:
-                    base_record = await self._get_mowing_preference(map_index, zone_id) or map_wide_record
-        except Exception as ex:
-            _LOGGER.error("Failed to read the mowing preference before changing it: %s", ex)
-            return False
+        if zone_id is not None:
+            mode, configured_area_ids = await self._get_preference_info(map_index)
+            if zone_id in configured_area_ids:
+                base_record = await self._get_mowing_preference(map_index, zone_id) or map_wide_record
 
         if base_record is None:
             _LOGGER.error(
@@ -3188,14 +3170,10 @@ class DreameMowerDevice:
         area_id = MOWING_PREFERENCE_GLOBAL_AREA_ID if zone_id is None else zone_id
         updated_record = self._record_for_write(base_record, map_index, area_id, slot_values)
 
-        try:
-            # Dropping the trailing slots of the record would drop the change
-            # itself when it lives in one of them, so a write only falls back to
-            # the shorter legacy record while it keeps every slot it changed.
-            if not await self._set_mowing_preference(updated_record, max(slot_values) + 1):
-                return False
-        except Exception as ex:
-            _LOGGER.error("Failed to send the mowing preference command: %s", ex)
+        # Dropping the trailing slots of the record would drop the change itself
+        # when it lives in one of them, so a write only falls back to the shorter
+        # legacy record while it keeps every slot it changed.
+        if not await self._set_mowing_preference(updated_record, max(slot_values) + 1):
             return False
 
         if zone_id is None:
@@ -3557,12 +3535,7 @@ class DreameMowerDevice:
             return False
 
         task_payload = self._build_all_area_task_payload(map_id)
-        try:
-            result = await self._send_task_payload("all-area mowing", task_payload)
-        except Exception as ex:
-            _LOGGER.error("Failed to send start_mowing_all_area command: %s", ex)
-            return False
-
+        result = await self._send_task_payload("all-area mowing", task_payload)
         if not result:
             _LOGGER.error("start_mowing_all_area command returned falsy result: %s", result)
             return False
@@ -3593,12 +3566,7 @@ class DreameMowerDevice:
 
         map_index = self._map_index_from_id(map_id)
         task_payload = self._build_set_current_map_payload(map_index)
-        try:
-            result = await self._send_task_payload("map switch", task_payload)
-        except Exception as ex:
-            _LOGGER.error("Failed to send set_current_map command: %s", ex)
-            return False
-
+        result = await self._send_task_payload("map switch", task_payload)
         if not result:
             _LOGGER.error("set_current_map command returned falsy result: %s", result)
             return False
@@ -3703,7 +3671,13 @@ class DreameMowerDevice:
         }
 
     async def _send_task_payload(self, task_name: str, task_payload: dict[str, Any]) -> Any:
-        """Send a scheduling task payload via action 2:50."""
+        """Send a scheduling task payload via action 2:50.
+
+        Raises DreameCommandError when the exchange does not complete, carrying
+        the reason the connection gave. Callers therefore never have to tell a
+        command the mower refused from one it never received: the first is a
+        falsy return value, the second is this exception.
+        """
         _LOGGER.debug(
             "Sending %s action %s:%s with payload: %s",
             task_name,
@@ -3711,14 +3685,33 @@ class DreameMowerDevice:
             SCHEDULING_TASK_PROPERTY.piid,
             task_payload,
         )
-        return await asyncio.get_event_loop().run_in_executor(
-            None,
-            lambda: self._cloud_device.action(
-                SCHEDULING_TASK_PROPERTY.siid,
-                SCHEDULING_TASK_PROPERTY.piid,
-                [task_payload],
-            ),
-        )
+        try:
+            return await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: self._cloud_device.action(
+                    SCHEDULING_TASK_PROPERTY.siid,
+                    SCHEDULING_TASK_PROPERTY.piid,
+                    [task_payload],
+                ),
+            )
+        except Exception as ex:
+            raise DreameCommandError(f"Failed to send the {task_name} command: {ex}") from ex
+
+    async def _send_action(self, action: ActionIdentifier) -> Any:
+        """Run one of the mower's plain actions and return what it answered.
+
+        The counterpart of _send_task_payload for the actions that carry no
+        payload, and it answers a caller the same way: a falsy return value is
+        the mower's own refusal, while a DreameCommandError means the exchange
+        never completed and carries the reason the connection gave.
+        """
+        try:
+            return await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: self._cloud_device.action(action.siid, action.aiid),
+            )
+        except Exception as ex:
+            raise DreameCommandError(f"Failed to send the {action.name} command: {ex}") from ex
 
     async def start_mowing_zones(self, zone_ids: list[int]) -> bool:
         """Start mowing specific zones by their IDs."""
@@ -3730,12 +3723,7 @@ class DreameMowerDevice:
             return False
 
         task_payload = self._build_zone_task_payload(zone_ids)
-        try:
-            result = await self._send_task_payload("zone mowing", task_payload)
-        except Exception as ex:
-            _LOGGER.error("Failed to send start_mowing_zones command: %s", ex)
-            return False
-
+        result = await self._send_task_payload("zone mowing", task_payload)
         if not result:
             _LOGGER.error("start_mowing_zones command returned falsy result: %s", result)
             return False
@@ -3762,12 +3750,7 @@ class DreameMowerDevice:
             return False
 
         task_payload = self._build_edge_task_payload(contour_ids)
-        try:
-            result = await self._send_task_payload("edge mowing", task_payload)
-        except Exception as ex:
-            _LOGGER.error("Failed to send start_mowing_edges command: %s", ex)
-            return False
-
+        result = await self._send_task_payload("edge mowing", task_payload)
         if not result:
             _LOGGER.error("start_mowing_edges command returned falsy result: %s", result)
             return False
@@ -3787,12 +3770,7 @@ class DreameMowerDevice:
             return False
 
         task_payload = self._build_spot_task_payload(spot_area_ids)
-        try:
-            result = await self._send_task_payload("spot mowing", task_payload)
-        except Exception as ex:
-            _LOGGER.error("Failed to send start_mowing_spots command: %s", ex)
-            return False
-
+        result = await self._send_task_payload("spot mowing", task_payload)
         if not result:
             _LOGGER.error("start_mowing_spots command returned falsy result: %s", result)
             return False
@@ -3815,23 +3793,13 @@ class DreameMowerDevice:
         )
 
         create_payload = self._build_spot_rectangle_payload(*normalized_rectangle)
-        try:
-            create_result = await self._send_task_payload("spot area create", create_payload)
-        except Exception as ex:
-            _LOGGER.error("Failed to send spot area create command: %s", ex)
-            return None
-
+        create_result = await self._send_task_payload("spot area create", create_payload)
         if not create_result:
             _LOGGER.error("spot area create command returned falsy result: %s", create_result)
             return None
 
         apply_payload = self._build_apply_spot_selection_payload()
-        try:
-            apply_result = await self._send_task_payload("spot area apply", apply_payload)
-        except Exception as ex:
-            _LOGGER.error("Failed to send spot area apply command: %s", ex)
-            return None
-
+        apply_result = await self._send_task_payload("spot area apply", apply_payload)
         if not apply_result:
             _LOGGER.error("spot area apply command returned falsy result: %s", apply_result)
             return None
@@ -3949,9 +3917,7 @@ class DreameMowerDevice:
 
     async def pause(self) -> bool:
         """Pause current operation."""
-        if not await asyncio.get_event_loop().run_in_executor(
-            None, lambda: self._cloud_device.execute_action(ACTION_PAUSE)
-        ):
+        if not await self._send_action(ACTION_PAUSE):
             _LOGGER.error("Failed to send PAUSE command")
             return False
         self._notify_property_change("activity", "paused")
@@ -3966,9 +3932,7 @@ class DreameMowerDevice:
         Returns:
             True if the dock command was sent successfully, False otherwise.
         """
-        if not await asyncio.get_event_loop().run_in_executor(
-            None, lambda: self._cloud_device.execute_action(ACTION_DOCK)
-        ):
+        if not await self._send_action(ACTION_DOCK):
             _LOGGER.error("Failed to send DOCK command")
             return False
 
@@ -3988,9 +3952,7 @@ class DreameMowerDevice:
         self._mission_completed_event.clear()
         
         # Send STOP command
-        if not await asyncio.get_event_loop().run_in_executor(
-            None, lambda: self._cloud_device.execute_action(ACTION_STOP)
-        ):
+        if not await self._send_action(ACTION_STOP):
             _LOGGER.error("Failed to send STOP command")
             return False
         
@@ -4003,12 +3965,10 @@ class DreameMowerDevice:
             _LOGGER.warning("Timeout waiting for mission completion event, sending DOCK anyway")
         
         # Send DOCK command
-        if not await asyncio.get_event_loop().run_in_executor(
-            None, lambda: self._cloud_device.execute_action(ACTION_DOCK)
-        ):
+        if not await self._send_action(ACTION_DOCK):
             _LOGGER.error("Failed to send DOCK command")
             return False
-       
+
         self._notify_property_change("activity", "docked")
         return True
 

@@ -2,15 +2,39 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 import logging
 
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC, DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import DreameMowerCoordinator
+from .dreame.device import DreameCommandError
 
 _LOGGER = logging.getLogger(__name__)
+
+
+@contextmanager
+def device_errors_as_ha_errors() -> Iterator[None]:
+    """Pass on why a command to the mower did not happen.
+
+    Wraps the call a user action makes into the device. A command the mower
+    could not be asked to run raises DreameCommandError carrying the reason the
+    connection gave, and one that was never worth asking raises ValueError
+    saying what was wrong with it. Both answer the action the user took, so both
+    reach the interface with their own message instead of a stand-in that only
+    says something failed.
+
+    A command the mower did receive and refuse comes back as a falsy value
+    instead, and the caller describes that failure itself.
+    """
+    try:
+        yield
+    except (ValueError, DreameCommandError) as ex:
+        raise HomeAssistantError(str(ex)) from ex
 
 
 class DreameMowerEntity(CoordinatorEntity[DreameMowerCoordinator]):

@@ -19,8 +19,8 @@ from homeassistant.components.lawn_mower import (  # type: ignore[attr-defined]
 
 from .const import DATA_COORDINATOR, DOMAIN
 from .coordinator import DreameMowerCoordinator
-from .dreame.device import MowingMode
-from .entity import DreameMowerEntity
+from .dreame.device import DreameCommandError, MowingMode
+from .entity import DreameMowerEntity, device_errors_as_ha_errors
 from .dreame.const import (
     CUTTING_HEIGHT_ABSOLUTE_MAX_CM,
     CUTTING_HEIGHT_MIN_CM,
@@ -160,14 +160,14 @@ class DreameMowerLawnMower(DreameMowerEntity, LawnMowerEntity):
     async def async_start_mowing(self) -> None:
         """Start or resume mowing."""
         mode = self.coordinator.selected_mowing_mode
-        try:
+        with device_errors_as_ha_errors():
             # While a mowing session is already in progress (mowing, paused, or
             # returning to dock), resume/continue it instead of starting a new
             # task. Only when no session is active do we dispatch a fresh start
             # using the configured map and mowing action.
             if self.coordinator.device.mowing_session_active:
                 if not await self.coordinator.device.resume():
-                    _LOGGER.error("Failed to resume mowing")
+                    raise HomeAssistantError("Failed to resume mowing")
                 return
 
             start_kwargs: dict[str, Any] = {"mode": mode}
@@ -187,43 +187,54 @@ class DreameMowerLawnMower(DreameMowerEntity, LawnMowerEntity):
                     raise HomeAssistantError("No spot is selected for spot mowing")
                 start_kwargs["spot_area_ids"] = [selected_spot_area_id]
 
-            if not await self.coordinator.device.start_mowing(**start_kwargs):
-                _LOGGER.error("Failed to start mowing")
-                if mode == MowingMode.ALL_AREA:
-                    await self._start_all_area_generic_fallback()
-        except HomeAssistantError:
-            raise
-        except Exception as ex:
-            _LOGGER.error("Exception while starting mowing: %s", ex)
-            if mode == MowingMode.ALL_AREA:
-                await self._start_all_area_generic_fallback()
+            # Only an all-area start has somewhere to fall back to, so every
+            # other mode reports a failed start rather than mowing the wrong
+            # area with the generic action.
+            if mode != MowingMode.ALL_AREA:
+                if not await self.coordinator.device.start_mowing(**start_kwargs):
+                    raise HomeAssistantError(f"Failed to start {mode.value} mowing")
+                return
+
+            try:
+                if await self.coordinator.device.start_mowing(**start_kwargs):
+                    return
+                _LOGGER.error("Failed to start all-area mowing")
+            except DreameCommandError as ex:
+                _LOGGER.error("%s", ex)
+
+            await self._start_all_area_generic_fallback()
 
     async def _start_all_area_generic_fallback(self) -> None:
         """Fall back to the generic device-decides START_MOWING action.
 
         Only used for all-area mowing: when the map-aware start payload is
-        rejected or raises, the bare 5:1 action lets the robot run whatever is
-        configured in the app. For zone/edge/spot modes this would mow the wrong
-        area, so the fallback is deliberately limited to all-area starts.
+        rejected or does not reach the mower, the bare 5:1 action lets the robot
+        run whatever is configured in the app. For zone/edge/spot modes this
+        would mow the wrong area, so the fallback is deliberately limited to
+        all-area starts.
         """
         _LOGGER.warning("All-area start failed; falling back to generic START_MOWING action")
-        if not await self.coordinator.device.start_mowing_generic():
-            _LOGGER.error("Generic START_MOWING fallback also failed")
+        with device_errors_as_ha_errors():
+            if not await self.coordinator.device.start_mowing_generic():
+                raise HomeAssistantError("Failed to start all-area mowing")
 
     async def async_start_zone_mowing(self, zone_ids: list[int]) -> None:
         """Start mowing for one or more explicit zone IDs."""
-        if not await self.coordinator.device.start_mowing_zones(zone_ids):
-            raise HomeAssistantError(f"Failed to start zone mowing for zone IDs: {zone_ids}")
+        with device_errors_as_ha_errors():
+            if not await self.coordinator.device.start_mowing_zones(zone_ids):
+                raise HomeAssistantError(f"Failed to start zone mowing for zone IDs: {zone_ids}")
 
     async def async_start_edge_mowing(self, contour_ids: list[list[int]]) -> None:
         """Start edge mowing for one or more explicit contour IDs."""
-        if not await self.coordinator.device.start_mowing_edges(contour_ids):
-            raise HomeAssistantError(f"Failed to start edge mowing for contour IDs: {contour_ids}")
+        with device_errors_as_ha_errors():
+            if not await self.coordinator.device.start_mowing_edges(contour_ids):
+                raise HomeAssistantError(f"Failed to start edge mowing for contour IDs: {contour_ids}")
 
     async def async_start_spot_mowing(self, spot_area_ids: list[int]) -> None:
         """Start mowing for one or more explicit spot-area IDs."""
-        if not await self.coordinator.device.start_mowing_spots(spot_area_ids):
-            raise HomeAssistantError(f"Failed to start spot mowing for spot IDs: {spot_area_ids}")
+        with device_errors_as_ha_errors():
+            if not await self.coordinator.device.start_mowing_spots(spot_area_ids):
+                raise HomeAssistantError(f"Failed to start spot mowing for spot IDs: {spot_area_ids}")
 
     async def async_set_cutting_height(
         self,
@@ -234,10 +245,8 @@ class DreameMowerLawnMower(DreameMowerEntity, LawnMowerEntity):
         """Set the cutting height for a map, or for a single zone of it."""
         self._assert_cutting_height_supported()
 
-        try:
+        with device_errors_as_ha_errors():
             updated = await self.coordinator.async_set_cutting_height(height, map_id, zone_id)
-        except ValueError as ex:
-            raise HomeAssistantError(str(ex)) from ex
 
         if not updated:
             target = "the map" if zone_id is None else f"zone {zone_id}"
@@ -252,7 +261,7 @@ class DreameMowerLawnMower(DreameMowerEntity, LawnMowerEntity):
         zone_id: int | None = None,
     ) -> None:
         """Switch edge mowing settings for a map, or for a single zone of it."""
-        try:
+        with device_errors_as_ha_errors():
             updated = await self.coordinator.async_set_edge_mowing_settings(
                 auto=automatic_edge_mowing,
                 blade_offset=edge_blade_offset,
@@ -260,8 +269,6 @@ class DreameMowerLawnMower(DreameMowerEntity, LawnMowerEntity):
                 map_id=map_id,
                 zone_id=zone_id,
             )
-        except ValueError as ex:
-            raise HomeAssistantError(str(ex)) from ex
 
         if not updated:
             target = "the map" if zone_id is None else f"zone {zone_id}"
@@ -271,9 +278,12 @@ class DreameMowerLawnMower(DreameMowerEntity, LawnMowerEntity):
         """Choose whether a map follows one set of mowing settings or per-zone ones."""
         self._assert_cutting_height_supported()
 
-        if not await self.coordinator.async_set_mowing_preference_mode(
-            _MOWING_PREFERENCE_MODES[mode], map_id
-        ):
+        with device_errors_as_ha_errors():
+            updated = await self.coordinator.async_set_mowing_preference_mode(
+                _MOWING_PREFERENCE_MODES[mode], map_id
+            )
+
+        if not updated:
             raise HomeAssistantError(f"Failed to switch the mowing preferences to {mode}")
 
     def _assert_cutting_height_supported(self) -> None:
@@ -327,16 +337,12 @@ class DreameMowerLawnMower(DreameMowerEntity, LawnMowerEntity):
 
     async def async_pause(self) -> None:
         """Pause mowing."""
-        try:
+        with device_errors_as_ha_errors():
             if not await self.coordinator.device.pause():
-                _LOGGER.error("Failed to pause mowing")
-        except Exception as ex:
-            _LOGGER.error("Exception while pausing mowing: %s", ex)
+                raise HomeAssistantError("Failed to pause mowing")
 
     async def async_dock(self) -> None:
         """Return to dock."""
-        try:
+        with device_errors_as_ha_errors():
             if not await self.coordinator.device.return_to_dock():
-                _LOGGER.error("Failed to dock")
-        except Exception as ex:
-            _LOGGER.error("Exception while docking: %s", ex)
+                raise HomeAssistantError("Failed to send the mower back to its dock")

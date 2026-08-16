@@ -15,7 +15,7 @@ from .const import DATA_COORDINATOR, DOMAIN
 from .coordinator import DreameMowerCoordinator
 from .dreame.const import RAIN_DELAY_MAX_HOURS, RAIN_DELAY_MIN_HOURS
 from .dreame.device import MowingMode
-from .entity import DreameMowerEntity
+from .entity import DreameMowerEntity, device_errors_as_ha_errors
 
 _MOWING_MODE_LABELS: dict[MowingMode, str] = {
     MowingMode.ALL_AREA: "All area",
@@ -90,7 +90,10 @@ class DreameMowerMapSelect(DreameMowerEntity, SelectEntity):
         if map_id is None:
             raise HomeAssistantError(f"Unknown map option: {option}")
 
-        if await self.coordinator.device.set_current_map(map_id):
+        with device_errors_as_ha_errors():
+            switched = await self.coordinator.device.set_current_map(map_id)
+
+        if switched:
             return
 
         if self.coordinator.device.mowing_session_active:
@@ -333,7 +336,10 @@ class DreameMowerRainDelaySelect(DreameMowerEntity, SelectEntity):
         if delay_hours is None:
             raise ValueError(f"Unknown after-rain delay option: {option}")
 
-        if not await self.coordinator.async_set_rain_protection(delay_hours=delay_hours):
+        with device_errors_as_ha_errors():
+            updated = await self.coordinator.async_set_rain_protection(delay_hours=delay_hours)
+
+        if not updated:
             raise HomeAssistantError(f"Failed to set the after-rain delay to {option}")
 
         if self.coordinator.rain_delay_hours != delay_hours:

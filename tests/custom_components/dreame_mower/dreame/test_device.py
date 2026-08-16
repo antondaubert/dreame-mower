@@ -9,7 +9,7 @@ from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch, PropertyMock
 
-from custom_components.dreame_mower.dreame.device import DreameMowerDevice, MowingMode
+from custom_components.dreame_mower.dreame.device import DreameCommandError, DreameMowerDevice, MowingMode
 from custom_components.dreame_mower.dreame.const import (
     DeviceStatus,
     MowingPreferenceMode,
@@ -3530,3 +3530,104 @@ async def test_refresh_changed_schedules_reads_another_map_back_in_full(device):
     await device.refresh_changed_schedules()
 
     assert "SCHDDV3" in [call[2][0]["t"] for call in device._cloud_device.action_calls]
+
+
+def _unreachable_responder(reason="Device offline: the mower did not answer"):
+    """Build an action responder that fails the exchange the way the cloud does."""
+
+    def responder(siid, aiid, parameters, retry_count):
+        raise TimeoutError(reason)
+
+    return responder
+
+
+@pytest.mark.asyncio
+async def test_a_dropped_exchange_raises_a_command_error_carrying_the_reason(device):
+    """A command that does not complete reports why instead of returning a value."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result = _unreachable_responder()
+
+    with pytest.raises(DreameCommandError) as raised:
+        await device._send_task_payload("test", {"m": "g", "t": "CFG"})
+
+    assert "Device offline: the mower did not answer" in str(raised.value)
+    assert isinstance(raised.value.__cause__, TimeoutError)
+
+
+@pytest.mark.asyncio
+async def test_a_dropped_exchange_is_not_reported_as_a_refused_mowing_command(device):
+    """A mowing command that never reached the mower must not look like a refusal."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._status_code = DeviceStatus.CHARGING
+    device._cloud_device.action_result = _unreachable_responder()
+
+    with pytest.raises(DreameCommandError, match="Device offline"):
+        await device.start_mowing_zones([1])
+
+
+@pytest.mark.asyncio
+async def test_a_dropped_exchange_is_not_reported_as_a_refused_settings_write(device):
+    """A settings write that never reached the mower reports the reason it gave."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result = _unreachable_responder()
+
+    with pytest.raises(DreameCommandError, match="Device offline"):
+        await device.set_anti_theft_settings(lift_alarm=True)
+
+
+@pytest.mark.asyncio
+async def test_a_dropped_exchange_is_not_reported_as_a_refused_schedule_write(device):
+    """A schedule write reports a dropped exchange rather than a missing schedule."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._current_map_id = 1
+    device._cloud_device.action_result = _unreachable_responder()
+
+    with pytest.raises(DreameCommandError, match="Device offline"):
+        await device.set_schedule_enabled(0, True)
+
+
+@pytest.mark.asyncio
+async def test_a_dropped_exchange_is_not_reported_as_an_unreadable_settings_record(device):
+    """Reading the settings tells a dropped exchange from a record it could not parse."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result = _unreachable_responder()
+
+    with pytest.raises(DreameCommandError, match="Device offline"):
+        await device.get_device_settings()
+
+
+@pytest.mark.asyncio
+async def test_a_plain_action_that_never_completes_raises_a_command_error(device):
+    """The payload-free actions report a dropped exchange the same way."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result = _unreachable_responder()
+
+    with pytest.raises(DreameCommandError, match="Device offline"):
+        await device.pause()
+
+
+@pytest.mark.asyncio
+async def test_a_refused_command_still_comes_back_as_a_falsy_value(device):
+    """A mower that answers and refuses is reported by the return value, not an error."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._status_code = DeviceStatus.CHARGING
+    device._cloud_device.action_result = None
+
+    assert await device.start_mowing_zones([1]) is False
+
+
+@pytest.mark.asyncio
+async def test_an_unreadable_settings_record_still_comes_back_as_none(device):
+    """A record the device answered with but that cannot be read stays a None result."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result = {"code": 0, "out": [{"r": -1}]}
+
+    assert await device.get_device_settings() is None

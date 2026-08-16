@@ -9,7 +9,7 @@ from homeassistant.components.lawn_mower import LawnMowerActivity
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from custom_components.dreame_mower.const import DATA_COORDINATOR, DOMAIN
-from custom_components.dreame_mower.dreame.device import MowingMode
+from custom_components.dreame_mower.dreame.device import DreameCommandError, MowingMode
 from custom_components.dreame_mower.lawn_mower import DreameMowerLawnMower, async_setup_entry
 from custom_components.dreame_mower.dreame.const import (
     STATUS_PROPERTY,
@@ -293,11 +293,11 @@ async def test_all_area_start_failure_falls_back_to_generic():
 
 
 @pytest.mark.asyncio
-async def test_all_area_start_exception_falls_back_to_generic():
-    """When the map-aware all-area start raises, fall back to generic."""
+async def test_all_area_start_command_error_falls_back_to_generic():
+    """When the map-aware all-area start never reaches the mower, fall back to generic."""
     coordinator = _make_coordinator()
     coordinator.selected_mowing_mode = MowingMode.ALL_AREA
-    coordinator.device.start_mowing = AsyncMock(side_effect=RuntimeError("boom"))
+    coordinator.device.start_mowing = AsyncMock(side_effect=DreameCommandError("offline"))
     entity = _make_entity(coordinator)
     entity._attr_activity = LawnMowerActivity.DOCKED
 
@@ -308,7 +308,7 @@ async def test_all_area_start_exception_falls_back_to_generic():
 
 @pytest.mark.asyncio
 async def test_zone_start_failure_does_not_fall_back_to_generic():
-    """A failed zone start must not trigger the all-area-only generic fallback."""
+    """A refused zone start is reported and must not trigger the generic fallback."""
     coordinator = _make_coordinator()
     coordinator.selected_mowing_mode = MowingMode.ZONE
     coordinator.selected_zone_id = 1
@@ -316,7 +316,8 @@ async def test_zone_start_failure_does_not_fall_back_to_generic():
     entity = _make_entity(coordinator)
     entity._attr_activity = LawnMowerActivity.DOCKED
 
-    await entity.async_start_mowing()
+    with pytest.raises(HomeAssistantError):
+        await entity.async_start_mowing()
 
     coordinator.device.start_mowing_generic.assert_not_awaited()
 
