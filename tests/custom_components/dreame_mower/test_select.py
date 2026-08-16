@@ -200,6 +200,84 @@ async def test_edge_select_updates_selected_contour_id():
     coordinator.async_set_selected_contour_id.assert_awaited_once_with([1, 0])
 
 
+def test_edge_select_numbers_the_extra_contours_of_a_zone():
+    """A zone owning several contours must not offer the same label repeatedly."""
+    coordinator = _make_coordinator()
+    coordinator.contours = [[1, 0], [1, 128], [1, 129]]
+    entity = _make_edge_select(coordinator)
+
+    assert entity.options == [
+        "Front Lawn edge",
+        "Front Lawn edge 2",
+        "Front Lawn edge 3",
+    ]
+
+
+def test_edge_select_numbers_by_contour_index_not_list_order():
+    """The zone boundary keeps the plain label wherever it sits in the list."""
+    coordinator = _make_coordinator()
+    coordinator.contours = [[1, 129], [1, 0], [1, 128]]
+    entity = _make_edge_select(coordinator)
+
+    assert entity.options == [
+        "Front Lawn edge 3",
+        "Front Lawn edge",
+        "Front Lawn edge 2",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_edge_select_resolves_each_numbered_option_to_its_own_contour():
+    coordinator = _make_coordinator()
+    coordinator.contours = [[1, 0], [1, 128], [1, 129]]
+    entity = _make_edge_select(coordinator)
+
+    await entity.async_select_option("Front Lawn edge 3")
+
+    coordinator.async_set_selected_contour_id.assert_awaited_once_with([1, 129])
+
+
+def test_edge_select_current_option_distinguishes_contours_of_one_zone():
+    coordinator = _make_coordinator()
+    coordinator.contours = [[1, 0], [1, 128], [1, 129]]
+    coordinator.selected_contour_id = [1, 128]
+    entity = _make_edge_select(coordinator)
+
+    assert entity.current_option == "Front Lawn edge 2"
+
+
+def test_edge_select_keeps_the_plain_label_for_a_single_contour():
+    """The common one-contour-per-zone case keeps the label automations use."""
+    coordinator = _make_coordinator()
+    coordinator.contours = [[1, 0]]
+    entity = _make_edge_select(coordinator)
+
+    assert entity.options == ["Front Lawn edge"]
+
+
+def test_edge_select_disambiguates_zones_sharing_a_name():
+    coordinator = _make_coordinator()
+    coordinator.zones = [
+        {"id": 1, "name": "Front Lawn", "area": 12.5},
+        {"id": 3, "name": "Front Lawn", "area": 9.7},
+    ]
+    coordinator.contours = [[1, 0], [3, 0]]
+    entity = _make_edge_select(coordinator)
+
+    assert entity.options == ["Front Lawn edge (#1)", "Front Lawn edge (#3)"]
+
+
+@pytest.mark.asyncio
+async def test_edge_select_rejects_an_unknown_option():
+    coordinator = _make_coordinator()
+    entity = _make_edge_select(coordinator)
+
+    with pytest.raises(ValueError):
+        await entity.async_select_option("No Such edge")
+
+    coordinator.async_set_selected_contour_id.assert_not_awaited()
+
+
 def test_zone_select_options_and_current_option():
     entity = _make_zone_select()
 

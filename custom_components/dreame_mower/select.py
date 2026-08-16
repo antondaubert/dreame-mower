@@ -147,7 +147,12 @@ class DreameMowerMowingActionSelect(DreameMowerEntity, SelectEntity):
 
 
 class DreameMowerEdgeSelect(DreameMowerEntity, SelectEntity):
-    """Select entity for a single target edge contour."""
+    """Select entity for a single target edge contour.
+
+    A zone can own more than one contour: its own boundary, plus one for every
+    shape cut into the lawn inside it. They all carry the zone's name, so the
+    boundary keeps the plain name and the extras are numbered after it.
+    """
 
     def __init__(self, coordinator: DreameMowerCoordinator) -> None:
         """Initialize the edge select entity."""
@@ -158,7 +163,7 @@ class DreameMowerEdgeSelect(DreameMowerEntity, SelectEntity):
     @property
     def options(self) -> list[str]:
         """Return the available edge-contour options."""
-        return [self._option_label(contour) for contour in self.coordinator.contours]
+        return list(self._contours_by_label())
 
     @property
     def current_option(self) -> str | None:
@@ -167,35 +172,62 @@ class DreameMowerEdgeSelect(DreameMowerEntity, SelectEntity):
         if selected_contour_id is None:
             return None
 
-        for contour in self.coordinator.contours:
-            if contour == selected_contour_id:
-                return self._option_label(contour)
+        for label, contour in self._contours_by_label().items():
+            if contour == list(selected_contour_id):
+                return label
 
         return None
 
     async def async_select_option(self, option: str) -> None:
         """Select a single target edge contour for edge mowing."""
-        contour_id = self._id_from_option(option)
+        contour_id = self._contours_by_label().get(option)
         if contour_id is None:
             raise ValueError(f"Unknown edge option: {option}")
 
         await self.coordinator.async_set_selected_contour_id(contour_id)
 
-    def _option_label(self, contour: list[int]) -> str:
+    def _contours_by_label(self) -> dict[str, list[int]]:
+        """Return every contour, keyed by the label it is offered as.
+
+        Resolving an option goes through this mapping rather than by comparing
+        labels, so a contour stays reachable even where two of them would
+        otherwise read alike.
+        """
+        contours = [list(contour) for contour in self.coordinator.contours]
+
+        # A contour is identified by its zone and an index that is neither
+        # dense nor ordered, so the position within the zone decides the label.
+        positions: dict[tuple[int, int], int] = {}
+        for zone_id in {contour[0] for contour in contours}:
+            ordered = sorted(
+                (contour for contour in contours if contour[0] == zone_id),
+                key=lambda contour: contour[1],
+            )
+            for position, contour in enumerate(ordered):
+                positions[(contour[0], contour[1])] = position
+
+        labels = [
+            self._option_label(contour, positions[(contour[0], contour[1])])
+            for contour in contours
+        ]
+        ambiguous = {label for label in labels if labels.count(label) > 1}
+
+        contours_by_label: dict[str, list[int]] = {}
+        for contour, label in zip(contours, labels):
+            if label in ambiguous:
+                label = f"{label} (#{contour[0]})"
+            contours_by_label[label] = contour
+        return contours_by_label
+
+    def _option_label(self, contour: list[int], position: int) -> str:
         """Return the label shown for an edge-contour option."""
         zone_id = contour[0]
         for zone in self.coordinator.zones:
             if int(zone["id"]) == zone_id:
                 name = zone.get("name") or f"Zone {zone_id}"
-                return f"{name} edge"
+                label = f"{name} edge"
+                return label if position == 0 else f"{label} {position + 1}"
         return f"Edge ({contour[0]}, {contour[1]})"
-
-    def _id_from_option(self, option: str) -> list[int] | None:
-        """Resolve a select option back to its contour ID."""
-        for contour in self.coordinator.contours:
-            if self._option_label(contour) == option:
-                return contour
-        return None
 
 
 class DreameMowerZoneSelect(DreameMowerEntity, SelectEntity):
