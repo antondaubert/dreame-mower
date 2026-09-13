@@ -54,8 +54,8 @@ model_map = {
     "mova.mower.g2405a": "MOVA 600",
     "mova.mower.g2405b": "MOVA 600 Kit",
     "mova.mower.g2405c": "MOVA 1000",
-    "mova.mower.g2552": "MOVA Viax 250",
     "mova.mower.g2529b": "MOVA LiDAX 800 Ultra",
+    "mova.mower.g2552": "MOVA Viax 250",
     "dreame.swbot.g2509": "Dreame Z1",
 }
 
