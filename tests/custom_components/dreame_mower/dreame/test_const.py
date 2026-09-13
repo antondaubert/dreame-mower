@@ -65,7 +65,7 @@ class TestCuttingHeightSupport:
     def test_adjustable_models_are_supported(self, model):
         assert supports_cutting_height(model) is True
 
-    @pytest.mark.parametrize("model", ["mova.mower.g2405a", "mova.mower.g2405c"])
+    @pytest.mark.parametrize("model", ["mova.mower.g2405a", "mova.mower.g2405c", "mova.mower.g2552"])
     def test_fixed_height_models_are_unsupported(self, model):
         assert supports_cutting_height(model) is False
 
