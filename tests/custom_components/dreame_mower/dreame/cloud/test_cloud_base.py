@@ -1,13 +1,20 @@
 """Tests for the Dreame Mower cloud base module."""
 
+import hashlib
 import json
+import logging
 import queue
 from typing import Any
 from unittest.mock import Mock, patch
 import pytest
 import requests
 
-from custom_components.dreame_mower.dreame.cloud.cloud_base import DreameMowerCloudBase
+from custom_components.dreame_mower.dreame.cloud.cloud_base import (
+    DreameMowerCloudBase,
+    REDACTED,
+    redact_body,
+    redact_headers,
+)
 # Use standard ConnectionError for cloud/device communication issues
 
 
@@ -464,3 +471,113 @@ class TestDreameMowerCloudBase:
         assert result_false == expected_result
         assert result_true == expected_result
         assert cloud_base._fail_count == 0  # No failures for successful requests
+
+class TestCredentialRedaction:
+    """Credentials must never reach the Home Assistant log."""
+
+    USERNAME = "mario@example.de"
+    PASSWORD_HASH = "5f4dcc3b5aa765d61d8327deb882cf99"
+
+    def test_password_grant_body_is_redacted(self):
+        body = (
+            "platform=IOS&scope=all&grant_type=password"
+            f"&username={self.USERNAME}&password={self.PASSWORD_HASH}"
+            "&type=account"
+        )
+
+        result = redact_body(body)
+
+        assert self.USERNAME not in result
+        assert self.PASSWORD_HASH not in result
+        assert f"username={REDACTED}" in result
+        assert f"password={REDACTED}" in result
+        # The grant type stays readable so a failed login is still diagnosable.
+        assert "grant_type=password" in result
+
+    def test_refresh_token_body_is_redacted(self):
+        result = redact_body(
+            "platform=IOS&scope=all&grant_type=refresh_token&refresh_token=tok_secret"
+        )
+
+        assert "tok_secret" not in result
+        assert f"refresh_token={REDACTED}" in result
+        assert "grant_type=refresh_token" in result
+
+    @pytest.mark.parametrize("body", ['{"did": "123", "cmd": "start"}', "", None, 42])
+    def test_non_credential_body_is_unchanged(self, body):
+        assert redact_body(body) == body
+
+    def test_headers_are_redacted(self):
+        headers = {
+            "User-Agent": "Dreame_Smarthome/1.5.59",
+            "Authorization": "Basic ZHJlYW1lX2FwcHYxOkFQ",
+            "Tenant-Id": "000000",
+            "Dreame-Auth": "tok_secret",
+            "Dreame-Rlc": "1c80b3787b22",
+        }
+
+        result = redact_headers(headers)
+
+        assert result["Authorization"] == REDACTED
+        assert result["Dreame-Auth"] == REDACTED
+        assert result["Dreame-Rlc"] == REDACTED
+        # Non-credential headers stay intact for debugging.
+        assert result["User-Agent"] == "Dreame_Smarthome/1.5.59"
+        assert result["Tenant-Id"] == "000000"
+
+    @patch('custom_components.dreame_mower.dreame.cloud.cloud_base.requests.session')
+    def test_failed_login_does_not_log_credentials(self, mock_session_class, caplog):
+        """A rejected login must not leak the account into the log."""
+        cloud_base = DreameMowerCloudBase(
+            username="secret_user",
+            password="secret_pass",
+            country="cn",
+            account_type="dreame",
+        )
+        password_hash = hashlib.md5(
+            ("secret_pass" + cloud_base._api_strings[2]).encode("utf-8")
+        ).hexdigest()
+
+        mock_session = Mock()
+        mock_session_class.return_value = mock_session
+        mock_response = Mock()
+        mock_response.status_code = 401
+        mock_response.text = '{"error": "invalid_grant"}'
+        mock_session.post.return_value = mock_response
+
+        with caplog.at_level(logging.ERROR):
+            cloud_base.connect()
+
+        assert "Login failed" in caplog.text
+        assert "secret_user" not in caplog.text
+        assert password_hash not in caplog.text
+        assert cloud_base._api_strings[5] not in caplog.text  # Authorization header
+
+    @patch('custom_components.dreame_mower.dreame.cloud.cloud_base.requests.session')
+    def test_non_json_login_error_does_not_log_credentials(self, mock_session_class, caplog):
+        """A non-JSON error response leaves the request body in `data`, which holds the password."""
+        cloud_base = DreameMowerCloudBase(
+            username="secret_user",
+            password="secret_pass",
+            country="cn",
+            account_type="dreame",
+        )
+        password_hash = hashlib.md5(
+            ("secret_pass" + cloud_base._api_strings[2]).encode("utf-8")
+        ).hexdigest()
+
+        mock_session = Mock()
+        mock_session_class.return_value = mock_session
+        mock_response = Mock()
+        mock_response.status_code = 502
+        mock_response.text = "<html><body>Bad Gateway</body></html>"
+        mock_session.post.return_value = mock_response
+
+        with caplog.at_level(logging.ERROR):
+            cloud_base.connect()
+
+        assert "Login failed" in caplog.text
+        assert "secret_user" not in caplog.text
+        assert password_hash not in caplog.text
+        assert f"username={REDACTED}" in caplog.text
+        assert f"password={REDACTED}" in caplog.text

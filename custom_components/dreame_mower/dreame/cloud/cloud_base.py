@@ -11,7 +11,7 @@ import time
 import zlib
 from threading import Thread
 from time import sleep
-from typing import Any, Final, List, Optional
+from typing import Any, Dict, Final, List, Optional
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -21,6 +21,39 @@ MOVA_STRINGS: Final = "H4sIAAAAAAAAA11Sa2/aMBT9K6hS0SYtIQktYar6gYEQ3TRlLdC1nabo4
 
 def _decode_api_strings(encoded: str) -> List[str]:
     return json.loads(zlib.decompress(base64.b64decode(encoded), zlib.MAX_WBITS | 32))
+
+
+REDACTED: Final = "***"
+# Form fields and headers that carry account credentials or session tokens.
+_SENSITIVE_FIELDS: Final = frozenset(
+    {"username", "password", "refresh_token", "access_token"}
+)
+_SENSITIVE_HEADERS: Final = frozenset(
+    {"authorization", "dreame-auth", "dreame-rlc"}
+)
+
+
+def redact_body(body: Any) -> Any:
+    """Mask credential values in a form-encoded request body for logging."""
+    if not isinstance(body, str):
+        return body
+
+    redacted = []
+    for pair in body.split("&"):
+        key, separator, _ = pair.partition("=")
+        if separator and key.lower() in _SENSITIVE_FIELDS:
+            redacted.append(f"{key}={REDACTED}")
+        else:
+            redacted.append(pair)
+    return "&".join(redacted)
+
+
+def redact_headers(headers: Dict[str, Any]) -> Dict[str, Any]:
+    """Mask credential values in request headers for logging."""
+    return {
+        name: REDACTED if name.lower() in _SENSITIVE_HEADERS else value
+        for name, value in headers.items()
+    }
 
 
 class DreameMowerCloudBase:
@@ -133,7 +166,8 @@ class DreameMowerCloudBase:
                 except:
                     pass
                 _LOGGER.error("Login failed: %s => %s -- %s -- %s", response.text,
-                              self.get_api_url() + self._api_strings[17], headers, data)
+                              self.get_api_url() + self._api_strings[17],
+                              redact_headers(headers), redact_body(data))
         except requests.exceptions.Timeout:
             response = None
             _LOGGER.warning("Login Failed: Read timed out. (read timeout=10)")
@@ -257,7 +291,7 @@ class DreameMowerCloudBase:
                             "DreameMowerCloudAuth.request: Read timed out. (read timeout=%s) for URL %s: %s",
                             timeout,
                             url,
-                            data,
+                            redact_body(data),
                         )
                     else:
                         _LOGGER.warning(
