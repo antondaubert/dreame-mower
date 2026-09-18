@@ -877,6 +877,40 @@ async def test_coordinator_keeps_the_anti_theft_settings_when_a_write_is_rejecte
     assert coordinator.lift_alarm_enabled is False
 
 
+async def test_coordinator_reports_an_anti_theft_write_the_mower_ignored(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """A mower that answers with the setting unchanged has not taken the write."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    # The mower answers with the off-map alarm still off, and with position
+    # reports off as well: the record it holds, not the one that was asked for.
+    coordinator.device.set_anti_theft_settings = AsyncMock(
+        return_value=_anti_theft_settings(off_map=False, location=False)
+    )
+    coordinator.async_update_listeners = MagicMock()
+
+    assert await coordinator.async_set_anti_theft_settings(off_map_alarm=True) is False
+
+    # What the mower reports is still what the switches show afterwards.
+    assert coordinator.off_map_alarm_enabled is False
+    assert coordinator.location_reporting_enabled is False
+
+
+async def test_coordinator_accepts_an_anti_theft_write_the_mower_took(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """Only the setting that was asked for has to come back changed."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.device.set_anti_theft_settings = AsyncMock(
+        return_value=_anti_theft_settings(off_map=True, location=True)
+    )
+    coordinator.async_update_listeners = MagicMock()
+
+    assert await coordinator.async_set_anti_theft_settings(off_map_alarm=True) is True
+
+
 async def test_coordinator_reads_the_anti_theft_settings_from_the_shared_record(
     hass: HomeAssistant, minimal_config_entry
 ):

@@ -59,6 +59,16 @@ TASK_STATUS_OPTIONS: tuple[str, ...] = tuple(_TASK_STATUS_BY_INDEX.values())
 # task is paused at the dock. The session only ends at "exit"/"idle".
 _INACTIVE_TASK_STATUSES = frozenset({"idle", "exit"})
 
+# The heartbeat reports the cellular (Link) module's signal strength in byte 18
+# as a signed byte. The value doubles as the module's state: 127 means no module
+# is fitted, a negative value (raw byte 128 or above) means the module is fitted
+# and its data plan is valid, and anything else means it is fitted but its plan
+# no longer is. The off-map alarm and the mower's location reports only work
+# while the plan is valid, which is what makes the state worth decoding.
+_LINK_MODULE_RSSI_INDEX = 18
+_LINK_MODULE_ABSENT_RSSI = 127
+_LINK_MODULE_VALID_PLAN_RSSI = 128
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -76,6 +86,7 @@ class Property11Handler:
         self._last_value: list[int] | None = None
         self._task_status: str | None = None
         self._active_codes: frozenset[int] | None = None
+        self._link_module_rssi: int | None = None
 
     def parse_value(self, value: list[int], notify_callback: Callable[[str, Any], None] | None = None) -> bool:
         """Parse and log property 1:1 value."""
@@ -97,6 +108,7 @@ class Property11Handler:
                 )
                 self._update_task_status(main_state, sub_state, notify_callback)
                 self._update_active_codes(value, notify_callback)
+                self._link_module_rssi = value[_LINK_MODULE_RSSI_INDEX]
             elif len(value) == 24:
                 # 24-byte variant seen on mova.mower.g2405c firmware 4.3.6_0062 (issue #18)
                 _LOGGER.debug("Property 1:1 received (24-byte variant): %s", value)
@@ -184,6 +196,20 @@ class Property11Handler:
         )
 
     @property
+    def link_module_installed(self) -> bool | None:
+        """Return whether a cellular module is fitted (None until a heartbeat is seen)."""
+        if self._link_module_rssi is None:
+            return None
+        return self._link_module_rssi != _LINK_MODULE_ABSENT_RSSI
+
+    @property
+    def link_module_plan_valid(self) -> bool | None:
+        """Return whether the fitted module's data plan is valid (None until a heartbeat is seen)."""
+        if self._link_module_rssi is None:
+            return None
+        return self._link_module_rssi >= _LINK_MODULE_VALID_PLAN_RSSI
+
+    @property
     def last_value(self) -> list[int] | None:
         """Return last received property value."""
         return self._last_value.copy() if self._last_value else None
@@ -259,6 +285,16 @@ class MiscPropertyHandler:
     def active_codes(self) -> frozenset[int] | None:
         """Return the codes the device currently reports in its heartbeat."""
         return self._property_1_1_handler.active_codes
+
+    @property
+    def link_module_installed(self) -> bool | None:
+        """Return whether the mower reports a cellular module fitted."""
+        return self._property_1_1_handler.link_module_installed
+
+    @property
+    def link_module_plan_valid(self) -> bool | None:
+        """Return whether the cellular module's data plan is still valid."""
+        return self._property_1_1_handler.link_module_plan_valid
 
     def handle_property_update(self, siid: int, piid: int, value: Any, notify_callback: Callable[[str, Any], None]) -> bool:
         """Handle miscellaneous property updates."""

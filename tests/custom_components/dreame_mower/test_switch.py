@@ -310,6 +310,7 @@ def _make_anti_theft_coordinator(supported=True, pin_check_supported=False, sett
     coordinator.location_reporting_enabled = state["location_reporting_enabled"]
     coordinator.anti_theft_pin_check_enabled = state["anti_theft_pin_check_enabled"]
     coordinator.async_set_anti_theft_settings = AsyncMock(return_value=True)
+    coordinator.link_module_plan_valid = True
     return coordinator
 
 
@@ -384,6 +385,52 @@ async def test_switching_an_anti_theft_setting_leaves_the_others_alone():
     coordinator.async_set_anti_theft_settings.reset_mock()
     await entity.async_turn_off()
     coordinator.async_set_anti_theft_settings.assert_awaited_once_with(off_map_alarm=False)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("switch_class", [
+    DreameMowerOffMapAlarmSwitch,
+    DreameMowerLocationReportingSwitch,
+])
+async def test_a_rejected_write_names_the_module_the_setting_needs(switch_class):
+    """Without a usable cellular module, that is the first thing to check."""
+    coordinator = _make_anti_theft_coordinator()
+    coordinator.async_set_anti_theft_settings = AsyncMock(return_value=False)
+    coordinator.link_module_plan_valid = False
+    entity = switch_class(coordinator)
+    entity.hass = MagicMock()
+
+    with pytest.raises(HomeAssistantError, match="cellular module"):
+        await entity.async_turn_on()
+
+
+@pytest.mark.asyncio
+async def test_a_rejected_write_stays_quiet_about_a_module_that_is_fine():
+    """A mower with a usable module was refused for some other reason."""
+    coordinator = _make_anti_theft_coordinator()
+    coordinator.async_set_anti_theft_settings = AsyncMock(return_value=False)
+    entity = DreameMowerOffMapAlarmSwitch(coordinator)
+    entity.hass = MagicMock()
+
+    with pytest.raises(HomeAssistantError) as error:
+        await entity.async_turn_on()
+
+    assert "cellular module" not in str(error.value)
+
+
+@pytest.mark.asyncio
+async def test_a_rejected_lift_alarm_write_never_mentions_the_module():
+    """The lift alarm works on the mower itself, module or not."""
+    coordinator = _make_anti_theft_coordinator()
+    coordinator.async_set_anti_theft_settings = AsyncMock(return_value=False)
+    coordinator.link_module_plan_valid = False
+    entity = DreameMowerLiftAlarmSwitch(coordinator)
+    entity.hass = MagicMock()
+
+    with pytest.raises(HomeAssistantError) as error:
+        await entity.async_turn_on()
+
+    assert "cellular module" not in str(error.value)
 
 
 @pytest.mark.asyncio

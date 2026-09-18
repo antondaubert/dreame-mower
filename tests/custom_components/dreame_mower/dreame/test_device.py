@@ -3164,6 +3164,56 @@ async def test_set_anti_theft_settings_reports_a_rejected_write(device):
     assert await device.set_anti_theft_settings(lift_alarm=True) is None
 
 
+def _set_link_module_rssi(device, rssi):
+    """Report a cellular module state through the heartbeat."""
+    heartbeat = [206] + [0] * 18 + [206]
+    heartbeat[18] = rssi
+    assert device._misc_handler._property_1_1_handler.parse_value(heartbeat) is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("setting", ["off_map_alarm", "location_reporting"])
+async def test_set_anti_theft_settings_refuses_what_needs_a_missing_module(device, setting):
+    """The off-map alarm and the position reports are pointless without the module."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result, writes = _anti_theft_responder()
+    _set_link_module_rssi(device, 127)
+
+    with pytest.raises(ValueError):
+        await device.set_anti_theft_settings(**{setting: True})
+
+    assert writes == []
+
+
+@pytest.mark.asyncio
+async def test_set_anti_theft_settings_allows_the_lift_alarm_without_a_module(device):
+    """The lift alarm works on the mower itself, so no module is needed for it."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result, writes = _anti_theft_responder()
+    _set_link_module_rssi(device, 127)
+
+    settings = await device.set_anti_theft_settings(lift_alarm=True)
+
+    assert settings is not None
+    assert writes == [{"value": [1, 0, 1]}]
+
+
+@pytest.mark.asyncio
+async def test_set_anti_theft_settings_writes_the_off_map_alarm_with_a_module(device):
+    """A mower with the module fitted takes the write like any other."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result, writes = _anti_theft_responder()
+    _set_link_module_rssi(device, 200)
+
+    settings = await device.set_anti_theft_settings(off_map_alarm=True)
+
+    assert settings is not None
+    assert writes == [{"value": [0, 1, 1]}]
+
+
 def _encode_schedule_task(week_day, task_type, start_time, elements=()):
     """Encode one scheduled task the way the mower stores it."""
     elements = list(elements)

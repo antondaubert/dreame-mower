@@ -382,6 +382,16 @@ class DreameMowerDevice:
         return self._misc_handler.mowing_session_active
 
     @property
+    def link_module_installed(self) -> bool | None:
+        """Return whether the mower has a cellular module fitted, if it is known."""
+        return self._misc_handler.link_module_installed
+
+    @property
+    def link_module_plan_valid(self) -> bool | None:
+        """Return whether the cellular module's data plan is valid, if it is known."""
+        return self._misc_handler.link_module_plan_valid
+
+    @property
     def bluetooth_connected(self) -> bool | None:
         """Return Bluetooth connection status."""
         return self._bluetooth_connected
@@ -2084,6 +2094,14 @@ class DreameMowerDevice:
         one switch can be changed without restating the others. Returns None when
         the mower refused the write or answered unreadably.
         """
+        if (off_map_alarm is not None or location_reporting is not None) and (
+            self.link_module_installed is False
+        ):
+            raise ValueError(
+                "The off-map alarm and the mower's location reports need a cellular "
+                "module, and this mower reports none is fitted"
+            )
+
         current_settings = await self.get_anti_theft_settings()
         if current_settings is None:
             return None

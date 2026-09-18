@@ -656,6 +656,16 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return True
 
     @property
+    def link_module_installed(self) -> bool | None:
+        """Return whether the mower has a cellular module fitted, if it is known."""
+        return self.device.link_module_installed
+
+    @property
+    def link_module_plan_valid(self) -> bool | None:
+        """Return whether the cellular module's data plan is valid, if it is known."""
+        return self.device.link_module_plan_valid
+
+    @property
     def supports_anti_theft(self) -> bool:
         """Return whether the device reported anti-theft settings."""
         return self._anti_theft_settings is not None
@@ -725,8 +735,30 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if settings is None:
             return False
 
+        # The record the mower answers with is what it now holds, whether or not
+        # it took the change, so it is kept either way. A mower that answers
+        # with the old value has refused the write, and saying so is the only
+        # way the switch does not report a change that never happened.
         self._anti_theft_settings = settings
         self.async_update_listeners()
+
+        for key, requested in (
+            ("lift_alarm_enabled", lift_alarm),
+            ("off_map_alarm_enabled", off_map_alarm),
+            ("location_reporting_enabled", location_reporting),
+            ("pin_check_enabled", pin_check),
+        ):
+            if requested is None:
+                continue
+            if bool(settings[key]) != bool(requested):
+                _LOGGER.warning(
+                    "The mower did not apply %s: asked for %s, it reports %s",
+                    key,
+                    requested,
+                    settings[key],
+                )
+                return False
+
         return True
 
     async def async_fetch_device_settings(self) -> None:

@@ -384,3 +384,31 @@ class TestActiveCodes:
         )
 
         assert handler.active_codes == frozenset({48, 50})
+
+
+class TestLinkModuleState:
+    """The heartbeat's byte 18 tells whether the cellular module can be used."""
+
+    def test_unknown_until_a_heartbeat_arrives(self):
+        """Nothing is claimed about a module before the mower reports one."""
+        handler = Property11Handler()
+
+        assert handler.link_module_installed is None
+        assert handler.link_module_plan_valid is None
+
+    @pytest.mark.parametrize("rssi,installed,plan_valid", [
+        (127, False, False),  # no module fitted
+        (0, True, False),     # fitted, data plan no longer valid
+        (100, True, False),   # fitted, data plan no longer valid
+        (128, True, True),    # fitted, data plan valid
+        (200, True, True),    # fitted, data plan valid
+    ])
+    def test_decodes_the_module_state(self, rssi, installed, plan_valid):
+        """The signal byte doubles as the module's fitted and plan state."""
+        handler = Property11Handler()
+        payload = _heartbeat()
+        payload[18] = rssi
+
+        assert handler.parse_value(payload) is True
+        assert handler.link_module_installed is installed
+        assert handler.link_module_plan_valid is plan_valid

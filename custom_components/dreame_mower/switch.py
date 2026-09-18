@@ -182,6 +182,10 @@ class DreameMowerAntiTheftSwitch(DreameMowerEntity, SwitchEntity):
     # how the setting reads in an error message.
     _setting: str
     _setting_description: str
+    # Set on the settings that only work while a cellular module is fitted and
+    # its data plan is valid: the mower answers a write it cannot honour with
+    # the record unchanged, and the plan is the first thing to check.
+    _needs_link_module = False
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn the setting on."""
@@ -197,9 +201,13 @@ class DreameMowerAntiTheftSwitch(DreameMowerEntity, SwitchEntity):
             updated = await self.coordinator.async_set_anti_theft_settings(**{self._setting: enabled})
 
         if not updated:
-            raise HomeAssistantError(
-                f"Failed to turn {self._setting_description} {'on' if enabled else 'off'}"
+            message = (
+                f"The mower did not turn {self._setting_description} "
+                f"{'on' if enabled else 'off'}"
             )
+            if self._needs_link_module and not self.coordinator.link_module_plan_valid:
+                message += ", which needs a cellular module with a valid data plan"
+            raise HomeAssistantError(message)
 
 
 class DreameMowerLiftAlarmSwitch(DreameMowerAntiTheftSwitch):
@@ -235,6 +243,7 @@ class DreameMowerOffMapAlarmSwitch(DreameMowerAntiTheftSwitch):
     _attr_icon = "mdi:map-marker-alert"
     _setting = "off_map_alarm"
     _setting_description = "the off-map alarm"
+    _needs_link_module = True
 
     def __init__(self, coordinator: DreameMowerCoordinator) -> None:
         """Initialize the off-map alarm switch."""
@@ -258,6 +267,7 @@ class DreameMowerLocationReportingSwitch(DreameMowerAntiTheftSwitch):
     _attr_icon = "mdi:crosshairs-gps"
     _setting = "location_reporting"
     _setting_description = "location reporting"
+    _needs_link_module = True
 
     def __init__(self, coordinator: DreameMowerCoordinator) -> None:
         """Initialize the location reporting switch."""
