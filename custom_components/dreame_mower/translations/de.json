@@ -167,6 +167,9 @@
       },
       "dock_without_stopping": {
         "name": "Andocken ohne Aufgabe zu stoppen"
+      },
+      "go_to_maintenance_point": {
+        "name": "Zum Wartungspunkt fahren"
       }
     },
     "number": {

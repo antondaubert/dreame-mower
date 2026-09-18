@@ -70,6 +70,15 @@ class MowerSpotArea:
 
 
 @dataclass
+class MowerMaintenancePoint:
+    """A point on the map the mower can be sent to for cleaning or servicing."""
+
+    point_id: int
+    x: int
+    y: int
+
+
+@dataclass
 class MowerAvailableMap:
     """A discovered map entry that can be targeted by map-aware mowing tasks."""
 
@@ -108,6 +117,7 @@ class MowerVectorMap:
     """Complete vector map data for a mower, fetched from batch API."""
     zones: list[MowerZone] = field(default_factory=list)
     spot_areas: list[MowerSpotArea] = field(default_factory=list)
+    maintenance_points: list[MowerMaintenancePoint] = field(default_factory=list)
     forbidden_areas: list[MowerZone] = field(default_factory=list)
     paths: list[MowerPath] = field(default_factory=list)
     contours: list[MowerContour] = field(default_factory=list)
@@ -269,6 +279,21 @@ def parse_mower_map(map_json_str: str) -> MowerVectorMap:
             name=area_data.get("name", ""),
             shape_type=area_data.get("shapeType", 0),
             area=area_data.get("area", 0),
+        ))
+
+    # Parse the maintenance points the mower can be sent to. Each one is a
+    # single coordinate rather than an area, so only the first path point
+    # carries a position.
+    for entry in _parse_polygon_list(data.get("cleanPoints", {})):
+        point_id, point_data = entry[0], entry[1]
+        path = _extract_path_coords(point_data.get("path", []))
+        if not path:
+            _LOGGER.debug("Maintenance point %s carries no position", point_id)
+            continue
+        vmap.maintenance_points.append(MowerMaintenancePoint(
+            point_id=int(point_id),
+            x=path[0][0],
+            y=path[0][1],
         ))
 
     # Parse forbidden areas

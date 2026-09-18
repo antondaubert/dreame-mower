@@ -26,6 +26,9 @@ Examples:
   .venv/bin/python dev/device_cli.py anti-theft
     .venv/bin/python dev/device_cli.py anti-theft --lift-alarm on --off-map-alarm off
     .venv/bin/python dev/device_cli.py anti-theft --location off
+  .venv/bin/python dev/device_cli.py maintenance-point
+    .venv/bin/python dev/device_cli.py maintenance-point --go
+    .venv/bin/python dev/device_cli.py maintenance-point --go 2
   .venv/bin/python dev/device_cli.py schedules
     .venv/bin/python dev/device_cli.py schedules --map-id 2
     .venv/bin/python dev/device_cli.py schedules --slot 0 --set on
@@ -579,6 +582,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="Do not load vector map metadata before addressing the schedules",
     )
 
+    maintenance_point_parser = subparsers.add_parser(
+        "maintenance-point",
+        help="List the maintenance points of the active map, or drive to one",
+    )
+    add_common_args(maintenance_point_parser)
+    maintenance_point_parser.add_argument(
+        "--go",
+        nargs="?",
+        type=int,
+        const=0,
+        default=None,
+        help="Drive to this maintenance point, or to the first one when no ID is given",
+    )
+
     pause_parser = subparsers.add_parser("pause", help="Pause the mower")
     add_common_args(pause_parser)
 
@@ -867,6 +884,37 @@ async def run_command(device: DreameMowerDevice, args: argparse.Namespace) -> di
             "schedules": [describe_schedule(schedule) for schedule in schedules or []],
         }
 
+    if args.command == "maintenance-point":
+        fetched = await fetch_vector_map_async(device)
+        points = device.maintenance_points
+        if args.go is None:
+            return {
+                "ok": fetched,
+                "command": args.command,
+                "map_fetched": fetched,
+                "current_map_id": device.current_map_id,
+                "maintenance_points": points,
+                "state": build_device_snapshot(device),
+            }
+
+        point_id = args.go if args.go > 0 else (int(points[0]["id"]) if points else 0)
+        if not point_id:
+            return {
+                "ok": False,
+                "command": args.command,
+                "error": "The active map carries no maintenance point",
+                "maintenance_points": points,
+            }
+
+        success = await device.go_to_maintenance_point([point_id])
+        return {
+            "ok": success,
+            "command": args.command,
+            "point_id": point_id,
+            "maintenance_points": points,
+            "state": build_device_snapshot(device),
+        }
+
     if args.command == "pause":
         success = await device.pause()
         return {"ok": success, "command": args.command, "state": build_device_snapshot(device)}
@@ -876,6 +924,13 @@ async def run_command(device: DreameMowerDevice, args: argparse.Namespace) -> di
         return {"ok": success, "command": args.command, "state": build_device_snapshot(device)}
 
     raise RuntimeError(f"Unsupported command: {args.command}")
+
+
+def _json_fallback(value: Any) -> Any:
+    """Render values JSON has no type for, such as the heartbeat's code set."""
+    if isinstance(value, (set, frozenset)):
+        return sorted(value)
+    return str(value)
 
 
 def _create_device(args: argparse.Namespace, creds: dict[str, str]) -> DreameMowerDevice:
@@ -909,7 +964,7 @@ async def async_main(args: argparse.Namespace) -> int:
             await asyncio.sleep(args.watch_seconds)
         if recorder.events:
             result["events"] = recorder.events
-        print(json.dumps(result, indent=2, ensure_ascii=False))
+        print(json.dumps(result, indent=2, ensure_ascii=False, default=_json_fallback))
         return 0 if result.get("ok") else 1
     finally:
         await device.disconnect()

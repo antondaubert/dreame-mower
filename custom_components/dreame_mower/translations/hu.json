@@ -167,6 +167,9 @@
       },
       "dock_without_stopping": {
         "name": "Dokkolás feladat leállítása nélkül"
+      },
+      "go_to_maintenance_point": {
+        "name": "Karbantartási pontra küldés"
       }
     },
     "number": {

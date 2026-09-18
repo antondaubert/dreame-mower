@@ -167,6 +167,9 @@
       },
       "dock_without_stopping": {
         "name": "Regressar à base sem parar a tarefa"
+      },
+      "go_to_maintenance_point": {
+        "name": "Ir para o ponto de manutenção"
       }
     },
     "number": {

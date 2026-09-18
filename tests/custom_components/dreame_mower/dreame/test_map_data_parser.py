@@ -94,6 +94,36 @@ def test_parse_mower_map_zone_parsed():
     assert result.zones[0].area == 25.0
 
 
+def test_parse_mower_map_maintenance_point_parsed():
+    """A maintenance point is one coordinate the mower can be sent to."""
+    map_json = _make_map_json(
+        cleanPoints={
+            "dataType": "Map",
+            "value": [[1, {"id": 1, "type": 6, "shapeType": 5, "path": [{"x": -2270, "y": 30}]}]],
+        }
+    )
+
+    result = parse_mower_map(map_json)
+
+    assert len(result.maintenance_points) == 1
+    assert result.maintenance_points[0].point_id == 1
+    assert (result.maintenance_points[0].x, result.maintenance_points[0].y) == (-2270, 30)
+
+
+def test_parse_mower_map_maintenance_point_without_a_position_is_skipped():
+    """A point with no coordinate is nowhere to drive to."""
+    map_json = _make_map_json(
+        cleanPoints={"dataType": "Map", "value": [[2, {"id": 2, "path": []}]]}
+    )
+
+    assert parse_mower_map(map_json).maintenance_points == []
+
+
+def test_parse_mower_map_without_maintenance_points():
+    """A map that carries none reports none."""
+    assert parse_mower_map(_make_map_json()).maintenance_points == []
+
+
 def test_parse_mower_map_boundary():
     map_json = _make_map_json(boundary={"x1": 10, "y1": 20, "x2": 110, "y2": 120})
     result = parse_mower_map(map_json)

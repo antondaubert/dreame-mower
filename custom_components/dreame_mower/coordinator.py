@@ -96,6 +96,7 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._selected_contour_id: tuple[int, int] | None = None
         self._selected_zone_id: int | None = None
         self._selected_spot_area_id: int | None = None
+        self._selected_maintenance_point_id: int | None = None
         self._consumable_values: list[int] | None = None
         self._charging_settings: dict[str, Any] | None = None
         self._rain_settings: dict[str, Any] | None = None
@@ -329,6 +330,11 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def spot_areas(self) -> list[dict]:
         """Return available spot-mowing areas from vector map."""
         return self.device.spot_areas
+
+    @property
+    def maintenance_points(self) -> list[dict[str, Any]]:
+        """Return the maintenance points of the active map from vector map data."""
+        return self.device.maintenance_points
 
     @property
     def available_maps(self) -> list[dict[str, Any]]:
@@ -909,6 +915,36 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         data = await self._async_update_data()
         self.async_set_updated_data(data)
 
+    @property
+    def selected_maintenance_point_id(self) -> int | None:
+        """Return the selected maintenance point, defaulting to the first one."""
+        self._normalize_selection_state()
+        return self._selected_maintenance_point_id
+
+    async def async_set_selected_maintenance_point_id(self, point_id: int | None) -> None:
+        """Update the maintenance point the mower is sent to."""
+        if point_id is not None and point_id not in {
+            int(point["id"]) for point in self.maintenance_points
+        }:
+            raise ValueError(f"Unsupported maintenance point ID: {point_id}")
+
+        if self._selected_maintenance_point_id == point_id:
+            return
+
+        self._selected_maintenance_point_id = point_id
+        data = await self._async_update_data()
+        self.async_set_updated_data(data)
+
+    async def async_go_to_maintenance_point(self, point_id: int | None = None) -> bool:
+        """Send the mower to a maintenance point, defaulting to the selected one."""
+        if point_id is None:
+            point_id = self.selected_maintenance_point_id
+
+        if point_id is None:
+            raise ValueError("This map has no maintenance point to drive to")
+
+        return await self.device.go_to_maintenance_point([point_id])
+
     async def async_set_selected_spot_area_id(self, spot_area_id: int | None) -> None:
         """Update the currently selected single spot area ID."""
         if spot_area_id is not None and spot_area_id not in {int(spot_area["id"]) for spot_area in self.spot_areas}:
@@ -940,6 +976,12 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._selected_spot_area_id = None
         elif self._selected_spot_area_id not in available_spot_area_ids:
             self._selected_spot_area_id = available_spot_area_ids[0]
+
+        available_point_ids = [int(point["id"]) for point in self.maintenance_points]
+        if not available_point_ids:
+            self._selected_maintenance_point_id = None
+        elif self._selected_maintenance_point_id not in available_point_ids:
+            self._selected_maintenance_point_id = available_point_ids[0]
 
         if self._selected_mowing_mode not in self.selectable_mowing_modes:
             self._selected_mowing_mode = MowingMode.ALL_AREA

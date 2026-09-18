@@ -670,6 +670,54 @@ async def test_start_mowing_mode_delegates_to_verified_spot_mode(device):
 
 
 @pytest.mark.asyncio
+async def test_go_to_maintenance_point_sends_the_point_payload(device):
+    """Driving to a maintenance point uses the 2:50 payload with o=109 and d.point."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._vector_map = Mock(maintenance_points=[Mock(point_id=1)])
+
+    result = await device.go_to_maintenance_point([1])
+
+    assert result is True
+    _, _, parameters, _ = device._cloud_device.action_calls[0]
+    assert parameters == [{"m": "a", "p": 0, "o": 109, "d": {"point": [1]}}]
+
+
+@pytest.mark.asyncio
+async def test_go_to_maintenance_point_rejects_a_point_the_map_lacks(device):
+    """A point the active map does not carry is nowhere to drive to."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._vector_map = Mock(maintenance_points=[Mock(point_id=1)])
+
+    assert await device.go_to_maintenance_point([2]) is False
+    assert len(device._cloud_device.action_calls) == 0
+
+
+@pytest.mark.asyncio
+async def test_go_to_maintenance_point_needs_a_point(device):
+    """Without a point there is nothing to ask the mower for."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+
+    assert await device.go_to_maintenance_point([]) is False
+    assert len(device._cloud_device.action_calls) == 0
+
+
+@pytest.mark.asyncio
+async def test_maintenance_points_report_their_position(device):
+    """The points are reported with the coordinates the map holds for them."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._vector_map = SimpleNamespace(
+        maintenance_points=[SimpleNamespace(point_id=1, x=-2270, y=30)],
+        maps={},
+    )
+
+    assert device.maintenance_points == [{"id": 1, "x": -2270, "y": 30}]
+
+
+@pytest.mark.asyncio
 async def test_create_spot_area_creates_rectangle_and_returns_created_spot_id(device):
     """Rectangle spot creation should create the spot, apply it, and return the new spot area ID."""
     device._cloud_device.set_connected_state(True)

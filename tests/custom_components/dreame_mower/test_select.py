@@ -9,6 +9,7 @@ from custom_components.dreame_mower.coordinator import DreameMowerCoordinator
 from custom_components.dreame_mower.dreame.device import MowingMode
 from custom_components.dreame_mower.select import (
     DreameMowerEdgeSelect,
+    DreameMowerMaintenancePointSelect,
     DreameMowerRainDelaySelect,
     DreameMowerMapSelect,
     DreameMowerMowingActionSelect,
@@ -51,6 +52,9 @@ def _make_coordinator():
     coordinator.async_set_selected_contour_id = AsyncMock()
     coordinator.async_set_selected_zone_id = AsyncMock()
     coordinator.async_set_selected_spot_area_id = AsyncMock()
+    coordinator.maintenance_points = [{"id": 1, "x": -2270, "y": 30}, {"id": 2, "x": 0, "y": 0}]
+    coordinator.selected_maintenance_point_id = 2
+    coordinator.async_set_selected_maintenance_point_id = AsyncMock()
     return coordinator
 
 
@@ -97,6 +101,50 @@ def _make_spot_select(coordinator=None):
     entity._attr_has_entity_name = True
     entity.hass = MagicMock()
     return entity
+
+
+def _make_maintenance_point_select(coordinator=None):
+    entity = DreameMowerMaintenancePointSelect.__new__(DreameMowerMaintenancePointSelect)
+    entity.coordinator = coordinator or _make_coordinator()
+    entity._entity_description_key = "maintenance_point_select"
+    entity._attr_has_entity_name = True
+    entity.hass = MagicMock()
+    return entity
+
+
+def test_maintenance_point_select_lists_the_points_of_the_active_map():
+    entity = _make_maintenance_point_select()
+
+    assert entity.options == ["Point 1", "Point 2"]
+    assert entity.current_option == "Point 2"
+
+
+def test_maintenance_point_select_is_empty_without_points():
+    coordinator = _make_coordinator()
+    coordinator.maintenance_points = []
+    coordinator.selected_maintenance_point_id = None
+    entity = _make_maintenance_point_select(coordinator)
+
+    assert entity.options == []
+    assert entity.current_option is None
+
+
+@pytest.mark.asyncio
+async def test_maintenance_point_select_updates_the_selected_point():
+    coordinator = _make_coordinator()
+    entity = _make_maintenance_point_select(coordinator)
+
+    await entity.async_select_option("Point 1")
+
+    coordinator.async_set_selected_maintenance_point_id.assert_awaited_once_with(1)
+
+
+@pytest.mark.asyncio
+async def test_maintenance_point_select_rejects_an_unknown_option():
+    entity = _make_maintenance_point_select()
+
+    with pytest.raises(ValueError):
+        await entity.async_select_option("Point 9")
 
 
 def _make_real_selection_coordinator():

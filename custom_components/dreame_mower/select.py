@@ -49,6 +49,7 @@ async def async_setup_entry(
         DreameMowerEdgeSelect(coordinator),
         DreameMowerZoneSelect(coordinator),
         DreameMowerSpotSelect(coordinator),
+        DreameMowerMaintenancePointSelect(coordinator),
     ]
 
     if coordinator.supports_rain_protection:
@@ -323,6 +324,58 @@ class DreameMowerSpotSelect(DreameMowerEntity, SelectEntity):
         for spot_area in self.coordinator.spot_areas:
             if self._option_label(spot_area) == option:
                 return int(spot_area["id"])
+        return None
+
+
+class DreameMowerMaintenancePointSelect(DreameMowerEntity, SelectEntity):
+    """Select entity for the maintenance point the mower is sent to.
+
+    The points belong to the active map and are defined on the device itself, so
+    a map without one leaves this without options.
+    """
+
+    def __init__(self, coordinator: DreameMowerCoordinator) -> None:
+        """Initialize the maintenance point select entity."""
+        super().__init__(coordinator, "maintenance_point_select")
+        self._attr_name = "Maintenance point"
+        self._attr_icon = "mdi:map-marker-check"
+
+    @property
+    def options(self) -> list[str]:
+        """Return the maintenance points the active map carries."""
+        return [self._option_label(point) for point in self.coordinator.maintenance_points]
+
+    @property
+    def current_option(self) -> str | None:
+        """Return the selected maintenance point."""
+        selected_point_id = self.coordinator.selected_maintenance_point_id
+        if selected_point_id is None:
+            return None
+
+        for point in self.coordinator.maintenance_points:
+            if int(point["id"]) == selected_point_id:
+                return self._option_label(point)
+
+        return None
+
+    async def async_select_option(self, option: str) -> None:
+        """Select the maintenance point the mower is sent to."""
+        point_id = self._id_from_option(option)
+        if point_id is None:
+            raise ValueError(f"Unknown maintenance point option: {option}")
+
+        await self.coordinator.async_set_selected_maintenance_point_id(point_id)
+
+    @staticmethod
+    def _option_label(point: dict[str, Any]) -> str:
+        """Return the label shown for a maintenance point option."""
+        return f"Point {point['id']}"
+
+    def _id_from_option(self, option: str) -> int | None:
+        """Resolve a select option back to its maintenance point ID."""
+        for point in self.coordinator.maintenance_points:
+            if self._option_label(point) == option:
+                return int(point["id"])
         return None
 
 

@@ -162,6 +162,9 @@
       },
       "dock_without_stopping": {
         "name": "Dock Without Stopping Task"
+      },
+      "go_to_maintenance_point": {
+        "name": "Go To Maintenance Point"
       }
     },
     "camera": {

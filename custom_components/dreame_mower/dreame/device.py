@@ -3394,6 +3394,35 @@ class DreameMowerDevice:
 
         return True
 
+    def _validate_maintenance_point_ids(self, point_ids: list[int]) -> bool:
+        """Return True when every requested maintenance point exists on the active map."""
+        vector_map = self.vector_map
+        if vector_map is None:
+            return True
+
+        available_point_ids = {point.point_id for point in vector_map.maintenance_points}
+        unknown_point_ids = [point_id for point_id in point_ids if point_id not in available_point_ids]
+        if unknown_point_ids:
+            _LOGGER.error(
+                "Requested unknown maintenance point IDs %s; available points: %s",
+                unknown_point_ids,
+                sorted(available_point_ids),
+            )
+            return False
+
+        return True
+
+    def _build_maintenance_point_payload(self, point_ids: list[int]) -> dict[str, Any]:
+        """Build the 2:50 action payload that sends the mower to maintenance points."""
+        return {
+            "m": "a",
+            "p": 0,
+            "o": 109,
+            "d": {
+                "point": point_ids,
+            },
+        }
+
     def _build_spot_task_payload(self, spot_area_ids: list[int]) -> dict[str, Any]:
         """Build the verified 2:50 action payload for spot mowing."""
         return {
@@ -3853,6 +3882,29 @@ class DreameMowerDevice:
         self._notify_property_change("activity", "mowing")
         return True
 
+    async def go_to_maintenance_point(self, point_ids: list[int]) -> bool:
+        """Send the mower to one or more maintenance points of the active map.
+
+        A maintenance point is a position on the map the mower drives to and
+        waits at, which is where it is cleaned or serviced. The points belong to
+        a map and are defined on the device itself.
+        """
+        if not point_ids:
+            _LOGGER.error("go_to_maintenance_point called without a maintenance point")
+            return False
+
+        if not self._validate_maintenance_point_ids(point_ids):
+            return False
+
+        task_payload = self._build_maintenance_point_payload(point_ids)
+        result = await self._send_task_payload("maintenance point run", task_payload)
+        if not result:
+            _LOGGER.error("go_to_maintenance_point command returned falsy result: %s", result)
+            return False
+
+        _LOGGER.info("Mower is on its way to maintenance points: %s", point_ids)
+        return True
+
     async def create_spot_area(self, spot_rectangle: dict[str, int | float]) -> int | None:
         """Create a spot area from a rectangle and return its resolved area id."""
         normalized_rectangle = self._normalize_spot_rectangle(spot_rectangle)
@@ -3986,6 +4038,17 @@ class DreameMowerDevice:
         return [
             {"id": spot_area.area_id, "name": spot_area.name, "area": spot_area.area}
             for spot_area in vector_map.spot_areas
+        ]
+
+    @property
+    def maintenance_points(self) -> list[dict]:
+        """Return the maintenance points of the active map, with their positions."""
+        vector_map = self.vector_map
+        if vector_map is None:
+            return []
+        return [
+            {"id": point.point_id, "x": point.x, "y": point.y}
+            for point in vector_map.maintenance_points
         ]
 
     async def pause(self) -> bool:

@@ -167,6 +167,9 @@
       },
       "dock_without_stopping": {
         "name": "Dokowanie bez zatrzymywania zadania"
+      },
+      "go_to_maintenance_point": {
+        "name": "Jedź do punktu konserwacji"
       }
     },
     "number": {

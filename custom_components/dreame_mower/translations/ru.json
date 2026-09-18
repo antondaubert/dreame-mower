@@ -167,6 +167,9 @@
       },
       "dock_without_stopping": {
         "name": "Вернуться на базу без остановки задачи"
+      },
+      "go_to_maintenance_point": {
+        "name": "Поехать к точке обслуживания"
       }
     },
     "number": {

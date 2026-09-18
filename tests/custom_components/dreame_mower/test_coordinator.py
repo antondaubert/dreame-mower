@@ -768,6 +768,64 @@ async def test_coordinator_keeps_a_setting_it_could_not_decode(
     assert coordinator.rain_delay_hours == 8
 
 
+async def test_coordinator_sends_the_mower_to_the_selected_maintenance_point(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """The button drives to whatever the select holds, which defaults to the first point."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.device.maintenance_points = [{"id": 1, "x": -2270, "y": 30}, {"id": 2, "x": 0, "y": 0}]
+    coordinator.device.go_to_maintenance_point = AsyncMock(return_value=True)
+
+    assert coordinator.selected_maintenance_point_id == 1
+    assert await coordinator.async_go_to_maintenance_point() is True
+
+    coordinator.device.go_to_maintenance_point.assert_awaited_once_with([1])
+
+
+async def test_coordinator_drives_to_the_point_that_was_selected(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """Selecting another point changes where the mower is sent."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.device.maintenance_points = [{"id": 1, "x": 0, "y": 0}, {"id": 2, "x": 5, "y": 5}]
+    coordinator.device.go_to_maintenance_point = AsyncMock(return_value=True)
+
+    await coordinator.async_set_selected_maintenance_point_id(2)
+    await coordinator.async_go_to_maintenance_point()
+
+    coordinator.device.go_to_maintenance_point.assert_awaited_once_with([2])
+
+
+async def test_coordinator_rejects_a_maintenance_point_the_map_lacks(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """Only a point the active map carries can be selected."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.device.maintenance_points = [{"id": 1, "x": 0, "y": 0}]
+
+    with pytest.raises(ValueError):
+        await coordinator.async_set_selected_maintenance_point_id(7)
+
+
+async def test_coordinator_says_when_a_map_has_no_maintenance_point(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """A map without a point leaves the button with nowhere to send the mower."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.device.maintenance_points = []
+    coordinator.device.go_to_maintenance_point = AsyncMock(return_value=True)
+
+    assert coordinator.selected_maintenance_point_id is None
+    with pytest.raises(ValueError):
+        await coordinator.async_go_to_maintenance_point()
+
+    coordinator.device.go_to_maintenance_point.assert_not_awaited()
+
+
 def _anti_theft_settings(lift=False, off_map=False, location=True, pin_check=None):
     """Build an anti-theft settings payload as the device decodes it."""
     raw = [int(lift), int(off_map), int(location)]
