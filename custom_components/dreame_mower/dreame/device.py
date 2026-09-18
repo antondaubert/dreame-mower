@@ -815,6 +815,11 @@ class DreameMowerDevice:
         """Register callback for property changes."""
         self._property_callbacks.append(callback)
 
+    def unregister_property_callback(self, callback: Callable[[str, Any], None]) -> None:
+        """Unregister a previously registered property change callback."""
+        if callback in self._property_callbacks:
+            self._property_callbacks.remove(callback)
+
     def _notify_property_change(self, property_name: str, value: Any) -> None:
         """Notify all registered callbacks of property changes."""
         for callback in self._property_callbacks:

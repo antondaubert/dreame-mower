@@ -176,6 +176,8 @@ class TestLiveMowingMapIntegration:
         # Prevent _handle_property_change from spawning real Timer threads
         # during MQTT replay — they would outlive the test and hang the process.
         camera._start_pose_coverage_timer = lambda: None
+        # The real entity registers this when Home Assistant adds it.
+        cam_device.register_property_callback(camera._handle_property_change)
 
         # Mock the batch API to return the captured response so
         # fetch_vector_map() parses it into a real MowerVectorMap.

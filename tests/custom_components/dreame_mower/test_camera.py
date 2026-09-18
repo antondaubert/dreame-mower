@@ -262,3 +262,45 @@ class TestDreameMowerCameraEntity:
         assert camera_entity._session_active is True
         assert camera_entity._live_coordinates == [[1, 2]]
         mock_stop.assert_not_called()
+
+
+class TestCameraCallbackLifecycle:
+    """The camera only listens to the device while it lives in Home Assistant."""
+
+    def test_no_registration_before_added_to_hass(self, camera_entity, mock_coordinator):
+        """Constructing the entity must not subscribe to device updates."""
+        mock_coordinator.device.register_property_callback.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_registers_on_add_and_unregisters_on_remove(
+        self, camera_entity, mock_coordinator, mock_config_entry
+    ):
+        """Being added subscribes; being removed unsubscribes again."""
+        mock_coordinator.device.unregister_property_callback = Mock()
+        mock_config_entry.add_update_listener = Mock(return_value=Mock())
+        camera_entity.hass = Mock()
+        camera_entity.hass.create_task = Mock(side_effect=lambda coro: coro.close())
+
+        await camera_entity.async_added_to_hass()
+
+        mock_coordinator.device.register_property_callback.assert_called_once_with(
+            camera_entity._handle_property_change
+        )
+
+        # Home Assistant runs these when the entity is removed.
+        camera_entity._call_on_remove_callbacks()
+
+        mock_coordinator.device.unregister_property_callback.assert_called_once_with(
+            camera_entity._handle_property_change
+        )
+
+    def test_timer_callback_without_hass_stops_timer(self, camera_entity):
+        """A timer firing after removal stops instead of touching hass."""
+        camera_entity.hass = None
+
+        with patch.object(camera_entity, "_stop_pose_coverage_timer") as mock_stop, \
+             patch.object(camera_entity, "_start_pose_coverage_timer") as mock_start:
+            camera_entity._pose_coverage_timer_callback()
+
+        mock_stop.assert_called_once()
+        mock_start.assert_not_called()

@@ -121,12 +121,22 @@ class DreameMowerLawnMower(DreameMowerEntity, LawnMowerEntity):
         self._attr_icon = "mdi:robot-mower"
         self._attr_name = None  # Fix "A2 None" issue - set explicit name to None so HA uses just device name
 
-        # Register listener for status changes
-        self.coordinator.device.register_property_callback(self._on_property_change)
-        
         # Initialize activity based on current device status
         self._initialize_activity()
-    
+
+    async def async_added_to_hass(self) -> None:
+        """Listen for status changes while the entity lives in Home Assistant."""
+        await super().async_added_to_hass()
+
+        # An entity that is disabled in the registry is never added, so it never
+        # listens and never tries to write a state it does not have.
+        self.coordinator.device.register_property_callback(self._on_property_change)
+        self.async_on_remove(
+            lambda: self.coordinator.device.unregister_property_callback(
+                self._on_property_change
+            )
+        )
+
     def _initialize_activity(self) -> None:
         """Initialize activity based on current device status."""
         try:

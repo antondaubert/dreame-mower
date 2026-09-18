@@ -82,13 +82,20 @@ class DreameMowerCameraEntity(DreameMowerEntity, Camera):
         self._current_show_title = self.config_entry.options.get(CONF_MAP_SHOW_TITLE, True)
         self._current_show_legend = self.config_entry.options.get(CONF_MAP_SHOW_LEGEND, True)
         self._current_padding = self.config_entry.options.get(CONF_MAP_PADDING, 50)
-        
-        # Register for property change notifications
-        self.coordinator.device.register_property_callback(self._handle_property_change)
 
     async def async_added_to_hass(self) -> None:
         """Called when entity is added to Home Assistant."""
         await super().async_added_to_hass()
+
+        # Device updates drive the map image, so listen for them only while the
+        # entity lives in Home Assistant. An entity that is disabled in the
+        # registry is never added and therefore never listens.
+        self.coordinator.device.register_property_callback(self._handle_property_change)
+        self.async_on_remove(
+            lambda: self.coordinator.device.unregister_property_callback(
+                self._handle_property_change
+            )
+        )
 
         # Build historical files cache first, then render from historical data
         # or fall back to batch API vector map
@@ -223,6 +230,13 @@ class DreameMowerCameraEntity(DreameMowerEntity, Camera):
 
     def _pose_coverage_timer_callback(self) -> None:
         """Timer callback to request pose coverage property and schedule next request."""
+        # The timer runs on its own thread and can fire while the entity is
+        # being removed from Home Assistant; without hass there is nothing to
+        # schedule the request on.
+        if self.hass is None:
+            self._stop_pose_coverage_timer()
+            return
+
         try:
             # Schedule the async property request as a task
             self.hass.create_task(self._request_pose_coverage_property())

@@ -628,3 +628,31 @@ async def test_set_edge_mowing_settings_schema_validates_its_input(hass):
 
     with pytest.raises(vol.Invalid):
         schema({"entity_id": "lawn_mower.mower", "map_id": 2})
+
+
+def test_lawn_mower_does_not_register_callback_on_init():
+    """Constructing the entity must not subscribe to device updates."""
+    coordinator = _make_coordinator()
+    DreameMowerLawnMower(coordinator)
+    coordinator.device.register_property_callback.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_lawn_mower_registers_on_add_and_unregisters_on_remove():
+    """Being added subscribes to device updates; being removed unsubscribes."""
+    coordinator = _make_coordinator()
+    entity = DreameMowerLawnMower(coordinator)
+    entity.hass = MagicMock()
+
+    await entity.async_added_to_hass()
+
+    coordinator.device.register_property_callback.assert_called_once_with(
+        entity._on_property_change
+    )
+
+    # Home Assistant runs these when the entity is removed.
+    entity._call_on_remove_callbacks()
+
+    coordinator.device.unregister_property_callback.assert_called_once_with(
+        entity._on_property_change
+    )

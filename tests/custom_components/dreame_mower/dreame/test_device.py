@@ -207,6 +207,23 @@ def test_register_property_callback(device):
     assert callback_called[0] == ("test_prop", "test_value")
 
 
+def test_unregister_property_callback(device):
+    """An unregistered callback stops receiving property changes."""
+    callback_called = []
+
+    def test_callback(prop_name, value):
+        callback_called.append((prop_name, value))
+
+    device.register_property_callback(test_callback)
+    device.unregister_property_callback(test_callback)
+    device._notify_property_change("test_prop", "test_value")
+
+    assert callback_called == []
+
+    # Unregistering a callback that was never registered is a no-op
+    device.unregister_property_callback(test_callback)
+
+
 @pytest.mark.asyncio
 async def test_connect(device):
     """Test device connection."""
