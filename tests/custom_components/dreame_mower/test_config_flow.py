@@ -9,12 +9,17 @@ from custom_components.dreame_mower.config_flow import (
     CONF_COUNTRY,
     DEVICE_TYPE_MOWER,
     DEVICE_TYPE_SWBOT,
+    model_map,
     DreameMowerOptionsFlow,
     NOTIFICATION_INFORMATION,
     NOTIFICATION_WARNING,
     NOTIFICATION_ERROR,
 )
 from custom_components.dreame_mower.const import CONF_NOTIFY, CONF_MAP_ROTATION
+from custom_components.dreame_mower.dreame.property.device_code import (
+    MOVA_DEVICE_CODE_REGISTRY,
+    get_device_code_registry,
+)
 
 
 class TestDeviceTypeForModel:
@@ -31,6 +36,19 @@ class TestDeviceTypeForModel:
 
     def test_unknown_model_defaults_to_mower(self):
         assert _device_type_for_model("some.unknown.model") == DEVICE_TYPE_MOWER
+
+
+class TestModelRegistryConsistency:
+    """Every supported MOVA model must resolve to the MOVA device code registry."""
+
+    @pytest.mark.parametrize(
+        "model", [m for m in model_map if m.startswith("mova.mower.")]
+    )
+    def test_mova_models_use_mova_registry(self, model):
+        assert get_device_code_registry(model) is MOVA_DEVICE_CODE_REGISTRY
+
+    def test_hardware_variant_suffix_uses_mova_registry(self):
+        assert get_device_code_registry("mova.mower.g2552a") is MOVA_DEVICE_CODE_REGISTRY
 
 
 class TestOptionsFlow:

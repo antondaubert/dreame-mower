@@ -753,7 +753,7 @@ def get_device_code_registry(model: str | None = None) -> DeviceCodeRegistry:
 
     if model in ["dreame.mower.p2255", "dreame.mower.g2422"]:  # A1 and A1 Pro models
         return A1_DEVICE_CODE_REGISTRY
-    elif model in ["mova.mower.g2405a", "mova.mower.g2405b", "mova.mower.g2405c", "mova.mower.g2529b"]:  # MOVA models
+    elif model.startswith("mova.mower."):  # MOVA models
         return MOVA_DEVICE_CODE_REGISTRY
-    
+
     return BASE_DEVICE_CODE_REGISTRY

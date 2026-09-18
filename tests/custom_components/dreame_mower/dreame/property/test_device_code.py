@@ -286,6 +286,7 @@ class TestMovaDriveWheelCodes:
         ("mova.mower.g2405b", 4, "LEFT_DRIVE_WHEEL_ERROR"),
         ("mova.mower.g2405c", 4, "LEFT_DRIVE_WHEEL_ERROR"),
         ("mova.mower.g2529b", 4, "LEFT_DRIVE_WHEEL_ERROR"),
+        ("mova.mower.g2552", 4, "LEFT_DRIVE_WHEEL_ERROR"),
         ("mova.mower.g2405b", 5, "RIGHT_DRIVE_WHEEL_ERROR"),
         ("mova.mower.g2529b", 5, "RIGHT_DRIVE_WHEEL_ERROR"),
     ])
