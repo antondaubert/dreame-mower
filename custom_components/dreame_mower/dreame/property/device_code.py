@@ -383,23 +383,25 @@ BASE_DEVICE_CODES: Dict[int, DeviceCodeDefinition] = {
         description="Positioning failed",
         code_type=DeviceCodeType.ERROR
     ),
+    # Codes 28-30 are consumable reminders: the part still works, it is worn
+    # and due for replacement or service, so they are warnings and not faults.
     28: DeviceCodeDefinition(
         code=28,
-        name="BLADE_LOSS",
-        description="Blades lost or worn out",
-        code_type=DeviceCodeType.ERROR
-    ),  
+        name="BLADE_WORN",
+        description="Blades are severely worn. Replace them soon",
+        code_type=DeviceCodeType.WARNING
+    ),
     29: DeviceCodeDefinition(
         code=29,
-        name="STATION_LOSS",
-        description="Docking station signal lost",
-        code_type=DeviceCodeType.ERROR
+        name="STATION_BRUSH_WORN",
+        description="Docking station cleaning brush is severely worn. Replace it soon",
+        code_type=DeviceCodeType.WARNING
     ),
     30: DeviceCodeDefinition(
         code=30,
-        name="MAINTAIN_LOSS",
-        description="Maintenance reminder requires attention",
-        code_type=DeviceCodeType.ERROR
+        name="MAINTENANCE_TIME_REACHED",
+        description="Robot maintenance time reached. Maintain the robot soon",
+        code_type=DeviceCodeType.WARNING
     ),
     31: DeviceCodeDefinition(
         code=31,
@@ -723,12 +725,6 @@ MOVA_DEVICE_CODES: Dict[int, DeviceCodeDefinition] = {
         name="LIDAR_IS_BLOCKED",
         description="Lidar is blocked",
         code_type=DeviceCodeType.ERROR
-    ),
-    30: DeviceCodeDefinition(
-        code=30,
-        name="MAINTENANCE_TIME_REACHED",
-        description="Robot maintenance time reached. Maintain the robot soon",
-        code_type=DeviceCodeType.WARNING
     ),
     55: DeviceCodeDefinition(
         code=55,
