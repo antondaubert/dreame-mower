@@ -2,8 +2,11 @@
 
 import pytest
 from unittest.mock import Mock, PropertyMock, patch
+from homeassistant.const import CONF_USERNAME
 from custom_components.dreame_mower.config_flow import (
     _device_type_for_model,
+    CONF_ACCOUNT_TYPE,
+    CONF_COUNTRY,
     DEVICE_TYPE_MOWER,
     DEVICE_TYPE_SWBOT,
     DreameMowerOptionsFlow,
@@ -64,6 +67,48 @@ class TestOptionsFlow:
         assert NOTIFICATION_WARNING in default_notify
         assert NOTIFICATION_ERROR in default_notify
         assert len(default_notify) == 2
+
+    @pytest.mark.asyncio
+    async def test_names_the_account_the_device_is_reached_through(self):
+        """The dialog says which account the connection was established with."""
+        mock_config_entry = Mock()
+        mock_config_entry.options = {CONF_MAP_ROTATION: 0}
+        mock_config_entry.data = {
+            CONF_USERNAME: "someone@example.com",
+            CONF_ACCOUNT_TYPE: "mova",
+            CONF_COUNTRY: "eu",
+        }
+
+        options_flow = DreameMowerOptionsFlow()
+        with patch.object(
+            type(options_flow), 'config_entry', new_callable=PropertyMock, return_value=mock_config_entry
+        ):
+            result = await options_flow.async_step_init(user_input=None)
+
+        assert result["description_placeholders"] == {
+            "account": "someone@example.com",
+            "account_type": "MOVAhome",
+            "country": "EU",
+        }
+
+    @pytest.mark.asyncio
+    async def test_account_placeholders_survive_a_missing_account_type(self):
+        """An entry without a known account type still names its account."""
+        mock_config_entry = Mock()
+        mock_config_entry.options = {CONF_MAP_ROTATION: 0}
+        mock_config_entry.data = {CONF_USERNAME: "someone@example.com"}
+
+        options_flow = DreameMowerOptionsFlow()
+        with patch.object(
+            type(options_flow), 'config_entry', new_callable=PropertyMock, return_value=mock_config_entry
+        ):
+            result = await options_flow.async_step_init(user_input=None)
+
+        assert result["description_placeholders"] == {
+            "account": "someone@example.com",
+            "account_type": "",
+            "country": "",
+        }
 
     @pytest.mark.asyncio
     async def test_rotation_accepts_string_values(self):

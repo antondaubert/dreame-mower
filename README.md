@@ -28,6 +28,7 @@ Provided "as-is" under the MIT License for personal, non-commercial use with dev
 - **Battery Status** - Current battery level and charging info
 - **Mowing Progress** - Coverage percentage and session duration
 - **Do Not Disturb** - View quiet hours settings
+- **Account** - See which Dreamehome or MOVAhome account a device is reached through
 - **Notifications** - Status updates and error alerts
 
 *Have suggestions? Check out [Discussions](https://github.com/antondaubert/dreame-mower/discussions)*
@@ -137,6 +138,23 @@ does not announce, so edits made in the app are picked up by a check every 15
 minutes rather than within seconds. A mower that was unreachable when the
 integration started leaves its switches unavailable until that check first
 reaches it, rather than losing them until a reload.
+
+### Account
+
+A mower is reached through either a Dreamehome or a MOVAhome account, and a
+household often has more than one to choose from. Two places name the one a
+device was set up with:
+
+- The **Account** sensor, a diagnostic entity on the device page, whose state is
+  the account name and whose attributes carry the account type and the country
+  it is registered in
+- The integration's **Options** dialog, which opens with a line naming the same
+  account
+
+The account is part of the configuration rather than something the mower
+reports, so the sensor keeps its value while the mower is offline — which is
+when knowing which account to look in is worth the most. Changing the account
+means setting the device up again; neither place is a control.
 
 ### TODO: Hierarchical Mowing UI
 

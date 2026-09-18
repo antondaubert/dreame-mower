@@ -55,7 +55,7 @@
     "step": {
       "init": {
         "title": "Opcje",
-        "description": "Skonfiguruj ustawienia powiadomień integracji kosiarki Dreame.",
+        "description": "Połączono z kontem {account} ({account_type}, {country}).\n\nSkonfiguruj ustawienia powiadomień integracji kosiarki Dreame.",
         "data": {
           "notify": "Typy powiadomień",
           "map_rotation": "Obrót mapy",
@@ -140,6 +140,9 @@
       },
       "rain_protection_end": {
         "name": "Wznowienie koszenia po ochronie przed deszczem"
+      },
+      "account": {
+        "name": "Konto"
       }
     },
     "binary_sensor": {

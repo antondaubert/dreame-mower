@@ -12,6 +12,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.dreame_mower.const import DOMAIN
 from custom_components.dreame_mower.coordinator import DreameMowerCoordinator
 from custom_components.dreame_mower.sensor import (
+    DreameMowerAccountSensor,
     DreameMowerBatterySensor,
     DreameMowerStatusSensor,
     DreameMowerChargingStatusSensor,
@@ -303,3 +304,31 @@ async def test_rain_protection_end_sensor_is_unknown_while_the_mower_is_free(moc
     sensor = DreameMowerRainProtectionEndSensor(mock_coordinator)
 
     assert sensor.native_value is None
+
+
+async def test_account_sensor_names_the_account_of_the_connection(mock_coordinator):
+    """The sensor states which account the device is reached through."""
+    mock_coordinator.account_username = "someone@example.com"
+    mock_coordinator.account_type = "mova"
+    mock_coordinator.account_country = "eu"
+
+    sensor = DreameMowerAccountSensor(mock_coordinator)
+
+    assert sensor.unique_id == "aa:bb:cc:dd:ee:ff_account"
+    assert sensor.native_value == "someone@example.com"
+    assert sensor.extra_state_attributes == {
+        "account_type": "mova",
+        "country": "eu",
+    }
+
+
+async def test_account_sensor_stays_available_while_the_device_is_not(mock_coordinator):
+    """The account is known from the configuration, so an offline device keeps it readable."""
+    mock_coordinator.device_connected = False
+    mock_coordinator.device_online = False
+    mock_coordinator.account_username = "someone@example.com"
+
+    sensor = DreameMowerAccountSensor(mock_coordinator)
+
+    assert sensor.available is True
+    assert sensor.native_value == "someone@example.com"

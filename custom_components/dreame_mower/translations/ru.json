@@ -55,7 +55,7 @@
     "step": {
       "init": {
         "title": "Параметры",
-        "description": "Настройте настройки уведомления для интеграции Dreame Mower.",
+        "description": "Подключено через {account} ({account_type}, {country}).\n\nНастройте настройки уведомления для интеграции Dreame Mower.",
         "data": {
           "notify": "Типы уведомлений",
           "map_rotation": "Поворот карты",
@@ -140,6 +140,9 @@
       },
       "rain_protection_end": {
         "name": "Возобновление кошения после защиты от дождя"
+      },
+      "account": {
+        "name": "Аккаунт"
       }
     },
     "binary_sensor": {

@@ -39,6 +39,12 @@ DEVICE_TYPE_SWBOT = "swbot"
 ACCOUNT_TITLE_DREAME = "Dreamehome Account"
 ACCOUNT_TITLE_MOVA = "MOVAhome Account"
 
+# The name each account type goes by in its own app
+ACCOUNT_TYPE_NAMES = {
+    "dreame": "Dreamehome",
+    "mova": "MOVAhome",
+}
+
 # Supported models
 DREAME_MODELS = [
     "dreame.mower.",
@@ -110,10 +116,9 @@ class DreameMowerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_show_form(
                 step_id="user",
                 data_schema=vol.Schema({
-                    vol.Required("account_type", default="dreame"): vol.In({
-                        "dreame": "Dreamehome",
-                        "mova": "MOVAhome"
-                    })
+                    vol.Required("account_type", default="dreame"): vol.In(
+                        dict(ACCOUNT_TYPE_NAMES)
+                    )
                 })
             )
 
@@ -126,10 +131,9 @@ class DreameMowerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema({
-                vol.Required("account_type", default="dreame"): vol.In({
-                    "dreame": "Dreamehome",
-                    "mova": "MOVAhome"
-                })
+                vol.Required("account_type", default="dreame"): vol.In(
+                    dict(ACCOUNT_TYPE_NAMES)
+                )
             }),
             errors={"base": "invalid_account_type"}
         )
@@ -382,6 +386,23 @@ class DreameMowerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class DreameMowerOptionsFlow(OptionsFlow):
     """Handle options flow for Dreame Mower."""
 
+    def _account_placeholders(self) -> dict[str, str]:
+        """Name the account the device is reached through.
+
+        A household often has more than one account to choose from, and nothing
+        in Home Assistant says which one a device was set up with. The options
+        dialog is where that belongs: it is the one page an already configured
+        device offers, and the account cannot be changed from it anyway.
+        """
+        data = self.config_entry.data
+        account_type = str(data.get(CONF_ACCOUNT_TYPE, ""))
+        country = str(data.get(CONF_COUNTRY, ""))
+        return {
+            "account": str(data.get(CONF_USERNAME, "")),
+            "account_type": ACCOUNT_TYPE_NAMES.get(account_type, account_type),
+            "country": country.upper(),
+        }
+
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
@@ -405,4 +426,5 @@ class DreameMowerOptionsFlow(OptionsFlow):
                 vol.Required(CONF_MAP_SHOW_LEGEND, default=current_show_legend): bool,
                 vol.Required(CONF_MAP_PADDING, default=current_padding): vol.All(int, vol.Range(min=0, max=200)),
             }),
+            description_placeholders=self._account_placeholders(),
         )

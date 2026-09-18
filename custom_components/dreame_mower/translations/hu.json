@@ -55,7 +55,7 @@
     "step": {
       "init": {
         "title": "Lehetőségek",
-        "description": "Konfigurálja a Dreame fűnyíró integráció értesítési beállításait.",
+        "description": "Kapcsolódva ezzel a fiókkal: {account} ({account_type}, {country}).\n\nKonfigurálja a Dreame fűnyíró integráció értesítési beállításait.",
         "data": {
           "notify": "Értesítési típusok",
           "map_rotation": "Térkép elforgatása",
@@ -140,6 +140,9 @@
       },
       "rain_protection_end": {
         "name": "Nyírás folytatása esővédelem után"
+      },
+      "account": {
+        "name": "Fiók"
       }
     },
     "binary_sensor": {

@@ -55,7 +55,7 @@
     "step": {
       "init": {
         "title": "Optionen",
-        "description": "Konfigurieren Sie die Benachrichtigungseinstellungen für die Integration von Dreame Mäher.",
+        "description": "Verbunden mit {account} ({account_type}, {country}).\n\nKonfigurieren Sie die Benachrichtigungseinstellungen für die Integration von Dreame Mäher.",
         "data": {
           "notify": "Benachrichtigungstypen",
           "map_rotation": "Kartenrotation",
@@ -140,6 +140,9 @@
       },
       "rain_protection_end": {
         "name": "Mähen wird nach Regenschutz fortgesetzt"
+      },
+      "account": {
+        "name": "Konto"
       }
     },
     "binary_sensor": {

@@ -33,12 +33,14 @@ async def async_setup_entry(
         sensors = [
             DreameMowerBatterySensor(coordinator),
             DreameMowerStatusSensor(coordinator),
+            DreameMowerAccountSensor(coordinator),
         ]
     else:
         # Full mower sensor set
         sensors = [
             DreameMowerBatterySensor(coordinator),
             DreameMowerStatusSensor(coordinator),
+            DreameMowerAccountSensor(coordinator),
             DreameMowerChargingStatusSensor(coordinator),
             DreameMowerBluetoothSensor(coordinator),
             DreameMowerDeviceCodeSensor(coordinator),
@@ -91,6 +93,45 @@ class DreameMowerStatusSensor(DreameMowerEntity, SensorEntity):
         if not self.available:
             return "offline"
         return self.coordinator.device_status
+
+
+class DreameMowerAccountSensor(DreameMowerEntity, SensorEntity):
+    """The account the device is reached through.
+
+    A device can be reached through either a Dreamehome or a MOVAhome account,
+    and a household often has more than one account to choose from. The sensor
+    names the one this device is set up with, which is also the account whose
+    app shows the same changes as the integration.
+    """
+
+    def __init__(self, coordinator: DreameMowerCoordinator) -> None:
+        """Initialize the account sensor."""
+        super().__init__(coordinator, "account")
+        self._attr_icon = "mdi:account"
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_translation_key = "account"
+
+    @property
+    def available(self) -> bool:
+        """Return True regardless of the connection.
+
+        The account is what the connection was set up with, so it is known even
+        while the device is unreachable — which is when it is worth reading.
+        """
+        return True
+
+    @property
+    def native_value(self) -> str:
+        """Return the account the connection was established with."""
+        return self.coordinator.account_username
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return which cloud the account belongs to and where it is registered."""
+        return {
+            "account_type": self.coordinator.account_type,
+            "country": self.coordinator.account_country,
+        }
 
 
 class DreameMowerChargingStatusSensor(DreameMowerEntity, SensorEntity):

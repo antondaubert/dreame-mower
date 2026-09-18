@@ -55,7 +55,7 @@
     "step": {
       "init": {
         "title": "Alternativ",
-        "description": "Konfigurera inställningar för meddelanden för Dreame Mower -integrationen.",
+        "description": "Ansluten med {account} ({account_type}, {country}).\n\nKonfigurera inställningar för meddelanden för Dreame Mower -integrationen.",
         "data": {
           "notify": "Anmälningstyper",
           "map_rotation": "Kartrotation",
@@ -140,6 +140,9 @@
       },
       "rain_protection_end": {
         "name": "Klippning återupptas efter regnskydd"
+      },
+      "account": {
+        "name": "Konto"
       }
     },
     "binary_sensor": {

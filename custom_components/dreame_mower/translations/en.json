@@ -55,7 +55,7 @@
     "step": {
       "init": {
         "title": "Notification Settings",
-        "description": "Configure which notification types you want to receive from your Dreame Mower.",
+        "description": "Connected with {account} ({account_type}, {country}).\n\nConfigure which notification types you want to receive from your Dreame Mower.",
         "data": {
           "notify": "Notification Types",
           "map_rotation": "Map Rotation",
@@ -140,6 +140,9 @@
       },
       "rain_protection_end": {
         "name": "Mowing Resumes After Rain Protection"
+      },
+      "account": {
+        "name": "Account"
       }
     },
     "binary_sensor": {

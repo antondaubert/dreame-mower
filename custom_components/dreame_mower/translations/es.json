@@ -55,7 +55,7 @@
     "step": {
       "init": {
         "title": "Opción",
-        "description": "Configurar la configuración de notificación para la integración de los cortacésped Dreame.",
+        "description": "Conectado con {account} ({account_type}, {country}).\n\nConfigurar la configuración de notificación para la integración de los cortacésped Dreame.",
         "data": {
           "notify": "Tipos de notificación",
           "map_rotation": "Rotación del mapa",
@@ -140,6 +140,9 @@
       },
       "rain_protection_end": {
         "name": "Reanudación del corte tras la protección contra lluvia"
+      },
+      "account": {
+        "name": "Cuenta"
       }
     },
     "binary_sensor": {

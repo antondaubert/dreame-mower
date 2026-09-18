@@ -55,7 +55,7 @@
     "step": {
       "init": {
         "title": "Opções",
-        "description": "Configurar configurações de notificação para a integração do cortador de cortinas de sonho.",
+        "description": "Conectado com {account} ({account_type}, {country}).\n\nConfigurar configurações de notificação para a integração do cortador de cortinas de sonho.",
         "data": {
           "notify": "Tipos de notificação",
           "map_rotation": "Rotação do mapa",
@@ -140,6 +140,9 @@
       },
       "rain_protection_end": {
         "name": "Retomada do corte após a proteção contra chuva"
+      },
+      "account": {
+        "name": "Conta"
       }
     },
     "binary_sensor": {

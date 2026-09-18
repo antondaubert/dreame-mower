@@ -55,7 +55,7 @@
     "step": {
       "init": {
         "title": "Opties",
-        "description": "Configureer meldingsinstellingen voor de integratie van Dreame Mower.",
+        "description": "Verbonden met {account} ({account_type}, {country}).\n\nConfigureer meldingsinstellingen voor de integratie van Dreame Mower.",
         "data": {
           "notify": "Types van meldingen",
           "map_rotation": "Kaartrotatie",
@@ -140,6 +140,9 @@
       },
       "rain_protection_end": {
         "name": "Maaien hervat na regenbescherming"
+      },
+      "account": {
+        "name": "Account"
       }
     },
     "binary_sensor": {

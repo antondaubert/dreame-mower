@@ -55,7 +55,7 @@
     "step": {
       "init": {
         "title": "Options",
-        "description": "Configurer les paramètres de notification pour l'intégration de la tondeuse Dreame.",
+        "description": "Connecté avec {account} ({account_type}, {country}).\n\nConfigurer les paramètres de notification pour l'intégration de la tondeuse Dreame.",
         "data": {
           "notify": "Types de notification",
           "map_rotation": "Rotation de la carte",
@@ -140,6 +140,9 @@
       },
       "rain_protection_end": {
         "name": "Reprise de la tonte après protection pluie"
+      },
+      "account": {
+        "name": "Compte"
       }
     },
     "binary_sensor": {

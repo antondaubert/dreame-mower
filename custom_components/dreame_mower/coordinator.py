@@ -181,6 +181,21 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return self.entry.data[CONF_SERIAL]
 
     @property
+    def account_username(self) -> str:
+        """Return the account the device is reached through, from config entry."""
+        return self.entry.data[CONF_USERNAME]
+
+    @property
+    def account_type(self) -> str:
+        """Return which cloud the account belongs to ('dreame' or 'mova')."""
+        return self.entry.data[CONF_ACCOUNT_TYPE]
+
+    @property
+    def account_country(self) -> str:
+        """Return the country the account is registered in, from config entry."""
+        return self.entry.data[CONF_COUNTRY]
+
+    @property
     def device_firmware(self) -> str:
         """Return device firmware version."""
         return self.device.firmware

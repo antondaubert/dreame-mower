@@ -55,7 +55,7 @@
     "step": {
       "init": {
         "title": "Opzioni",
-        "description": "Configurare le impostazioni di notifica per l'integrazione del tosaerba da sogno.",
+        "description": "Connesso con {account} ({account_type}, {country}).\n\nConfigurare le impostazioni di notifica per l'integrazione del tosaerba da sogno.",
         "data": {
           "notify": "Tipi di notifica",
           "map_rotation": "Rotazione mappa",
@@ -140,6 +140,9 @@
       },
       "rain_protection_end": {
         "name": "Ripresa del taglio dopo la protezione pioggia"
+      },
+      "account": {
+        "name": "Account"
       }
     },
     "binary_sensor": {
