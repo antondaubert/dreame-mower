@@ -140,6 +140,64 @@ set_edge_mowing_settings:
       required: false
       example: 3
 
+set_mowing_direction:
+  name: Set mowing direction
+  description: >-
+    Set the direction the mower drives its lanes in for a whole map, or for a
+    single zone of it, and how that direction carries from one session to the
+    next. A map that follows its per-zone settings gets the change written into
+    every zone as well, since the mower no longer reads its map-wide settings.
+    The same settings are available as a number and a select entity for the
+    active map.
+  target:
+    entity:
+      integration: dreame_mower
+      domain: lawn_mower
+  fields:
+    angle:
+      name: Angle
+      description: >-
+        The direction in degrees, as the app shows it. A direction is a line
+        rather than a heading, so anything from 180 on names the same lanes as
+        the angle half a turn below it.
+      required: false
+      example: 45
+      selector:
+        number:
+          min: 0
+          max: 359
+          step: 1
+          unit_of_measurement: "°"
+    mode:
+      name: Mode
+      description: >-
+        Whether every session mows in the same direction, or turns against the
+        session before it.
+      required: false
+      example: crisscross
+      selector:
+        select:
+          options:
+            - label: Always the same direction
+              value: fixed
+            - label: Crisscross, turning 45° each session
+              value: crisscross
+            - label: Chequerboard, turning 90° each session
+              value: chequerboard
+    map_id:
+      name: Map ID
+      description: Map to change. Defaults to the active map.
+      required: false
+      example: 2
+    zone_id:
+      name: Zone ID
+      description: >-
+        Zone to change instead of the whole map. Setting a zone also switches the
+        map to per-zone mowing settings, so the other zones keep their own
+        settings and the map-wide ones stop applying.
+      required: false
+      example: 3
+
 set_mowing_preference_mode:
   name: Set mowing preference mode
   description: >-

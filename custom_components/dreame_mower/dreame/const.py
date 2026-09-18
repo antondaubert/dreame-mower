@@ -132,6 +132,11 @@ MOWING_PREFERENCE_VERSION_INDEX = 0
 MOWING_PREFERENCE_MAP_INDEX_INDEX = 1
 MOWING_PREFERENCE_AREA_ID_INDEX = 2
 MOWING_PREFERENCE_CUTTING_HEIGHT_INDEX = 4
+# Mowing direction slots:
+#   mode   how the direction carries from one session to the next
+#   angle  the direction itself, in degrees, as the app shows it
+MOWING_PREFERENCE_DIRECTION_MODE_INDEX = 5
+MOWING_PREFERENCE_DIRECTION_ANGLE_INDEX = 6
 # Edge mowing slots, all of them flags that are 1 while the behaviour is on:
 #   auto         mow the edges on their own once an all-area or zone run finished
 #   blade offset shift the blade disc sideways for the edge laps, which cuts
@@ -155,6 +160,20 @@ MOWING_PREFERENCE_LEGACY_LENGTH = 16
 # Per-request status reported in the "r" field of a 2:50 response.
 MOWING_PREFERENCE_STATUS_SUCCESS = 0
 MOWING_PREFERENCE_STATUS_INVALID = -3
+
+
+class MowingDirectionMode(IntEnum):
+    """How the mowing direction carries from one session to the next."""
+
+    FIXED = 0  # Every session mows in the set direction
+    CRISSCROSS = 1  # Each session turns 45 degrees against the last one
+    CHEQUERBOARD = 2  # Each session turns 90 degrees against the last one
+
+
+# A mowing direction describes a line rather than a heading, so a direction and
+# the one half a turn away from it are the same. Directions are therefore kept
+# within half a turn, and angles beyond it fold back into that range.
+MOWING_DIRECTION_ANGLE_PERIOD_DEGREES = 180
 
 
 class MowingPreferenceMode(IntEnum):
@@ -459,6 +478,8 @@ ZONE_CUTTING_HEIGHTS_PROPERTY_NAME = "zone_cutting_heights"
 MOWING_PREFERENCE_MODE_PROPERTY_NAME = "mowing_preference_mode"
 EDGE_MOWING_SETTINGS_PROPERTY_NAME = "edge_mowing_settings"
 ZONE_EDGE_MOWING_SETTINGS_PROPERTY_NAME = "zone_edge_mowing_settings"
+MOWING_DIRECTION_PROPERTY_NAME = "mowing_direction"
+ZONE_MOWING_DIRECTIONS_PROPERTY_NAME = "zone_mowing_directions"
 SCHEDULES_PROPERTY_NAME = "schedules"
 
 # Keys the edge mowing settings of one mowing preference record are reported
@@ -467,3 +488,7 @@ SCHEDULES_PROPERTY_NAME = "schedules"
 EDGE_MOWING_AUTO_KEY = "edge_mowing_auto"
 EDGE_BLADE_OFFSET_KEY = "edge_blade_offset"
 EDGE_MOWING_SAFE_KEY = "edge_mowing_safe"
+
+# Keys the mowing direction of one mowing preference record is reported under.
+MOWING_DIRECTION_ANGLE_KEY = "angle"
+MOWING_DIRECTION_MODE_KEY = "mode"

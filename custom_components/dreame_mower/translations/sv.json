@@ -175,6 +175,9 @@
     "number": {
       "cutting_height": {
         "name": "Klipphöjd"
+      },
+      "mowing_direction": {
+        "name": "Klippriktning"
       }
     },
     "switch": {

@@ -12,6 +12,7 @@ from custom_components.dreame_mower.const import DATA_COORDINATOR, DOMAIN
 from custom_components.dreame_mower.dreame.device import DreameCommandError, MowingMode
 from custom_components.dreame_mower.lawn_mower import DreameMowerLawnMower, async_setup_entry
 from custom_components.dreame_mower.dreame.const import (
+    MowingDirectionMode,
     STATUS_PROPERTY,
     DeviceStatus,
     MowingPreferenceMode,
@@ -55,6 +56,7 @@ def _make_coordinator(connected=True, status_code=0):
     coordinator.async_set_cutting_height = AsyncMock(return_value=True)
     coordinator.async_set_mowing_preference_mode = AsyncMock(return_value=True)
     coordinator.supports_edge_mowing_settings = False
+    coordinator.supports_mowing_direction = False
     coordinator.edge_mowing_settings = None
     coordinator.zone_edge_mowing_settings = {}
     coordinator.async_set_edge_mowing_settings = AsyncMock(return_value=True)
@@ -476,6 +478,56 @@ async def test_set_edge_mowing_settings_service_forwards_only_what_was_asked_for
     )
 
 
+def test_attributes_report_the_mowing_direction_when_the_mower_keeps_one():
+    """Automations read back the direction of the map and of its zones."""
+    coordinator = _make_coordinator()
+    coordinator.supports_mowing_direction = True
+    coordinator.mowing_direction = {"mode": 1, "angle": 45}
+    coordinator.zone_mowing_directions = {2: {"mode": 0, "angle": 90}}
+    entity = _make_entity(coordinator)
+
+    attributes = entity.extra_state_attributes
+
+    assert attributes["mowing_direction"] == {"mode": 1, "angle": 45}
+    assert attributes["zone_mowing_directions"] == {2: {"mode": 0, "angle": 90}}
+
+
+def test_attributes_omit_the_mowing_direction_where_there_is_none():
+    """A mower that reported no direction must not advertise one."""
+    attributes = _make_entity(_make_coordinator()).extra_state_attributes
+
+    assert "mowing_direction" not in attributes
+    assert "zone_mowing_directions" not in attributes
+
+
+@pytest.mark.asyncio
+async def test_set_mowing_direction_service_forwards_what_was_asked_for():
+    """The service passes the angle, the mode and the target straight through."""
+    coordinator = _make_coordinator()
+    coordinator.async_set_mowing_direction = AsyncMock(return_value=True)
+    entity = _make_entity(coordinator)
+
+    await entity.async_set_mowing_direction(angle=45, mode="crisscross", zone_id=3)
+
+    coordinator.async_set_mowing_direction.assert_awaited_once_with(
+        angle_degrees=45,
+        mode=MowingDirectionMode.CRISSCROSS,
+        map_id=None,
+        zone_id=3,
+    )
+
+
+@pytest.mark.asyncio
+async def test_set_mowing_direction_service_names_the_zone_when_it_fails():
+    """A refused write says which zone it was for."""
+    coordinator = _make_coordinator()
+    coordinator.async_set_mowing_direction = AsyncMock(return_value=False)
+    entity = _make_entity(coordinator)
+
+    with pytest.raises(HomeAssistantError, match="zone 3"):
+        await entity.async_set_mowing_direction(angle=45, zone_id=3)
+
+
 @pytest.mark.asyncio
 async def test_set_edge_mowing_settings_service_names_the_zone_when_it_fails():
     """A failed zone write should say which zone it was."""
@@ -630,6 +682,27 @@ async def test_set_edge_mowing_settings_schema_validates_its_input(hass):
 
     with pytest.raises(vol.Invalid):
         schema({"entity_id": "lawn_mower.mower", "map_id": 2})
+
+
+@pytest.mark.asyncio
+async def test_set_mowing_direction_schema_validates_its_input(hass):
+    """The service takes an angle or a mode, and insists on one of them."""
+    schema = dict(await _registered_services(hass))["set_mowing_direction"]
+
+    validated = schema({"entity_id": "lawn_mower.mower", "angle": "45", "zone_id": "3"})
+    assert validated["angle"] == 45
+    assert validated["zone_id"] == 3
+
+    assert schema({"entity_id": "lawn_mower.mower", "mode": "chequerboard"})["mode"] == "chequerboard"
+
+    # Neither part named, an angle outside the circle, and an unknown mode.
+    for invalid in (
+        {"entity_id": "lawn_mower.mower", "map_id": 2},
+        {"entity_id": "lawn_mower.mower", "angle": 400},
+        {"entity_id": "lawn_mower.mower", "mode": "diagonal"},
+    ):
+        with pytest.raises(vol.Invalid):
+            schema(invalid)
 
 
 def test_lawn_mower_does_not_register_callback_on_init():

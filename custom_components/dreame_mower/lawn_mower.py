@@ -24,6 +24,7 @@ from .entity import DreameMowerEntity, device_errors_as_ha_errors
 from .dreame.const import (
     CUTTING_HEIGHT_ABSOLUTE_MAX_CM,
     CUTTING_HEIGHT_MIN_CM,
+    MowingDirectionMode,
     MowingPreferenceMode,
     STATUS_PROPERTY,
     map_status_to_activity,
@@ -33,6 +34,9 @@ _LOGGER = logging.getLogger(__name__)
 
 # Service-facing names for the mowing preference modes, e.g. "map_wide".
 _MOWING_PREFERENCE_MODES = {mode.name.lower(): mode for mode in MowingPreferenceMode}
+
+# Service-facing names for the mowing direction modes, e.g. "crisscross".
+_MOWING_DIRECTION_MODES = {mode.name.lower(): mode for mode in MowingDirectionMode}
 
 # Basic feature support for minimal implementation
 MINIMAL_SUPPORT_FEATURES = (
@@ -94,6 +98,21 @@ async def async_setup_entry(
             ),
         ),
         "async_set_edge_mowing_settings",
+    )
+    platform.async_register_entity_service(
+        "set_mowing_direction",
+        vol.All(
+            cv.make_entity_service_schema(
+                {
+                    vol.Optional("angle"): vol.All(vol.Coerce(int), vol.Range(min=0, max=359)),
+                    vol.Optional("mode"): vol.In(_MOWING_DIRECTION_MODES),
+                    vol.Optional("map_id"): vol.Coerce(int),
+                    vol.Optional("zone_id"): vol.Coerce(int),
+                }
+            ),
+            cv.has_at_least_one_key("angle", "mode"),
+        ),
+        "async_set_mowing_direction",
     )
     platform.async_register_entity_service(
         "set_mowing_preference_mode",
@@ -284,6 +303,26 @@ class DreameMowerLawnMower(DreameMowerEntity, LawnMowerEntity):
             target = "the map" if zone_id is None else f"zone {zone_id}"
             raise HomeAssistantError(f"Failed to change the edge mowing settings of {target}")
 
+    async def async_set_mowing_direction(
+        self,
+        angle: int | None = None,
+        mode: str | None = None,
+        map_id: int | None = None,
+        zone_id: int | None = None,
+    ) -> None:
+        """Set the mowing direction of a map, or of a single zone of it."""
+        with device_errors_as_ha_errors():
+            updated = await self.coordinator.async_set_mowing_direction(
+                angle_degrees=angle,
+                mode=None if mode is None else _MOWING_DIRECTION_MODES[mode],
+                map_id=map_id,
+                zone_id=zone_id,
+            )
+
+        if not updated:
+            target = "the map" if zone_id is None else f"zone {zone_id}"
+            raise HomeAssistantError(f"Failed to change the mowing direction of {target}")
+
     async def async_set_mowing_preference_mode(self, mode: str, map_id: int | None = None) -> None:
         """Choose whether a map follows one set of mowing settings or per-zone ones."""
         self._assert_cutting_height_supported()
@@ -335,6 +374,11 @@ class DreameMowerLawnMower(DreameMowerEntity, LawnMowerEntity):
         # Says whether the map-wide records or the per-zone ones are the settings
         # in effect, which holds for the cutting height and the edge settings
         # alike, so it is reported for either.
+        if self.coordinator.supports_mowing_direction:
+            # Exposed so automations can read back what set_mowing_direction
+            # did, for the map as a whole and for the zones that keep their own.
+            attributes["mowing_direction"] = self.coordinator.mowing_direction
+            attributes["zone_mowing_directions"] = self.coordinator.zone_mowing_directions
         mowing_preference_mode = self.coordinator.mowing_preference_mode
         attributes["mowing_preference_mode"] = (
             None if mowing_preference_mode is None else mowing_preference_mode.name.lower()

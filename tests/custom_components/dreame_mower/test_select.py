@@ -7,8 +7,10 @@ from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.dreame_mower.coordinator import DreameMowerCoordinator
 from custom_components.dreame_mower.dreame.device import MowingMode
+from custom_components.dreame_mower.dreame.const import MowingDirectionMode
 from custom_components.dreame_mower.select import (
     DreameMowerEdgeSelect,
+    DreameMowerMowingDirectionModeSelect,
     DreameMowerMaintenancePointSelect,
     DreameMowerRainDelaySelect,
     DreameMowerMapSelect,
@@ -55,6 +57,9 @@ def _make_coordinator():
     coordinator.maintenance_points = [{"id": 1, "x": -2270, "y": 30}, {"id": 2, "x": 0, "y": 0}]
     coordinator.selected_maintenance_point_id = 2
     coordinator.async_set_selected_maintenance_point_id = AsyncMock()
+    coordinator.supports_mowing_direction = True
+    coordinator.mowing_direction_mode = MowingDirectionMode.CRISSCROSS
+    coordinator.async_set_mowing_direction = AsyncMock(return_value=True)
     return coordinator
 
 
@@ -452,3 +457,57 @@ async def test_selecting_an_unknown_rain_delay_is_rejected():
 
     with pytest.raises(ValueError):
         await entity.async_select_option("99 h")
+
+
+def _make_mowing_direction_mode_select(coordinator=None):
+    entity = DreameMowerMowingDirectionModeSelect.__new__(DreameMowerMowingDirectionModeSelect)
+    entity.coordinator = coordinator or _make_coordinator()
+    entity._entity_description_key = "mowing_direction_mode"
+    entity._attr_has_entity_name = True
+    entity.hass = MagicMock()
+    return entity
+
+
+def test_mowing_direction_mode_select_offers_every_mode():
+    entity = _make_mowing_direction_mode_select()
+
+    assert entity.options == ["Always the same", "Crisscross (45°)", "Chequerboard (90°)"]
+    assert entity.current_option == "Crisscross (45°)"
+
+
+def test_mowing_direction_mode_select_is_unknown_until_it_has_been_read():
+    coordinator = _make_coordinator()
+    coordinator.mowing_direction_mode = None
+    entity = _make_mowing_direction_mode_select(coordinator)
+
+    assert entity.current_option is None
+
+
+@pytest.mark.asyncio
+async def test_mowing_direction_mode_select_writes_the_mode():
+    coordinator = _make_coordinator()
+    entity = _make_mowing_direction_mode_select(coordinator)
+
+    await entity.async_select_option("Chequerboard (90°)")
+
+    coordinator.async_set_mowing_direction.assert_awaited_once_with(
+        mode=MowingDirectionMode.CHEQUERBOARD
+    )
+
+
+@pytest.mark.asyncio
+async def test_mowing_direction_mode_select_rejects_an_unknown_option():
+    entity = _make_mowing_direction_mode_select()
+
+    with pytest.raises(ValueError):
+        await entity.async_select_option("Diagonal")
+
+
+@pytest.mark.asyncio
+async def test_mowing_direction_mode_select_raises_when_the_mower_refuses():
+    coordinator = _make_coordinator()
+    coordinator.async_set_mowing_direction = AsyncMock(return_value=False)
+    entity = _make_mowing_direction_mode_select(coordinator)
+
+    with pytest.raises(HomeAssistantError):
+        await entity.async_select_option("Always the same")

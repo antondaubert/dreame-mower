@@ -175,6 +175,9 @@
     "number": {
       "cutting_height": {
         "name": "Vágási magasság"
+      },
+      "mowing_direction": {
+        "name": "Nyírási irány"
       }
     },
     "switch": {

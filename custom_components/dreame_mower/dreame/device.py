@@ -99,8 +99,16 @@ from .const import (
     EDGE_MOWING_AUTO_KEY,
     EDGE_MOWING_SAFE_KEY,
     EDGE_MOWING_SETTINGS_PROPERTY_NAME,
+    MOWING_DIRECTION_ANGLE_KEY,
+    MOWING_DIRECTION_ANGLE_PERIOD_DEGREES,
+    MOWING_DIRECTION_MODE_KEY,
+    MOWING_DIRECTION_PROPERTY_NAME,
+    MowingDirectionMode,
+    ZONE_MOWING_DIRECTIONS_PROPERTY_NAME,
     MOWING_PREFERENCE_AREA_ID_INDEX,
     MOWING_PREFERENCE_CUTTING_HEIGHT_INDEX,
+    MOWING_PREFERENCE_DIRECTION_ANGLE_INDEX,
+    MOWING_PREFERENCE_DIRECTION_MODE_INDEX,
     MOWING_PREFERENCE_EDGE_BLADE_OFFSET_INDEX,
     MOWING_PREFERENCE_EDGE_BLADE_OFFSET_MIN_LAPS,
     MOWING_PREFERENCE_EDGE_MOWING_AUTO_INDEX,
@@ -316,6 +324,8 @@ class DreameMowerDevice:
         self._zone_cutting_heights: dict[int, float] = {}
         self._edge_mowing_settings: dict[str, bool] | None = None
         self._zone_edge_mowing_settings: dict[int, dict[str, bool]] = {}
+        self._mowing_direction: dict[str, int] | None = None
+        self._zone_mowing_directions: dict[int, dict[str, int]] = {}
         self._mowing_preference_mode: MowingPreferenceMode | None = None
 
         # Schedule slots of the current map, alongside the map they were read
@@ -623,6 +633,16 @@ class DreameMowerDevice:
     def zone_edge_mowing_settings(self) -> dict[int, dict[str, bool]]:
         """Return the per-zone edge mowing settings known for the current map."""
         return {zone_id: dict(settings) for zone_id, settings in self._zone_edge_mowing_settings.items()}
+
+    @property
+    def mowing_direction(self) -> dict[str, int] | None:
+        """Return the current map's mowing direction, if it has been read."""
+        return None if self._mowing_direction is None else dict(self._mowing_direction)
+
+    @property
+    def zone_mowing_directions(self) -> dict[int, dict[str, int]]:
+        """Return the per-zone mowing directions known for the current map."""
+        return {zone_id: dict(direction) for zone_id, direction in self._zone_mowing_directions.items()}
 
     @property
     def mowing_preference_mode(self) -> MowingPreferenceMode | None:
@@ -2793,6 +2813,8 @@ class DreameMowerDevice:
         self._zone_cutting_heights = {}
         self._edge_mowing_settings = None
         self._zone_edge_mowing_settings = {}
+        self._mowing_direction = None
+        self._zone_mowing_directions = {}
         self._mowing_preference_mode = None
         # The schedules are stored per map too, so what is cached describes a map
         # that is no longer the current one.
@@ -2845,6 +2867,29 @@ class DreameMowerDevice:
         if settings != self._edge_mowing_settings:
             self._edge_mowing_settings = dict(settings)
             self._notify_property_change(EDGE_MOWING_SETTINGS_PROPERTY_NAME, dict(settings))
+
+    def _update_mowing_direction_cache(
+        self,
+        map_index: int,
+        direction: dict[str, int],
+        zone_id: int | None = None,
+    ) -> None:
+        """Cache a mowing direction when it belongs to the current map."""
+        if not self._targets_current_map(map_index):
+            return
+
+        if zone_id is not None:
+            if self._zone_mowing_directions.get(zone_id) != direction:
+                self._zone_mowing_directions[zone_id] = dict(direction)
+                self._notify_property_change(
+                    ZONE_MOWING_DIRECTIONS_PROPERTY_NAME,
+                    self.zone_mowing_directions,
+                )
+            return
+
+        if direction != self._mowing_direction:
+            self._mowing_direction = dict(direction)
+            self._notify_property_change(MOWING_DIRECTION_PROPERTY_NAME, dict(direction))
 
     def _update_preference_mode_cache(self, map_index: int, mode: MowingPreferenceMode) -> None:
         """Cache a preference mode when it belongs to the current map."""
@@ -2950,6 +2995,59 @@ class DreameMowerDevice:
         return updated_record
 
     @staticmethod
+    def _record_mowing_direction(record: Sequence[int]) -> dict[str, int] | None:
+        """Return the mowing direction a record carries, or None where it has none.
+
+        The angle is the one the app shows, folded into half a turn: a direction
+        is a line, so anything beyond that names a line already in the range.
+        """
+        if len(record) <= MOWING_PREFERENCE_DIRECTION_ANGLE_INDEX:
+            return None
+
+        return {
+            MOWING_DIRECTION_MODE_KEY: int(record[MOWING_PREFERENCE_DIRECTION_MODE_INDEX]),
+            MOWING_DIRECTION_ANGLE_KEY: int(record[MOWING_PREFERENCE_DIRECTION_ANGLE_INDEX])
+            % MOWING_DIRECTION_ANGLE_PERIOD_DEGREES,
+        }
+
+    @staticmethod
+    def _mowing_direction_slots(
+        record: Sequence[int],
+        angle_degrees: int | None,
+        mode: MowingDirectionMode | None,
+    ) -> dict[int, int]:
+        """Return the record slots that carry a mowing direction.
+
+        Raises when the record does not reach the slots, which is how a firmware
+        without the setting reports it.
+        """
+        slots: dict[int, int] = {}
+        if angle_degrees is None and mode is None:
+            return slots
+
+        if len(record) <= MOWING_PREFERENCE_DIRECTION_ANGLE_INDEX:
+            raise ValueError("This mower does not report a mowing direction")
+
+        if angle_degrees is not None:
+            slots[MOWING_PREFERENCE_DIRECTION_ANGLE_INDEX] = (
+                int(angle_degrees) % MOWING_DIRECTION_ANGLE_PERIOD_DEGREES
+            )
+        if mode is not None:
+            slots[MOWING_PREFERENCE_DIRECTION_MODE_INDEX] = int(mode)
+
+        return slots
+
+    @staticmethod
+    def _normalize_mowing_direction_angle(angle_degrees: float) -> int:
+        """Snap a requested mowing direction to a whole degree within half a turn."""
+        try:
+            requested_angle = float(angle_degrees)
+        except (TypeError, ValueError) as ex:
+            raise ValueError(f"Mowing direction must be a number; got {angle_degrees!r}") from ex
+
+        return int(round(requested_angle)) % MOWING_DIRECTION_ANGLE_PERIOD_DEGREES
+
+    @staticmethod
     def _cutting_height_slots(height_cm: float) -> dict[int, int]:
         """Return the record slots that carry a cutting height."""
         return {MOWING_PREFERENCE_CUTTING_HEIGHT_INDEX: int(round(height_cm * 10))}
@@ -2977,6 +3075,58 @@ class DreameMowerDevice:
             return None
 
         return self._record_edge_mowing_settings(record)
+
+    async def refresh_mowing_direction(self, map_id: int | None = None) -> dict[str, int] | None:
+        """Read the map-wide mowing direction, defaulting to the current map."""
+        map_index = self._preference_map_index(map_id)
+        if map_index is None:
+            return None
+
+        record = await self._refresh_map_wide_record(map_index)
+        if record is None:
+            return None
+
+        return self._record_mowing_direction(record)
+
+    async def set_mowing_direction(
+        self,
+        angle_degrees: float | None = None,
+        mode: MowingDirectionMode | None = None,
+        map_id: int | None = None,
+        zone_id: int | None = None,
+    ) -> bool:
+        """Set the direction the mower mows in, keeping the unspecified part as it is.
+
+        Without a zone the direction of the whole map is set: the map-wide
+        record, and the record of every zone of a map that follows its per-zone
+        records, since such a map no longer reads the map-wide one. With a zone
+        only that zone is changed, and the map is switched to its per-zone
+        records so the change actually takes effect.
+        """
+        if angle_degrees is None and mode is None:
+            return True
+
+        normalized_angle = (
+            None if angle_degrees is None else self._normalize_mowing_direction_angle(angle_degrees)
+        )
+
+        def build_slots(record: Sequence[int]) -> dict[int, int]:
+            return self._mowing_direction_slots(record, normalized_angle, mode)
+
+        described = []
+        if normalized_angle is not None:
+            described.append(f"{normalized_angle}°")
+        if mode is not None:
+            described.append(mode.name.lower())
+        description = "Mowing direction set to " + ", ".join(described)
+
+        if not await self._change_mowing_preference(map_id, zone_id, build_slots, description):
+            return False
+
+        if zone_id is not None:
+            return True
+
+        return await self._carry_map_wide_change_into_zones(map_id, build_slots, description)
 
     async def refresh_mowing_preferences(self, map_id: int | None = None) -> bool:
         """Read a map's map-wide record, updating every setting it carries."""
@@ -3009,6 +3159,10 @@ class DreameMowerDevice:
         edge_settings = self._record_edge_mowing_settings(record)
         if edge_settings is not None:
             self._update_edge_mowing_cache(map_index, edge_settings, zone_id=zone_id)
+
+        direction = self._record_mowing_direction(record)
+        if direction is not None:
+            self._update_mowing_direction_cache(map_index, direction, zone_id=zone_id)
 
     async def refresh_zone_cutting_heights(self, map_id: int | None = None) -> dict[int, float]:
         """Read the per-zone cutting heights in cm, defaulting to the current map."""

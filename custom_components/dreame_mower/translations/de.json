@@ -175,6 +175,9 @@
     "number": {
       "cutting_height": {
         "name": "Schnitthöhe"
+      },
+      "mowing_direction": {
+        "name": "Mährichtung"
       }
     },
     "switch": {

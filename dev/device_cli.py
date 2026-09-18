@@ -26,6 +26,9 @@ Examples:
   .venv/bin/python dev/device_cli.py anti-theft
     .venv/bin/python dev/device_cli.py anti-theft --lift-alarm on --off-map-alarm off
     .venv/bin/python dev/device_cli.py anti-theft --location off
+  .venv/bin/python dev/device_cli.py mowing-direction --include-zones
+    .venv/bin/python dev/device_cli.py mowing-direction --angle 45
+    .venv/bin/python dev/device_cli.py mowing-direction --mode crisscross --zone-id 1
   .venv/bin/python dev/device_cli.py maintenance-point
     .venv/bin/python dev/device_cli.py maintenance-point --go
     .venv/bin/python dev/device_cli.py maintenance-point --go 2
@@ -57,6 +60,7 @@ from custom_components.dreame_mower.dreame import const as dreame_const
 from custom_components.dreame_mower.dreame.const import (
     MINUTES_PER_DAY,
     RAIN_DELAY_MAX_HOURS,
+    MowingDirectionMode,
     MowingPreferenceMode,
     PropertyIdentifier,
 )
@@ -582,6 +586,26 @@ def build_parser() -> argparse.ArgumentParser:
         help="Do not load vector map metadata before addressing the schedules",
     )
 
+    mowing_direction_parser = subparsers.add_parser(
+        "mowing-direction",
+        help="Read or set the direction the mower drives its lanes in",
+    )
+    add_common_args(mowing_direction_parser)
+    mowing_direction_parser.add_argument("--angle", type=int, default=None, help="Direction in degrees")
+    mowing_direction_parser.add_argument(
+        "--mode",
+        choices=[mode.name.lower() for mode in MowingDirectionMode],
+        default=None,
+        help="How the direction carries from one session to the next",
+    )
+    mowing_direction_parser.add_argument("--map-id", type=int, default=None)
+    mowing_direction_parser.add_argument("--zone-id", type=int, default=None)
+    mowing_direction_parser.add_argument(
+        "--include-zones",
+        action="store_true",
+        help="Also read the direction of every zone that keeps its own record",
+    )
+
     maintenance_point_parser = subparsers.add_parser(
         "maintenance-point",
         help="List the maintenance points of the active map, or drive to one",
@@ -882,6 +906,39 @@ async def run_command(device: DreameMowerDevice, args: argparse.Namespace) -> di
             "requested_slot": args.slot if args.enabled is not None else None,
             "requested_enabled": args.enabled,
             "schedules": [describe_schedule(schedule) for schedule in schedules or []],
+        }
+
+    if args.command == "mowing-direction":
+        # The records are addressed by map, so the map has to be known first.
+        await fetch_vector_map_async(device)
+        if args.angle is None and args.mode is None:
+            direction = await device.refresh_mowing_direction(args.map_id)
+            zone_directions = {}
+            if args.include_zones:
+                zone_records = await device.refresh_zone_mowing_preferences(args.map_id)
+                zone_directions = {
+                    zone_id: device._record_mowing_direction(record)
+                    for zone_id, record in zone_records.items()
+                }
+            return {
+                "ok": direction is not None,
+                "command": args.command,
+                "mowing_direction": direction,
+                "zone_mowing_directions": zone_directions,
+                "state": build_device_snapshot(device),
+            }
+
+        updated = await device.set_mowing_direction(
+            angle_degrees=args.angle,
+            mode=None if args.mode is None else MowingDirectionMode[args.mode.upper()],
+            map_id=args.map_id,
+            zone_id=args.zone_id,
+        )
+        return {
+            "ok": updated,
+            "command": args.command,
+            "mowing_direction": await device.refresh_mowing_direction(args.map_id),
+            "state": build_device_snapshot(device),
         }
 
     if args.command == "maintenance-point":

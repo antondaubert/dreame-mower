@@ -175,6 +175,9 @@
     "number": {
       "cutting_height": {
         "name": "Wysokość koszenia"
+      },
+      "mowing_direction": {
+        "name": "Kierunek koszenia"
       }
     },
     "switch": {

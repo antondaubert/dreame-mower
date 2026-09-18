@@ -47,6 +47,9 @@ from .dreame.const import (
     RAIN_DEVICE_CODES,
     SCHEDULING_SUMMARY_PROPERTY,
     DeviceStatus,
+    MOWING_DIRECTION_ANGLE_KEY,
+    MOWING_DIRECTION_MODE_KEY,
+    MowingDirectionMode,
     MowingPreferenceMode,
     STATUS_PROPERTY,
     supports_cutting_height,
@@ -414,6 +417,64 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def supports_edge_mowing_settings(self) -> bool:
         """Return whether the device reported edge mowing settings."""
         return self.device.edge_mowing_settings is not None
+
+    @property
+    def mowing_direction(self) -> dict[str, int] | None:
+        """Return the current map's mowing direction, if it is known."""
+        return self.device.mowing_direction
+
+    @property
+    def mowing_direction_angle(self) -> int | None:
+        """Return the direction the current map is mowed in, in degrees."""
+        direction = self.device.mowing_direction
+        return None if direction is None else direction[MOWING_DIRECTION_ANGLE_KEY]
+
+    @property
+    def mowing_direction_mode(self) -> MowingDirectionMode | None:
+        """Return how the current map's direction carries between sessions."""
+        direction = self.device.mowing_direction
+        if direction is None:
+            return None
+
+        try:
+            return MowingDirectionMode(direction[MOWING_DIRECTION_MODE_KEY])
+        except ValueError:
+            _LOGGER.debug("Unknown mowing direction mode: %s", direction[MOWING_DIRECTION_MODE_KEY])
+            return None
+
+    @property
+    def zone_mowing_directions(self) -> dict[int, dict[str, int]]:
+        """Return the per-zone mowing directions known for the current map."""
+        return self.device.zone_mowing_directions
+
+    @property
+    def supports_mowing_direction(self) -> bool:
+        """Return whether the device reported a mowing direction."""
+        return self.device.mowing_direction is not None
+
+    async def async_fetch_mowing_direction(self) -> dict[str, int] | None:
+        """Read the current map's mowing direction from the device."""
+        direction = await self.device.refresh_mowing_direction()
+        self.async_update_listeners()
+        return direction
+
+    async def async_set_mowing_direction(
+        self,
+        angle_degrees: float | None = None,
+        mode: MowingDirectionMode | None = None,
+        map_id: int | None = None,
+        zone_id: int | None = None,
+    ) -> bool:
+        """Set the mowing direction, keeping the part that was not named as it is."""
+        self._note_write(_WRITE_MOWING_PREFERENCES)
+        updated = await self.device.set_mowing_direction(
+            angle_degrees=angle_degrees,
+            mode=mode,
+            map_id=map_id,
+            zone_id=zone_id,
+        )
+        self.async_update_listeners()
+        return updated
 
     @property
     def supports_safe_edge_mowing(self) -> bool:

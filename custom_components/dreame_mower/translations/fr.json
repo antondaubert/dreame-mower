@@ -175,6 +175,9 @@
     "number": {
       "cutting_height": {
         "name": "Hauteur de coupe"
+      },
+      "mowing_direction": {
+        "name": "Direction de tonte"
       }
     },
     "switch": {

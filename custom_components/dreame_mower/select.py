@@ -13,7 +13,11 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DATA_COORDINATOR, DOMAIN
 from .coordinator import DreameMowerCoordinator
-from .dreame.const import RAIN_DELAY_MAX_HOURS, RAIN_DELAY_MIN_HOURS
+from .dreame.const import (
+    MowingDirectionMode,
+    RAIN_DELAY_MAX_HOURS,
+    RAIN_DELAY_MIN_HOURS,
+)
 from .dreame.device import MowingMode
 from .entity import DreameMowerEntity, device_errors_as_ha_errors
 
@@ -22,6 +26,14 @@ _MOWING_MODE_LABELS: dict[MowingMode, str] = {
     MowingMode.EDGE: "Edge",
     MowingMode.ZONE: "Zone",
     MowingMode.SPOT: "Spot",
+}
+
+# How a mowing direction carries from one session to the next, as the mower's
+# own settings put it.
+_MOWING_DIRECTION_MODE_LABELS: dict[MowingDirectionMode, str] = {
+    MowingDirectionMode.FIXED: "Always the same",
+    MowingDirectionMode.CRISSCROSS: "Crisscross (45°)",
+    MowingDirectionMode.CHEQUERBOARD: "Chequerboard (90°)",
 }
 
 # The after-rain delay is offered as whole hours, led by the option to stay
@@ -51,6 +63,9 @@ async def async_setup_entry(
         DreameMowerSpotSelect(coordinator),
         DreameMowerMaintenancePointSelect(coordinator),
     ]
+
+    if coordinator.supports_mowing_direction:
+        selects.append(DreameMowerMowingDirectionModeSelect(coordinator))
 
     if coordinator.supports_rain_protection:
         selects.append(DreameMowerRainDelaySelect(coordinator))
@@ -377,6 +392,48 @@ class DreameMowerMaintenancePointSelect(DreameMowerEntity, SelectEntity):
             if self._option_label(point) == option:
                 return int(point["id"])
         return None
+
+
+class DreameMowerMowingDirectionModeSelect(DreameMowerEntity, SelectEntity):
+    """Select entity for how the mowing direction carries between sessions.
+
+    Left on the set direction the mower keeps mowing the same lanes; the other
+    modes turn the direction against the last session, which spares the lawn and
+    leaves the striped pattern the modes are named after.
+    """
+
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator: DreameMowerCoordinator) -> None:
+        """Initialize the mowing direction mode entity."""
+        super().__init__(coordinator, "mowing_direction_mode")
+        self._attr_name = "Mowing direction mode"
+        self._attr_icon = "mdi:rotate-3d-variant"
+
+    @property
+    def options(self) -> list[str]:
+        """Return the ways a direction can carry between sessions."""
+        return list(_MOWING_DIRECTION_MODE_LABELS.values())
+
+    @property
+    def current_option(self) -> str | None:
+        """Return how the direction currently carries, if it is known."""
+        mode = self.coordinator.mowing_direction_mode
+        return None if mode is None else _MOWING_DIRECTION_MODE_LABELS[mode]
+
+    async def async_select_option(self, option: str) -> None:
+        """Set how the direction carries from one session to the next."""
+        for mode, label in _MOWING_DIRECTION_MODE_LABELS.items():
+            if label == option:
+                break
+        else:
+            raise ValueError(f"Unknown mowing direction mode: {option}")
+
+        with device_errors_as_ha_errors():
+            updated = await self.coordinator.async_set_mowing_direction(mode=mode)
+
+        if not updated:
+            raise HomeAssistantError(f"The mower did not take the mowing direction mode {option}")
 
 
 class DreameMowerRainDelaySelect(DreameMowerEntity, SelectEntity):

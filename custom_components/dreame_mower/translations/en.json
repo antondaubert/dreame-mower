@@ -175,6 +175,9 @@
     "number": {
       "cutting_height": {
         "name": "Cutting Height"
+      },
+      "mowing_direction": {
+        "name": "Mowing Direction"
       }
     },
     "switch": {

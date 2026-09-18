@@ -175,6 +175,9 @@
     "number": {
       "cutting_height": {
         "name": "Висота скошування"
+      },
+      "mowing_direction": {
+        "name": "Напрямок скошування"
       }
     },
     "switch": {

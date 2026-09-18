@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, Mock, patch, PropertyMock
 
 from custom_components.dreame_mower.dreame.device import DreameCommandError, DreameMowerDevice, MowingMode
 from custom_components.dreame_mower.dreame.const import (
+    MowingDirectionMode,
     DeviceStatus,
     MowingPreferenceMode,
     ONLINE_OFFLINE_DEBOUNCE_POLLS,
@@ -2408,6 +2409,104 @@ async def test_refresh_zone_cutting_heights_reads_every_configured_zone(device):
     assert zone_heights == {1: 3.5, 3: 7.0}
     assert device.zone_cutting_heights == {1: 3.5, 3: 7.0}
     assert device.mowing_preference_mode == MowingPreferenceMode.PER_ZONE
+
+
+@pytest.mark.asyncio
+async def test_set_mowing_direction_writes_the_angle_and_the_mode(device):
+    """The direction lives in two slots of the same record."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_vector_map(device)
+    device._cloud_device.action_result, writes = _mowing_preference_responder()
+
+    result = await device.set_mowing_direction(
+        angle_degrees=45,
+        mode=MowingDirectionMode.CRISSCROSS,
+    )
+
+    assert result is True
+    assert len(writes) == 1
+    assert writes[0][5] == MowingDirectionMode.CRISSCROSS
+    assert writes[0][6] == 45
+
+
+@pytest.mark.asyncio
+async def test_set_mowing_direction_keeps_the_part_that_was_not_named(device):
+    """Setting only the angle leaves the mode as the mower holds it."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_vector_map(device)
+    device._cloud_device.action_result, writes = _mowing_preference_responder()
+
+    await device.set_mowing_direction(angle_degrees=90)
+
+    assert writes[0][5] == _MOWING_PREFERENCE_RECORD[5]
+    assert writes[0][6] == 90
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("requested,written", [
+    (0, 0),
+    (179, 179),
+    (180, 0),      # half a turn on is the same set of lanes
+    (200, 20),
+    (-20, 160),
+    (44.6, 45),    # the mower keeps whole degrees
+])
+async def test_set_mowing_direction_folds_the_angle_into_half_a_turn(device, requested, written):
+    """A direction is a line, so every angle names one within half a turn."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_vector_map(device)
+    device._cloud_device.action_result, writes = _mowing_preference_responder()
+
+    assert await device.set_mowing_direction(angle_degrees=requested) is True
+
+    assert writes[0][6] == written
+
+
+@pytest.mark.asyncio
+async def test_set_mowing_direction_without_a_change_writes_nothing(device):
+    """A call that names neither part has nothing to write."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_vector_map(device)
+    device._cloud_device.action_result, writes = _mowing_preference_responder()
+
+    assert await device.set_mowing_direction() is True
+    assert writes == []
+
+
+@pytest.mark.asyncio
+async def test_refresh_mowing_direction_reads_it_from_the_record(device):
+    """The direction is read out of the same record as the other settings."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_vector_map(device)
+    record = list(_MOWING_PREFERENCE_RECORD)
+    record[5] = MowingDirectionMode.CHEQUERBOARD
+    record[6] = 200
+    device._cloud_device.action_result, _ = _mowing_preference_responder(record)
+
+    direction = await device.refresh_mowing_direction()
+
+    assert direction == {"mode": MowingDirectionMode.CHEQUERBOARD, "angle": 20}
+    assert device.mowing_direction == direction
+
+
+@pytest.mark.asyncio
+async def test_a_map_wide_mowing_direction_reaches_every_zone_of_a_per_zone_map(device):
+    """A map reading its per-zone records only follows a map-wide direction per zone."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_zoned_vector_map(device)
+    device._cloud_device.action_result, calls = _preference_responder(mode=1)
+
+    assert await device.set_mowing_direction(angle_degrees=30) is True
+
+    assert [write[2] for write in calls["writes"]] == [0, 1, 2, 3]
+    for write in calls["writes"]:
+        assert write[6] == 30
 
 
 @pytest.mark.asyncio

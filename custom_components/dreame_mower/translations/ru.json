@@ -175,6 +175,9 @@
     "number": {
       "cutting_height": {
         "name": "Высота скашивания"
+      },
+      "mowing_direction": {
+        "name": "Направление кошения"
       }
     },
     "switch": {
