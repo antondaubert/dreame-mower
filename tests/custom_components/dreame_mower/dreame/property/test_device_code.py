@@ -277,6 +277,29 @@ class TestConsumableWearCodes:
         assert definition.code_type == DeviceCodeType.WARNING
 
 
+class TestWorkMessageCodes:
+    """Tests for the informational work messages, codes 74-80."""
+
+    @pytest.mark.parametrize("code,name,description", [
+        (74, "CRUISE_TASK_FINISH", "Cruise task completed"),
+        (75, "MAINTENANCE_POINT_REACHED", "Arrived at the maintenance point"),
+        (76, "MAINTENANCE_POINT_UNREACHABLE", "Unable to reach the maintenance point, task ended"),
+        (77, "ERROR_ON_WAY_TO_MAINTENANCE_POINT", "Robot error on the way to the maintenance point, task ended"),
+        (78, "LOW_LIGHT_RETURNING", "Outside the operating hours and insufficient light, returning to the station"),
+        (80, "LIDAR_COOLING", "LiDAR is cooling down"),
+    ])
+    @pytest.mark.parametrize("model", [None, "dreame.mower.p2255", "mova.mower.g2552"])
+    def test_work_messages_are_known_info_codes(self, model, code, name, description):
+        """These codes report what the robot is doing, on every model."""
+        registry = get_device_code_registry(model)
+
+        definition = registry.get_code(code)
+        assert definition is not None
+        assert definition.name == name
+        assert definition.description == description
+        assert definition.code_type == DeviceCodeType.INFO
+
+
 class TestMovaDriveWheelCodes:
     """Tests for MOVA drive wheel error codes 4 and 5."""
 

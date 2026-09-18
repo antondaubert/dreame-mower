@@ -661,6 +661,42 @@ BASE_DEVICE_CODES: Dict[int, DeviceCodeDefinition] = {
         description="Top cover is open",
         code_type=DeviceCodeType.ERROR
     ),
+    74: DeviceCodeDefinition(
+        code=74,
+        name="CRUISE_TASK_FINISH",
+        description="Cruise task completed",
+        code_type=DeviceCodeType.INFO
+    ),
+    75: DeviceCodeDefinition(
+        code=75,
+        name="MAINTENANCE_POINT_REACHED",
+        description="Arrived at the maintenance point",
+        code_type=DeviceCodeType.INFO
+    ),
+    76: DeviceCodeDefinition(
+        code=76,
+        name="MAINTENANCE_POINT_UNREACHABLE",
+        description="Unable to reach the maintenance point, task ended",
+        code_type=DeviceCodeType.INFO
+    ),
+    77: DeviceCodeDefinition(
+        code=77,
+        name="ERROR_ON_WAY_TO_MAINTENANCE_POINT",
+        description="Robot error on the way to the maintenance point, task ended",
+        code_type=DeviceCodeType.INFO
+    ),
+    78: DeviceCodeDefinition(
+        code=78,
+        name="LOW_LIGHT_RETURNING",
+        description="Outside the operating hours and insufficient light, returning to the station",
+        code_type=DeviceCodeType.INFO
+    ),
+    80: DeviceCodeDefinition(
+        code=80,
+        name="LIDAR_COOLING",
+        description="LiDAR is cooling down",
+        code_type=DeviceCodeType.INFO
+    ),
 }
 BASE_DEVICE_CODE_REGISTRY = DeviceCodeRegistry(BASE_DEVICE_CODES)
 
