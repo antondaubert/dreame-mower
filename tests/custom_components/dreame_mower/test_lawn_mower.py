@@ -579,7 +579,9 @@ def test_attributes_omit_the_cutting_height_for_fixed_height_models():
 
     assert "cutting_height" not in attributes
     assert "zone_cutting_heights" not in attributes
-    assert "mowing_preference_mode" not in attributes
+    # The mode says which records are in effect, which matters for the edge
+    # settings as much as for a height the model does not offer.
+    assert "mowing_preference_mode" in attributes
 
 
 async def _registered_services(hass):

@@ -86,8 +86,10 @@ set_edge_mowing_settings:
   name: Set edge mowing settings
   description: >-
     Switch the edge mowing settings for a whole map, or for a single zone of it.
-    Every setting left out keeps the value it has. The same settings are
-    available as switch entities for the active map.
+    Every setting left out keeps the value it has. A map that follows its
+    per-zone settings gets the change written into every zone as well, since the
+    mower no longer reads its map-wide settings. The same settings are available
+    as switch entities for the active map.
   target:
     entity:
       integration: dreame_mower

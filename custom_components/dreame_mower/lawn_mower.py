@@ -327,15 +327,18 @@ class DreameMowerLawnMower(DreameMowerEntity, LawnMowerEntity):
             # tell whether the map-wide height is the one currently in effect.
             attributes["cutting_height"] = self.coordinator.cutting_height
             attributes["zone_cutting_heights"] = self.coordinator.zone_cutting_heights
-            mowing_preference_mode = self.coordinator.mowing_preference_mode
-            attributes["mowing_preference_mode"] = (
-                None if mowing_preference_mode is None else mowing_preference_mode.name.lower()
-            )
         if self.coordinator.supports_edge_mowing_settings:
             # Exposed so automations can read back what set_edge_mowing_settings
             # did, for the map as a whole and for the zones that keep their own.
             attributes["edge_mowing_settings"] = self.coordinator.edge_mowing_settings
             attributes["zone_edge_mowing_settings"] = self.coordinator.zone_edge_mowing_settings
+        # Says whether the map-wide records or the per-zone ones are the settings
+        # in effect, which holds for the cutting height and the edge settings
+        # alike, so it is reported for either.
+        mowing_preference_mode = self.coordinator.mowing_preference_mode
+        attributes["mowing_preference_mode"] = (
+            None if mowing_preference_mode is None else mowing_preference_mode.name.lower()
+        )
         attributes["selected_mowing_mode"] = self.coordinator.selected_mowing_mode.value
         if self.coordinator.selected_contour_id is not None:
             attributes["selected_contour_id"] = self.coordinator.selected_contour_id

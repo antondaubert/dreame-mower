@@ -2173,6 +2173,7 @@ def _preference_responder(
     configured_area_ids=(0,),
     records=None,
     reject_full_record=False,
+    reject_area_ids=(),
 ):
     """Build an action responder that serves the full preference protocol.
 
@@ -2209,6 +2210,8 @@ def _preference_responder(
         calls["writes"].append(record)
         if reject_full_record and len(calls["writes"]) == 1:
             return {"code": 0, "out": [{"r": -3}]}
+        if record[2] in reject_area_ids:
+            return {"code": 0, "out": [{"r": -1}]}
         stored_records[record[2]] = record
         available_area_ids.add(record[2])
         return {"code": 0, "out": [{"r": 0}]}
@@ -2357,6 +2360,91 @@ async def test_refresh_zone_cutting_heights_reads_every_configured_zone(device):
     assert zone_heights == {1: 3.5, 3: 7.0}
     assert device.zone_cutting_heights == {1: 3.5, 3: 7.0}
     assert device.mowing_preference_mode == MowingPreferenceMode.PER_ZONE
+
+
+@pytest.mark.asyncio
+async def test_map_wide_edge_settings_reach_every_zone_of_a_per_zone_map(device):
+    """A map reading its per-zone records only follows a map-wide change per zone."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_zoned_vector_map(device)
+    device._cloud_device.action_result, calls = _preference_responder(mode=1)
+
+    result = await device.set_edge_mowing_settings(blade_offset=True)
+
+    assert result is True
+    # The map-wide record first, then every zone, including the ones the device
+    # held no record of its own for.
+    assert [write[2] for write in calls["writes"]] == [0, 1, 2, 3]
+    for write in calls["writes"]:
+        assert write[10] == 1  # blade offset on
+        assert write[11] == 2  # the offset disc needs a second lap
+    # The change belongs to one setting, so the map keeps following its zones.
+    assert calls["modes"] == []
+
+
+@pytest.mark.asyncio
+async def test_map_wide_edge_settings_leave_the_other_zone_settings_alone(device):
+    """Only the slots of the change may differ from what a zone had."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_zoned_vector_map(device)
+    zone_two = list(_MOWING_PREFERENCE_RECORD)
+    zone_two[4] = 35  # its own cutting height
+    device._cloud_device.action_result, calls = _preference_responder(
+        mode=1,
+        configured_area_ids=(0, 2),
+        records={2: zone_two},
+    )
+
+    assert await device.set_edge_mowing_settings(auto=False) is True
+
+    zone_two_write = next(write for write in calls["writes"] if write[2] == 2)
+    assert zone_two_write[7] == 0  # automatic edge mowing off, as asked
+    assert zone_two_write[4] == 35  # the zone keeps the height it had
+
+
+@pytest.mark.asyncio
+async def test_map_wide_edge_settings_stay_map_wide_on_a_map_wide_map(device):
+    """A map that reads its map-wide record needs that one write and no more."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_zoned_vector_map(device)
+    device._cloud_device.action_result, calls = _preference_responder(mode=0)
+
+    assert await device.set_edge_mowing_settings(blade_offset=True) is True
+
+    assert [write[2] for write in calls["writes"]] == [0]
+
+
+@pytest.mark.asyncio
+async def test_map_wide_edge_settings_report_a_zone_that_refused(device):
+    """A change that only reached part of the map must not pass as done."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_zoned_vector_map(device)
+    device._cloud_device.action_result, calls = _preference_responder(
+        mode=1,
+        reject_area_ids=(2,),
+    )
+
+    assert await device.set_edge_mowing_settings(blade_offset=True) is False
+
+    # The zones after the one that refused are still attempted.
+    assert [write[2] for write in calls["writes"]] == [0, 1, 2, 3]
+
+
+@pytest.mark.asyncio
+async def test_a_zone_edge_settings_write_touches_only_that_zone(device):
+    """Naming a zone still changes that zone alone."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_zoned_vector_map(device)
+    device._cloud_device.action_result, calls = _preference_responder(mode=1)
+
+    assert await device.set_edge_mowing_settings(blade_offset=True, zone_id=2) is True
+
+    assert [write[2] for write in calls["writes"]] == [2]
 
 
 @pytest.mark.asyncio

@@ -3253,9 +3253,11 @@ class DreameMowerDevice:
     ) -> bool:
         """Switch the edge mowing settings, keeping every unspecified one as it is.
 
-        Without a zone the settings of the whole map are changed. With a zone only
-        that zone is changed, and the map is switched to its per-zone records so
-        the change actually takes effect.
+        Without a zone the settings of the whole map are changed: the map-wide
+        record, and the record of every zone of a map that follows its per-zone
+        records, since such a map no longer reads the map-wide one. With a zone
+        only that zone is changed, and the map is switched to its per-zone
+        records so the change actually takes effect.
         """
         if auto is None and blade_offset is None and safe is None:
             return True
@@ -3272,7 +3274,55 @@ class DreameMowerDevice:
             f"{key}={value}" for key, value in requested.items() if value is not None
         )
 
-        return await self._change_mowing_preference(map_id, zone_id, build_slots, description)
+        if not await self._change_mowing_preference(map_id, zone_id, build_slots, description):
+            return False
+
+        if zone_id is not None:
+            return True
+
+        return await self._carry_map_wide_change_into_zones(map_id, build_slots, description)
+
+    async def _carry_map_wide_change_into_zones(
+        self,
+        map_id: int | None,
+        build_slots: Callable[[Sequence[int]], dict[int, int]],
+        description: str,
+    ) -> bool:
+        """Repeat a map-wide change on the zones of a map that follows per-zone records.
+
+        Such a map reads a zone's own record instead of the map-wide one, so a
+        change meant for the map as a whole only reaches its zones by being
+        written to each of them. Only the slots of the change are touched, so
+        every other setting a zone keeps stays as it is. A map that still
+        follows its map-wide record needs none of this.
+        """
+        map_index = self._preference_map_index(map_id)
+        if map_index is None:
+            return False
+
+        mode, configured_area_ids = await self._get_preference_info(map_index)
+        if mode != MowingPreferenceMode.PER_ZONE:
+            return True
+
+        # A zone the device holds no record for is included as well: it would
+        # otherwise fall back to the device defaults rather than to the map-wide
+        # record the change just went into.
+        zone_ids = sorted(
+            {area_id for area_id in configured_area_ids if area_id != MOWING_PREFERENCE_GLOBAL_AREA_ID}
+            | set(self._zone_ids_for_map(map_id))
+        )
+
+        applied = True
+        for zone_id in zone_ids:
+            if not await self._change_mowing_preference(map_id, zone_id, build_slots, description):
+                _LOGGER.warning(
+                    "Zone %s of map index %s kept its own settings, so the map is no longer uniform",
+                    zone_id,
+                    map_index,
+                )
+                applied = False
+
+        return applied
 
     def _build_all_area_task_payload(self, map_id: int) -> dict[str, Any]:
         """Build the 2:50 action payload for map-aware all-area mowing."""

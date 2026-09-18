@@ -393,8 +393,10 @@ class DreameMowerEdgeMowingSwitch(DreameMowerEntity, SwitchEntity):
     """Base switch for one edge mowing setting of the active map.
 
     The settings are stored per map, and per zone once a map follows its per-zone
-    settings. These switches always address the active map as a whole; a single
-    zone is changed with the set_edge_mowing_settings action.
+    settings. These switches always address the active map as a whole: on such a
+    map the setting goes into every zone as well, since the mower reads the
+    zones' own records and no longer the map-wide one. A single zone is changed
+    with the set_edge_mowing_settings action.
     """
 
     _attr_entity_category = EntityCategory.CONFIG
