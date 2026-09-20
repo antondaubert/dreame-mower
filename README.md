@@ -25,6 +25,8 @@ Provided "as-is" under the MIT License for personal, non-commercial use with dev
 - **Rain Protection** - See when rain keeps the mower docked, and set how long it waits afterwards
 - **Anti-Theft Alarm** - Read and set the lift alarm, the off-map alarm and the mower's position reports
 - **Schedules** - See the mowing schedules of the active map and switch them on and off
+- **Mowing Direction** - Read and set the direction the mower drives its lanes in, per map or per zone
+- **Maintenance Point** - Send the mower to the spot it is cleaned at
 - **Battery Status** - Current battery level and charging info
 - **Mowing Progress** - Coverage percentage and session duration
 - **Do Not Disturb** - View quiet hours settings
@@ -111,6 +113,28 @@ The mower's anti-theft settings are exposed as switches:
 Locking the mower and sounding the alarm is all the mower does on its own. **Off-Map Alarm** and **Real-Time Location** need the mower's cellular module to work away from home, and stay without effect on a mower that has none. **PIN Check Before Power-Off** exists only on models that keep such a switch, and is omitted elsewhere rather than offered as a control that cannot write.
 
 The switches are created only for devices that report anti-theft settings. The mower announces every settings change it makes, whoever made it, so changes from the Dreame or MOVA app show up within seconds without reloading the integration.
+
+### Mowing Direction
+
+Two entities cover the direction the mower drives its lanes in on the **active map**:
+
+- **Mowing Direction** - a number entity for the direction in degrees
+- **Mowing direction mode** - a select for how that direction carries from one session to the next: always the same, crisscross turning 45° each session, or chequerboard turning 90°
+
+A direction is a line rather than a heading, so the number entity runs from 0° to 179° — 200° names the same lanes as 20°. The app shows the full circle and folds the value the same way.
+
+The entities always set the direction for the whole map. To set one for a single zone, or for a map that is not currently active, use the `dreame_mower.set_mowing_direction` service action.
+
+The entities are created only for devices that report a mowing direction. The mower entity exposes `mowing_direction` and `zone_mowing_directions` as attributes, so automations can read the current values back.
+
+### Maintenance Point
+
+A maintenance point is the spot on a map where the mower is cleaned. Two entities drive it:
+
+- **Go To Maintenance Point** - a button that sends the mower there
+- **Maintenance point** - a select for which point to use, on maps that carry more than one
+
+The points belong to the active map and are defined on the mower itself, so a map without one leaves the select without options and the button without a destination.
 
 ### Schedules
 
@@ -258,6 +282,23 @@ data:
 Every setting left out keeps the value it has. `map_id` is optional and defaults to the active map; `zone_id` changes a single zone instead of the whole map, which switches that map to **per-zone** mowing settings the same way `set_cutting_height` does.
 
 The mower entity exposes `edge_mowing_settings` and `zone_edge_mowing_settings` as attributes so automations can read the settings back.
+
+### `dreame_mower.set_mowing_direction`
+
+Set the direction the mower drives its lanes in for a whole map, or for a single zone of it, and how that direction carries from one session to the next. Use this instead of the entities when you want to change a map that is not currently active, or a single zone.
+
+```yaml
+action: dreame_mower.set_mowing_direction
+target:
+  entity_id: lawn_mower.your_mower
+data:
+  angle: 45
+  mode: crisscross
+```
+
+Both `angle` and `mode` are optional, and the one left out keeps the value it has. `angle` takes the full 0-359 as the app shows it; a direction is a line, so 200 sets the same lanes as 20. `mode` is `fixed`, `crisscross` or `chequerboard`.
+
+`map_id` is optional and defaults to the active map; `zone_id` changes a single zone instead of the whole map, which switches that map to **per-zone** mowing settings the same way `set_cutting_height` does. A map that already follows its per-zone settings gets the change written into every zone, since the mower no longer reads the map-wide ones.
 
 ### `dreame_mower.set_mowing_preference_mode`
 
