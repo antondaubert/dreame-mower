@@ -3926,6 +3926,58 @@ class DreameMowerDevice:
             },
         }
 
+    def _build_camera_stream_payload(self, enabled: bool) -> dict[str, Any]:
+        """Build the 2:50 action payload that switches the camera stream."""
+        return {
+            "m": "a",
+            "p": 0,
+            "o": 400,
+            "d": {
+                "on": enabled,
+            },
+        }
+
+    @staticmethod
+    def _custom_action_accepted(result: Any) -> bool:
+        """Return whether the mower accepted a command that answers no data.
+
+        Commands such as switching the camera reply with a result code and
+        nothing else, so a truthy response is not on its own a success: the
+        mower uses the same shape to refuse.
+        """
+        if not isinstance(result, dict):
+            return False
+        entries = result.get("out")
+        if not isinstance(entries, list):
+            return False
+        return any(
+            isinstance(entry, dict)
+            and (entry.get("r") == 0 or entry.get("code") == 0)
+            for entry in entries
+        )
+
+    async def set_camera_stream(self, enabled: bool) -> bool:
+        """Switch the mower's camera stream on or off.
+
+        The mower only publishes video while this is on, and it declines away
+        from the states where video is allowed, so a refusal is expected and
+        is reported rather than raised.
+        """
+        result = await self._send_task_payload(
+            "camera stream write",
+            self._build_camera_stream_payload(enabled),
+        )
+        if not self._custom_action_accepted(result):
+            _LOGGER.error(
+                "Failed to switch the camera stream %s: %s",
+                "on" if enabled else "off",
+                result,
+            )
+            return False
+
+        _LOGGER.info("Camera stream is now %s", "on" if enabled else "off")
+        return True
+
     async def _send_task_payload(self, task_name: str, task_payload: dict[str, Any]) -> Any:
         """Send a scheduling task payload via action 2:50.
 

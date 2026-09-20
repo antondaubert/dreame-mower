@@ -3933,3 +3933,66 @@ async def test_an_unreadable_settings_record_still_comes_back_as_none(device):
     device._cloud_device.action_result = {"code": 0, "out": [{"r": -1}]}
 
     assert await device.get_device_settings() is None
+
+
+def _camera_stream_payload(device):
+    """Return the payload of the last camera stream command sent."""
+    return device._cloud_device.action_calls[-1][2][0]
+
+
+@pytest.mark.asyncio
+async def test_switching_the_camera_on_sends_the_camera_opcode(device):
+    """Turning the camera on reaches the mower as its own command."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_calls.clear()
+    device._cloud_device.action_result = lambda *_: {"out": [{"m": "r", "r": 0}]}
+
+    assert await device.set_camera_stream(True) is True
+
+    siid, aiid, _, _ = device._cloud_device.action_calls[-1]
+    assert (siid, aiid) == (2, 50)
+    assert _camera_stream_payload(device) == {"m": "a", "p": 0, "o": 400, "d": {"on": True}}
+
+
+@pytest.mark.asyncio
+async def test_switching_the_camera_off_sends_the_off_payload(device):
+    """Turning the camera off uses the same command with the flag cleared."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_calls.clear()
+    device._cloud_device.action_result = lambda *_: {"out": [{"m": "r", "r": 0}]}
+
+    assert await device.set_camera_stream(False) is True
+    assert _camera_stream_payload(device)["d"] == {"on": False}
+
+
+@pytest.mark.asyncio
+async def test_a_refused_camera_command_is_reported_not_treated_as_success(device):
+    """The mower uses the same reply shape to refuse, so the code must be read."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result = lambda *_: {"out": [{"m": "r", "r": 3}]}
+
+    assert await device.set_camera_stream(True) is False
+
+
+@pytest.mark.asyncio
+async def test_an_empty_camera_reply_is_not_treated_as_success(device):
+    """A reply carrying no result at all says nothing about the camera."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result = lambda *_: {}
+
+    assert await device.set_camera_stream(True) is False
+
+
+@pytest.mark.asyncio
+async def test_a_dropped_camera_exchange_raises_rather_than_reporting_refusal(device):
+    """A command that never reached the mower must not look like a refusal."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result = _unreachable_responder()
+
+    with pytest.raises(DreameCommandError, match="Device offline"):
+        await device.set_camera_stream(True)
