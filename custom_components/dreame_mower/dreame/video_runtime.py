@@ -151,6 +151,13 @@ class DreameMowerVideoRuntime:
         self._stderr_task: Optional[asyncio.Task] = None
         self._url: Optional[str] = None
 
+    def _read_command(self) -> list[str]:
+        """Read the bundle's manifest and build its command."""
+        manifest = json.loads(
+            (self._directory / MANIFEST_NAME).read_text(encoding="utf-8")
+        )
+        return build_command(self._directory, manifest)
+
     @property
     def running(self) -> bool:
         """Return whether a session is currently held open."""
@@ -172,10 +179,11 @@ class DreameMowerVideoRuntime:
             assert self._url is not None
             return self._url
 
-        manifest = json.loads(
-            (self._directory / MANIFEST_NAME).read_text(encoding="utf-8")
+        # Reading the bundle touches the filesystem, which must not happen
+        # on the event loop.
+        command = await asyncio.get_running_loop().run_in_executor(
+            None, self._read_command
         )
-        command = build_command(self._directory, manifest)
         _LOGGER.debug("Starting the video helper for %s", session.channel_id)
 
         try:

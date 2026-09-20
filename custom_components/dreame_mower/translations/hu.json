@@ -153,6 +153,9 @@
     "camera": {
       "map_camera": {
         "name": "Térkép"
+      },
+      "live_camera": {
+        "name": "Élő kamera"
       }
     },
     "button": {

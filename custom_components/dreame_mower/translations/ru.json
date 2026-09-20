@@ -153,6 +153,9 @@
     "camera": {
       "map_camera": {
         "name": "Карта"
+      },
+      "live_camera": {
+        "name": "Камера в реальном времени"
       }
     },
     "button": {

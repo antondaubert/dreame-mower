@@ -170,6 +170,9 @@
     "camera": {
       "map_camera": {
         "name": "Map"
+      },
+      "live_camera": {
+        "name": "Live camera"
       }
     },
     "number": {
