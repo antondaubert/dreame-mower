@@ -213,6 +213,9 @@
       },
       "edge_mowing_safe": {
         "name": "Bezpieczne koszenie krawędzi"
+      },
+      "live_video": {
+        "name": "Wideo na żywo"
       }
     },
     "time": {

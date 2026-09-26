@@ -213,6 +213,9 @@
       },
       "edge_mowing_safe": {
         "name": "Säker kantklippning"
+      },
+      "live_video": {
+        "name": "Livevideo"
       }
     },
     "time": {

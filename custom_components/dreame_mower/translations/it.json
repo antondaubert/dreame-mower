@@ -213,6 +213,9 @@
       },
       "edge_mowing_safe": {
         "name": "Falciatura dei bordi in sicurezza"
+      },
+      "live_video": {
+        "name": "Video live"
       }
     },
     "time": {

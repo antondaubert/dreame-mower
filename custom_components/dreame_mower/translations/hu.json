@@ -213,6 +213,9 @@
       },
       "edge_mowing_safe": {
         "name": "Biztonságos szegélynyírás"
+      },
+      "live_video": {
+        "name": "Élő videó"
       }
     },
     "time": {

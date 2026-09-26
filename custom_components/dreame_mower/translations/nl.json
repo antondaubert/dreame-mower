@@ -213,6 +213,9 @@
       },
       "edge_mowing_safe": {
         "name": "Veilig maaien van randen"
+      },
+      "live_video": {
+        "name": "Livevideo"
       }
     },
     "time": {

@@ -213,6 +213,9 @@
       },
       "edge_mowing_safe": {
         "name": "Sicheres Randmähen"
+      },
+      "live_video": {
+        "name": "Live-Video"
       }
     },
     "time": {

@@ -13,7 +13,13 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import UndefinedType
 
-from .const import DATA_COORDINATOR, DOMAIN
+from .const import (
+    DATA_COORDINATOR,
+    DATA_LIVE_CAMERA,
+    DATA_VIDEO_RUNTIME,
+    DATA_VIDEO_SUPPORTED,
+    DOMAIN,
+)
 from .coordinator import DreameMowerCoordinator
 from .dreame.const import SCHEDULE_SLOT_COUNT
 from .entity import DreameMowerEntity, device_errors_as_ha_errors
@@ -46,6 +52,15 @@ async def async_setup_entry(
             "Skipping the rain protection switch: device %s reported no rain settings",
             coordinator.device_name,
         )
+
+    entry_data = hass.data[DOMAIN][entry.entry_id]
+    video_runtime = entry_data.get(DATA_VIDEO_RUNTIME)
+    if (
+        video_runtime is not None
+        and video_runtime.available
+        and entry_data.get(DATA_VIDEO_SUPPORTED)
+    ):
+        switches.append(DreameMowerLiveVideoSwitch(coordinator, entry))
 
     if coordinator.supports_anti_theft:
         switches.append(DreameMowerLiftAlarmSwitch(coordinator))
@@ -491,3 +506,77 @@ class DreameMowerEdgeBladeOffsetSwitch(DreameMowerEdgeMowingSwitch):
     def is_on(self) -> bool | None:
         """Return whether the blade disc shifts sideways for the edges, if it is known."""
         return self.coordinator.edge_blade_offset
+
+
+class DreameMowerLiveVideoSwitch(DreameMowerEntity, SwitchEntity):
+    """Switch that starts and stops the mower's live video.
+
+    The camera entity can be switched directly, but a camera card offers no
+    obvious control for it, so this gives the same session a visible switch
+    that also works in automations.
+    """
+
+    _attr_translation_key = "live_video"
+    _attr_icon = "mdi:cctv"
+
+    def __init__(
+        self, coordinator: DreameMowerCoordinator, config_entry: ConfigEntry
+    ) -> None:
+        """Initialize the live video switch."""
+        super().__init__(coordinator, "live_video")
+        self._config_entry = config_entry
+
+    @property
+    def _camera(self) -> Any | None:
+        """Return the camera holding the session, once it has been created.
+
+        The platforms are set up together, so the camera may not exist yet
+        when this switch is built.
+        """
+        entry_data = self.hass.data.get(DOMAIN, {}).get(self._config_entry.entry_id, {})
+        return entry_data.get(DATA_LIVE_CAMERA)
+
+    @property
+    def available(self) -> bool:
+        """Return whether the camera that owns the session is usable.
+
+        A camera entity the user has disabled is still registered but has
+        been detached from Home Assistant, so it cannot drive a session.
+        """
+        camera = self._camera
+        return super().available and camera is not None and camera.hass is not None
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return whether live video is currently running."""
+        camera = self._camera
+        return None if camera is None else camera.session_active
+
+    async def async_turn_on(self, **kwargs) -> None:
+        """Start live video."""
+        await self._async_set_enabled(True)
+
+    async def async_turn_off(self, **kwargs) -> None:
+        """Stop live video."""
+        await self._async_set_enabled(False)
+
+    async def _async_set_enabled(self, enabled: bool) -> None:
+        """Drive the camera's own session and report what it made of it."""
+        camera = self._camera
+        if camera is None:
+            raise HomeAssistantError("The live camera is not available")
+
+        if enabled:
+            await camera.async_turn_on()
+        else:
+            await camera.async_turn_off()
+
+        self.async_write_ha_state()
+
+        if enabled and not camera.session_active:
+            reason = camera.extra_state_attributes.get("last_error")
+            raise HomeAssistantError(
+                f"Could not start live video: {reason}"
+                if reason
+                else "Could not start live video"
+            )

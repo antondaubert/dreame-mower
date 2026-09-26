@@ -213,6 +213,9 @@
       },
       "edge_mowing_safe": {
         "name": "Corte seguro de bordas"
+      },
+      "live_video": {
+        "name": "Vídeo ao vivo"
       }
     },
     "time": {

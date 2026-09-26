@@ -213,6 +213,9 @@
       },
       "edge_mowing_safe": {
         "name": "Safe Edge Mowing"
+      },
+      "live_video": {
+        "name": "Live video"
       }
     },
     "time": {

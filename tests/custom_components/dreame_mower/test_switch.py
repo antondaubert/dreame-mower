@@ -711,3 +711,152 @@ async def test_switching_the_charging_period_reports_why_it_never_reached_the_mo
 
     with pytest.raises(HomeAssistantError, match="No response from cloud API"):
         await entity.async_turn_on()
+
+
+
+def _runtime(state):
+    """Build a runtime report in the given state."""
+    from pathlib import Path
+
+    from custom_components.dreame_mower.dreame.video_runtime import (
+        DreameMowerVideoRuntimeInfo,
+    )
+
+    return DreameMowerVideoRuntimeInfo(state, Path("/config"), sdk_version="v2.4.72")
+
+
+async def _setup_entry_with_video(coordinator, runtime, supported=True):
+    """Set up the platform with a live video report in the entry data."""
+    from custom_components.dreame_mower.const import (
+        DATA_VIDEO_RUNTIME,
+        DATA_VIDEO_SUPPORTED,
+    )
+
+    hass = MagicMock()
+    hass.data = {
+        DOMAIN: {
+            "entry_id": {
+                DATA_COORDINATOR: coordinator,
+                DATA_VIDEO_RUNTIME: runtime,
+                DATA_VIDEO_SUPPORTED: supported,
+            }
+        }
+    }
+    entry = MagicMock()
+    entry.entry_id = "entry_id"
+    added_entities = []
+    await async_setup_entry(hass, entry, added_entities.extend)
+    return added_entities
+
+
+@pytest.mark.asyncio
+async def test_setup_adds_the_live_video_switch_when_the_helper_is_installed():
+    """A host that can run live video gains a visible control for it."""
+    from custom_components.dreame_mower.dreame.video_runtime import (
+        DreameMowerVideoRuntimeState,
+    )
+    from custom_components.dreame_mower.switch import DreameMowerLiveVideoSwitch
+
+    entities = await _setup_entry_with_video(
+        _make_coordinator(), _runtime(DreameMowerVideoRuntimeState.READY)
+    )
+
+    assert any(isinstance(entity, DreameMowerLiveVideoSwitch) for entity in entities)
+
+
+@pytest.mark.asyncio
+async def test_setup_skips_the_live_video_switch_for_an_account_without_video():
+    """An account the mower will not stream to gains no control it cannot use."""
+    from custom_components.dreame_mower.dreame.video_runtime import (
+        DreameMowerVideoRuntimeState,
+    )
+    from custom_components.dreame_mower.switch import DreameMowerLiveVideoSwitch
+
+    entities = await _setup_entry_with_video(
+        _make_coordinator(),
+        _runtime(DreameMowerVideoRuntimeState.READY),
+        supported=False,
+    )
+
+    assert not any(isinstance(entity, DreameMowerLiveVideoSwitch) for entity in entities)
+
+
+@pytest.mark.asyncio
+async def test_setup_skips_the_live_video_switch_without_the_helper():
+    """Hosts that cannot run live video gain no control for it."""
+    from custom_components.dreame_mower.dreame.video_runtime import (
+        DreameMowerVideoRuntimeState,
+    )
+    from custom_components.dreame_mower.switch import DreameMowerLiveVideoSwitch
+
+    entities = await _setup_entry_with_video(
+        _make_coordinator(), _runtime(DreameMowerVideoRuntimeState.NOT_INSTALLED)
+    )
+
+    assert not any(isinstance(entity, DreameMowerLiveVideoSwitch) for entity in entities)
+
+
+@pytest.mark.asyncio
+async def test_the_live_video_switch_follows_the_camera():
+    """The switch is a view onto the camera's session, not a second one."""
+    from custom_components.dreame_mower.const import DATA_LIVE_CAMERA
+    from custom_components.dreame_mower.switch import DreameMowerLiveVideoSwitch
+
+    coordinator = _make_coordinator()
+    entry = MagicMock()
+    entry.entry_id = "entry_id"
+    switch = DreameMowerLiveVideoSwitch(coordinator, entry)
+    switch.hass = MagicMock()
+    switch.async_write_ha_state = MagicMock()
+
+    camera = MagicMock()
+    camera.session_active = False
+    camera.async_turn_on = AsyncMock()
+    camera.async_turn_off = AsyncMock()
+    switch.hass.data = {DOMAIN: {"entry_id": {DATA_LIVE_CAMERA: camera}}}
+
+    assert switch.is_on is False
+    camera.session_active = True
+    assert switch.is_on is True
+
+    await switch.async_turn_off()
+    camera.async_turn_off.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_the_live_video_switch_reports_why_a_start_failed():
+    """A refused start is surfaced rather than silently leaving the switch off."""
+    from homeassistant.exceptions import HomeAssistantError
+
+    from custom_components.dreame_mower.const import DATA_LIVE_CAMERA
+    from custom_components.dreame_mower.switch import DreameMowerLiveVideoSwitch
+
+    entry = MagicMock()
+    entry.entry_id = "entry_id"
+    switch = DreameMowerLiveVideoSwitch(_make_coordinator(), entry)
+    switch.hass = MagicMock()
+    switch.async_write_ha_state = MagicMock()
+
+    camera = MagicMock()
+    camera.session_active = False
+    camera.async_turn_on = AsyncMock()
+    camera.extra_state_attributes = {"last_error": "the mower would not start its camera"}
+    switch.hass.data = {DOMAIN: {"entry_id": {DATA_LIVE_CAMERA: camera}}}
+
+    with pytest.raises(HomeAssistantError, match="would not start its camera"):
+        await switch.async_turn_on()
+
+
+@pytest.mark.asyncio
+async def test_the_live_video_switch_waits_for_its_camera():
+    """The platforms are set up together, so the camera may not exist yet."""
+    from custom_components.dreame_mower.switch import DreameMowerLiveVideoSwitch
+
+    entry = MagicMock()
+    entry.entry_id = "entry_id"
+    switch = DreameMowerLiveVideoSwitch(_make_coordinator(), entry)
+    switch.hass = MagicMock()
+    switch.hass.data = {DOMAIN: {"entry_id": {}}}
+
+    assert switch.is_on is None
+    assert switch.available is False
