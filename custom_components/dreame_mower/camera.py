@@ -12,10 +12,10 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DATA_COORDINATOR, DOMAIN, CONF_MAP_ROTATION, CONF_MAP_SHOW_TITLE, CONF_MAP_SHOW_LEGEND, CONF_MAP_PADDING
+from .const import DATA_COORDINATOR, DATA_VIDEO_RUNTIME, DATA_VIDEO_SUPPORTED, DOMAIN, CONF_MAP_ROTATION, CONF_MAP_SHOW_TITLE, CONF_MAP_SHOW_LEGEND, CONF_MAP_PADDING
 from .coordinator import DreameMowerCoordinator
 from .entity import DreameMowerEntity
-from .live_camera import async_create_live_camera
+from .live_camera import create_live_camera
 
 from .dreame.const import POSE_COVERAGE_PROPERTY
 from .dreame.property.pose_coverage import POSE_COVERAGE_COORDINATES_PROPERTY_NAME
@@ -39,9 +39,12 @@ async def async_setup_entry(
 
     # Only mowers whose host has the live video helper installed gain a
     # second camera; see custom_components/dreame_mower/xp2p/README.md.
-    live_camera = await async_create_live_camera(coordinator, entry)
-    if live_camera is not None:
-        entities.append(live_camera)
+    entry_data = hass.data[DOMAIN][entry.entry_id]
+    video_runtime = entry_data.get(DATA_VIDEO_RUNTIME)
+    if video_runtime is not None and entry_data.get(DATA_VIDEO_SUPPORTED):
+        live_camera = create_live_camera(coordinator, entry, video_runtime)
+        if live_camera is not None:
+            entities.append(live_camera)
 
     async_add_entities(entities, True)
 

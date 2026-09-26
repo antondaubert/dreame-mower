@@ -233,6 +233,9 @@ class DreameMowerVideoRuntime:
         except DreameMowerVideoRuntimeError:
             await self.async_stop()
             raise
+        except asyncio.CancelledError:
+            await self.async_stop()
+            raise
 
         self._url = url
         return url
@@ -300,5 +303,11 @@ class DreameMowerVideoRuntime:
             stderr_task.cancel()
             try:
                 await stderr_task
-            except (asyncio.CancelledError, Exception):  # noqa: BLE001
+            except asyncio.CancelledError:
+                # Only the drain task's own cancellation is expected here; a
+                # cancellation aimed at the caller must not be absorbed.
+                current = asyncio.current_task()
+                if current is not None and current.cancelling():
+                    raise
+            except Exception:  # noqa: BLE001 - diagnostics must not break teardown
                 pass

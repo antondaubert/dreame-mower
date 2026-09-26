@@ -3968,8 +3968,10 @@ class DreameMowerDevice:
             self._build_camera_stream_payload(enabled),
         )
         if not self._custom_action_accepted(result):
-            _LOGGER.error(
-                "Failed to switch the camera stream %s: %s",
+            # Refusing is normal away from the states where video is allowed,
+            # so callers decide whether their own case warrants an error.
+            _LOGGER.debug(
+                "The mower refused to switch its camera %s: %s",
                 "on" if enabled else "off",
                 result,
             )
