@@ -3988,13 +3988,6 @@ class DreameMowerDevice:
         command the mower refused from one it never received: the first is a
         falsy return value, the second is this exception.
         """
-        _LOGGER.debug(
-            "Sending %s action %s:%s with payload: %s",
-            task_name,
-            SCHEDULING_TASK_PROPERTY.siid,
-            SCHEDULING_TASK_PROPERTY.piid,
-            task_payload,
-        )
         try:
             return await asyncio.get_event_loop().run_in_executor(
                 None,
