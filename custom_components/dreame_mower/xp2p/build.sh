@@ -35,8 +35,10 @@ echo "==> verifying checksum"
 echo "${SDK_SHA256}  ${WORK}/sdk.zip" | sha256sum -c - >/dev/null
 
 unzip -q "$WORK/sdk.zip" -d "$WORK/sdk"
-SDK_DIR="$(dirname "$(find "$WORK/sdk" -type d -name Release -path '*linux*' | head -1)")/Release"
-INC_DIR="$(dirname "$(find "$WORK/sdk" -name appWrapper.h | head -1)")"
+# -quit rather than a pipe to head: a pipe that closes early kills find with
+# SIGPIPE, which pipefail turns into a silent abort.
+SDK_DIR="$(dirname "$(find "$WORK/sdk" -type d -name Release -path '*linux*' -print -quit)")/Release"
+INC_DIR="$(dirname "$(find "$WORK/sdk" -name appWrapper.h -print -quit)")"
 [ -d "$SDK_DIR" ] && [ -d "$INC_DIR" ] || { echo "error: unexpected archive layout" >&2; exit 1; }
 
 echo "==> compiling the helper"
@@ -57,7 +59,7 @@ mkdir -p "$WORK/bundle/lib"
 cp "$WORK/xp2p-runner" "$WORK/bundle/"
 for name in ld-linux-x86-64.so.2 libc.so.6 libm.so.6 libstdc++.so.6 \
             libgcc_s.so.1 libnss_dns.so.2 libnss_files.so.2 libresolv.so.2; do
-  path="$(find /lib /usr/lib -name "$name" 2>/dev/null | head -1)"
+  path="$(find /lib /usr/lib -name "$name" -print -quit 2>/dev/null || true)"
   [ -n "$path" ] || { echo "error: missing $name" >&2; exit 1; }
   cp -L "$path" "$WORK/bundle/lib/"
 done

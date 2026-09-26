@@ -194,6 +194,21 @@ int main(void)
     fprintf(stderr, "device status rc=%d reply=%.*s\n", rc, (int)reply_len,
             reply ? (char *)reply : "");
 
+    /* The mower answers with a status of 0 when it will serve this stream.
+     * Anything else means a URL would hand back no media, so say so now
+     * rather than leaving the caller to time out on an empty stream. */
+    int ready = (rc == 0 && reply != NULL
+                 && strstr((char *)reply, "\"status\":\"0\"") != NULL);
+    if (reply != NULL) {
+        free(reply);
+        reply = NULL;
+    }
+    if (!ready) {
+        fail("device_not_ready");
+        stopService(id);
+        return 6;
+    }
+
     const char *prefix = delegateHttpFlv(id);
     if (!prefix) {
         fail("no_local_proxy");

@@ -198,7 +198,7 @@ fi
 # --- build once -------------------------------------------------------------
 
 echo
-docker run --rm "${PLATFORM_ARGS[@]}" \
+docker run --rm ${PLATFORM_ARGS[@]+"${PLATFORM_ARGS[@]}"} \
   -v "${SOURCE_DIR}:/src:ro" \
   -v "${BUILD_DIR}:/out" \
   ubuntu:24.04 \
@@ -210,15 +210,29 @@ echo
 for target in "${TARGETS[@]}"; do
   container="${target%%|*}"
   label="${target#*|}"
+  # Staged and then swapped, so an interrupted copy cannot destroy a working
+  # helper or leave a half-written one where Home Assistant will find it.
   if [ -n "$container" ]; then
-    docker exec "$container" rm -rf /config/dreame_mower/xp2p
-    docker exec "$container" mkdir -p /config/dreame_mower/xp2p
-    docker cp "${BUILD_DIR}/." "${container}:/config/dreame_mower/xp2p"
+    docker exec "$container" sh -c \
+      'rm -rf /config/dreame_mower/xp2p.new /config/dreame_mower/xp2p.old \
+       && mkdir -p /config/dreame_mower/xp2p.new'
+    docker cp "${BUILD_DIR}/." "${container}:/config/dreame_mower/xp2p.new"
+    docker exec "$container" sh -c \
+      'cd /config/dreame_mower \
+       && if [ -d xp2p ]; then mv xp2p xp2p.old; fi \
+       && mv xp2p.new xp2p \
+       && rm -rf xp2p.old'
     echo "Installed into ${label} at /config/dreame_mower/xp2p"
   else
-    rm -rf "${label}/dreame_mower/xp2p"
-    mkdir -p "${label}/dreame_mower/xp2p"
-    cp -R "${BUILD_DIR}/." "${label}/dreame_mower/xp2p/"
+    staging="${label}/dreame_mower/xp2p.new"
+    rm -rf "$staging" "${label}/dreame_mower/xp2p.old"
+    mkdir -p "$staging"
+    cp -R "${BUILD_DIR}/." "$staging/"
+    if [ -d "${label}/dreame_mower/xp2p" ]; then
+      mv "${label}/dreame_mower/xp2p" "${label}/dreame_mower/xp2p.old"
+    fi
+    mv "$staging" "${label}/dreame_mower/xp2p"
+    rm -rf "${label}/dreame_mower/xp2p.old"
     echo "Installed into ${label}/dreame_mower/xp2p"
   fi
 done
