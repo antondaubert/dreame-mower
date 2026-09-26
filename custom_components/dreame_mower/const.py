@@ -15,6 +15,9 @@ CONF_MAP_PADDING: Final = "map_padding"
 # Data storage keys
 DATA_COORDINATOR = "coordinator"
 DATA_PLATFORMS = "platforms"
+DATA_VIDEO_RUNTIME = "video_runtime"
+DATA_VIDEO_SUPPORTED = "video_supported"
+DATA_LIVE_CAMERA = "live_camera"
 
 # How often to poll the cloud for firmware update availability.
 FIRMWARE_POLL_INTERVAL_HOURS = 24

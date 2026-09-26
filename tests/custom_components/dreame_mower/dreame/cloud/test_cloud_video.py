@@ -171,3 +171,94 @@ class TestDreameMowerCloudVideo:
         cloud_base.request.return_value = None
         with pytest.raises(DreameMowerVideoError):
             video.provision()
+
+
+class TestEligibilityIsThreeWay:
+    """Telling a refusal apart from an unanswerable question."""
+
+    @pytest.fixture
+    def cloud_base(self):
+        base = Mock()
+        base.get_api_url.return_value = "https://eu.example:1"
+        return base
+
+    @pytest.fixture
+    def video(self, cloud_base):
+        return DreameMowerCloudVideo(cloud_base, DEVICE_ID)
+
+    def test_an_enabled_account_is_eligible(self, video, cloud_base):
+        cloud_base.request.return_value = ok({"isDevUser": True})
+        assert video.is_eligible("tok") is True
+
+    def test_a_refused_account_is_not_eligible(self, video, cloud_base):
+        cloud_base.request.return_value = ok({"isDevUser": False})
+        assert video.is_eligible("tok") is False
+
+    def test_an_unreachable_cloud_is_unknown_rather_than_refused(self, video, cloud_base):
+        cloud_base.request.return_value = None
+        assert video.is_eligible("tok") is None
+
+    def test_an_error_response_is_unknown_rather_than_refused(self, video, cloud_base):
+        cloud_base.request.return_value = {"code": 10007, "success": False}
+        assert video.is_eligible("tok") is None
+
+    def test_provisioning_carries_on_when_eligibility_is_unknown(self, video, cloud_base):
+        """A passing cloud failure must not be reported as a refusal."""
+        bodies = {
+            "user/accesstoken": ok({"accessToken": "tok"}),
+            "dev/isDevUser": None,
+            "mgr/dev/getIdentity": ok(
+                {
+                    "secretId": encode_value("app-id"),
+                    "secretKey": encode_value("app-secret"),
+                    "deviceName": "DEVNAME",
+                    "productId": "PID",
+                }
+            ),
+            "dev/getP2PInfo": ok({"p2pInfo": "XP2Pabc"}),
+        }
+
+        def request(url, data, retry_count=0):
+            for endpoint, body in bodies.items():
+                if url.endswith(endpoint):
+                    return body
+            raise AssertionError(url)
+
+        cloud_base.request.side_effect = request
+        assert video.provision().product_id == "PID"
+
+
+class TestSupportsVideo:
+    """The cheap check used when deciding whether to offer the entities."""
+
+    @pytest.fixture
+    def cloud_base(self):
+        base = Mock()
+        base.get_api_url.return_value = "https://eu.example:1"
+        return base
+
+    @pytest.fixture
+    def video(self, cloud_base):
+        return DreameMowerCloudVideo(cloud_base, DEVICE_ID)
+
+    def test_reports_an_enabled_account(self, video, cloud_base):
+        cloud_base.request.side_effect = [
+            ok({"accessToken": "tok"}),
+            ok({"isDevUser": True}),
+        ]
+        assert video.supports_video() is True
+
+    def test_reports_an_account_without_video(self, video, cloud_base):
+        cloud_base.request.side_effect = [
+            ok({"accessToken": "tok"}),
+            ok({"isDevUser": False}),
+        ]
+        assert video.supports_video() is False
+
+    def test_reports_not_knowing_when_no_token_is_issued(self, video, cloud_base):
+        cloud_base.request.return_value = None
+        assert video.supports_video() is None
+
+    def test_reports_not_knowing_when_the_call_raises(self, video, cloud_base):
+        cloud_base.request.side_effect = OSError("no route to host")
+        assert video.supports_video() is None

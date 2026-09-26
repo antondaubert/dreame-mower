@@ -20,6 +20,8 @@ from homeassistant.helpers.event import async_track_time_interval
 from .const import (
     DATA_COORDINATOR,
     DATA_PLATFORMS,
+    DATA_VIDEO_RUNTIME,
+    DATA_VIDEO_SUPPORTED,
     DOMAIN,
     FIRMWARE_POLL_INTERVAL_HOURS,
     ONLINE_POLL_INTERVAL_SECONDS,
@@ -27,6 +29,8 @@ from .const import (
     SCHEDULE_POLL_INTERVAL_SECONDS,
 )
 from .coordinator import DreameMowerCoordinator
+from .dreame.cloud.cloud_video import DreameMowerCloudVideo
+from .dreame.video_runtime import find_runtime
 from .config_flow import DEVICE_TYPE_SWBOT
 
 _LOGGER = logging.getLogger(__name__)
@@ -45,6 +49,21 @@ _MOWER_PLATFORMS = (
 _SWBOT_PLATFORMS = (
     Platform.SENSOR,
 )
+
+
+async def _async_supports_video(
+    hass: HomeAssistant, coordinator: DreameMowerCoordinator
+) -> bool | None:
+    """Ask the cloud whether this account may use video for this mower."""
+    try:
+        device = coordinator.device
+        video = DreameMowerCloudVideo(
+            device.cloud_device._cloud_base, str(device.device_id)
+        )
+        return await hass.async_add_executor_job(video.supports_video)
+    except Exception as err:  # noqa: BLE001 - never block setup over video
+        _LOGGER.debug("Could not check whether video is available: %s", err)
+        return None
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -111,10 +130,33 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         except Exception as ex:
             _LOGGER.warning("Initial schedule fetch failed: %s", ex)
 
+    # Look for the live video helper once, so the camera and its switch agree
+    # on whether video is possible without each searching the filesystem.
+    video_runtime = await hass.async_add_executor_job(
+        find_runtime, hass.config.path()
+    )
+    video_supported = False
+    if not video_runtime.available:
+        _LOGGER.debug(
+            "Live video is unavailable (%s%s)",
+            video_runtime.state.value,
+            f": {video_runtime.detail}" if video_runtime.detail else "",
+        )
+    elif coordinator.device_type != DEVICE_TYPE_SWBOT:
+        # Ask whether this account may use video at all, so a mower or an
+        # account without it gains no controls that could never work. An
+        # unanswerable question counts as available: a passing cloud failure
+        # should not hide the feature.
+        video_supported = await _async_supports_video(hass, coordinator) is not False
+        if not video_supported:
+            _LOGGER.debug("This account is not enabled for video on this mower")
+
     # Store coordinator in hass data
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         DATA_COORDINATOR: coordinator,
         DATA_PLATFORMS: platforms,
+        DATA_VIDEO_RUNTIME: video_runtime,
+        DATA_VIDEO_SUPPORTED: video_supported,
     }
 
     # Periodically poll for firmware update availability (mowers only). The value

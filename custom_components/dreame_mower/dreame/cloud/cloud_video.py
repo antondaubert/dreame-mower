@@ -157,13 +157,35 @@ class DreameMowerCloudVideo:
         response = self._post("user/accesstoken", {"os": 1})
         return _find_text(response, ("accessToken", "accesstoken", "token"))
 
-    def is_eligible(self, token: Optional[str]) -> bool:
-        """Return whether this account may use video for this device."""
+    def is_eligible(self, token: Optional[str]) -> Optional[bool]:
+        """Return whether this account may use video for this device.
+
+        Returns None when the cloud could not be asked, which is a different
+        thing from a refusal and must not be reported as one.
+        """
         response = self._post("dev/isDevUser", self._authenticated(token))
+        _LOGGER.debug("Video eligibility for %s: %s", self._device_id, response)
         if not isinstance(response, dict) or response.get("code") != 0:
-            return False
-        # The flag is a boolean, so an absent one counts as not eligible.
+            return None
+        # The flag is a boolean, so an absent one counts as a refusal.
         return _find_value(response, ("isDevUser", "isDevuser")) is True
+
+    def supports_video(self) -> Optional[bool]:
+        """Return whether video is worth offering for this account and device.
+
+        This is the cheap half of provisioning, for deciding whether to create
+        entities at all. None means the question could not be answered, in
+        which case the caller should assume video might work rather than
+        hiding it over a passing cloud failure.
+        """
+        try:
+            token = self.get_access_token()
+            if not token:
+                return None
+            return self.is_eligible(token)
+        except Exception as err:  # noqa: BLE001 - an unanswerable question
+            _LOGGER.debug("Could not ask whether video is available: %s", err)
+            return None
 
     def get_identity(
         self, token: Optional[str], uid: Optional[str], model: Optional[str]
@@ -200,8 +222,13 @@ class DreameMowerCloudVideo:
         if not token:
             raise DreameMowerVideoError("The cloud did not issue a video access token")
 
-        if not self.is_eligible(token):
+        eligible = self.is_eligible(token)
+        if eligible is False:
             raise DreameMowerVideoError("This account is not enabled for video")
+        if eligible is None:
+            # Carry on rather than refuse: the calls that follow will fail
+            # clearly enough if video really is not allowed.
+            _LOGGER.debug("Could not confirm video eligibility; trying anyway")
 
         product_id, device_name, app_id, app_secret = self.get_identity(token, uid, model)
         if not product_id or not device_name:
