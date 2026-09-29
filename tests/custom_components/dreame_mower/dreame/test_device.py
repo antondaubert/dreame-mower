@@ -3966,6 +3966,210 @@ async def test_refresh_changed_schedules_reads_another_map_back_in_full(device):
     assert "SCHDDV3" in [call[2][0]["t"] for call in device._cloud_device.action_calls]
 
 
+def _schedule_table_responder(tables=None, tasks=None, write_status=0):
+    """Build an action responder serving schedule tables, their tasks and writes.
+
+    Tables are keyed by their number and tasks by (table, task id); the mower
+    switches the other table of a map off when one is switched on.
+    """
+    served = {
+        "tables": {
+            2: [2, 1, 1, "Summer", [[0, 11], [1, 12]], 7],
+            3: [3, 0, 1, "", [], 7],
+        } if tables is None else tables,
+        "tasks": {
+            (2, 0): [0, 1, 0, 540, [1, 4], []],
+            (2, 1): [1, 1, 1, 600, [0], [3, 5]],
+        } if tasks is None else tasks,
+    }
+    writes: list[list] = []
+
+    def responder(siid, aiid, parameters, retry_count):
+        payload = parameters[0]
+        if payload["t"] == "SCHDI":
+            return {"code": 0, "out": [{"m": "r", "r": 0, "d": [
+                served["tables"][table_id] for table_id in payload["d"] if table_id in served["tables"]
+            ]}]}
+
+        if payload["t"] == "SCHDC":
+            task = served["tasks"].get(tuple(payload["d"]))
+            if task is None:
+                return {"code": 0, "out": [{"m": "r", "r": 7}]}
+            return {"code": 0, "out": [{"m": "r", "r": 0, "d": task}]}
+
+        if payload["t"] == "SCHDS":
+            writes.append(payload["d"])
+            if write_status == 0:
+                table_id, enabled = payload["d"]
+                served["tables"][table_id][1] = enabled
+                if enabled:
+                    other = table_id ^ 1
+                    if other in served["tables"]:
+                        served["tables"][other][1] = 0
+            return {"code": 0, "out": [{"m": "r", "r": write_status}]}
+
+        raise AssertionError(f"Unexpected schedule payload: {payload}")
+
+    return responder, writes, served
+
+
+async def _connected_schedule_table_device(device, **kwargs):
+    """Connect a mower that keeps schedule tables, on the map with index 1."""
+    device._account_type = "mova"
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._current_map_id = 2
+    responder, writes, served = _schedule_table_responder(**kwargs)
+    device._cloud_device.action_result = responder
+    return writes, served
+
+
+def _sent_tags(device):
+    return [call[2][0]["t"] for call in device._cloud_device.action_calls]
+
+
+@pytest.mark.asyncio
+async def test_refresh_schedules_reads_the_tables_of_the_current_map(device):
+    """A mower keeping tables reports the two slots of a map as tables of their own."""
+    await _connected_schedule_table_device(device)
+
+    schedules = await device.refresh_schedules()
+
+    assert schedules == [
+        {
+            "slot": 0,
+            "enabled": True,
+            "name": "Summer",
+            "tasks": [
+                {"week_day": "sunday", "type": "zone", "start_time": 600, "zone_ids": [3, 5]},
+                {"week_day": "monday", "type": "all_area", "start_time": 540},
+                {"week_day": "thursday", "type": "all_area", "start_time": 540},
+            ],
+            "tasks_stored": True,
+        },
+        {"slot": 1, "enabled": False, "name": None, "tasks": [], "tasks_stored": False},
+    ]
+    assert device.schedules == schedules
+    table_reads = [call[2][0] for call in device._cloud_device.action_calls if call[2][0]["t"] == "SCHDI"]
+    assert table_reads == [{"m": "g", "t": "SCHDI", "d": [2, 3]}]
+    assert "SCHDIV3" not in _sent_tags(device)
+
+
+@pytest.mark.asyncio
+async def test_refresh_schedules_decodes_edge_and_cyclic_table_tasks(device):
+    """Edge tasks carry (zone, side) pairs, and a cyclic task is the same kind of task."""
+    await _connected_schedule_table_device(
+        device,
+        tables={2: [2, 0, 1, "", [[0, 1], [1, 1]], 7], 3: [3, 0, 1, "", [], 7]},
+        tasks={
+            (2, 0): [0, 1, 2, 375, [6], [[2, 1]]],
+            (2, 1): [1, 1, 8, 480, [3], []],
+        },
+    )
+
+    schedules = await device.refresh_schedules()
+
+    assert schedules is not None
+    assert schedules[0]["tasks"] == [
+        {"week_day": "wednesday", "type": "all_area", "start_time": 480},
+        {"week_day": "saturday", "type": "edge", "start_time": 375, "edges": [[2, 1]]},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_refresh_schedules_leaves_out_a_table_task_that_is_switched_off(device):
+    """A task the mower holds switched off does not run, but the table still holds tasks."""
+    await _connected_schedule_table_device(
+        device,
+        tables={2: [2, 0, 1, "", [[0, 1]], 7], 3: [3, 0, 1, "", [], 7]},
+        tasks={(2, 0): [0, 0, 0, 540, [1], []]},
+    )
+
+    schedules = await device.refresh_schedules()
+
+    assert schedules is not None
+    assert schedules[0]["tasks"] == []
+    assert schedules[0]["tasks_stored"] is True
+
+
+@pytest.mark.asyncio
+async def test_refresh_changed_schedules_only_reads_back_the_table_tasks_that_moved(device):
+    """A task is only read again once the version the table lists for it moved."""
+    _, served = await _connected_schedule_table_device(device)
+    await device.refresh_schedules()
+    device._cloud_device.action_calls.clear()
+
+    await device.refresh_changed_schedules()
+    assert _sent_tags(device) == ["SCHDI"]
+
+    served["tables"][2][4] = [[0, 11], [1, 13]]
+    served["tasks"][(2, 1)] = [1, 1, 1, 720, [0], [3]]
+    device._cloud_device.action_calls.clear()
+
+    schedules = await device.refresh_changed_schedules()
+
+    assert _sent_tags(device) == ["SCHDI", "SCHDC"]
+    assert device._cloud_device.action_calls[1][2][0]["d"] == [2, 1]
+    assert schedules is not None
+    assert {"week_day": "sunday", "type": "zone", "start_time": 720, "zone_ids": [3]} in schedules[0]["tasks"]
+
+
+@pytest.mark.asyncio
+async def test_a_table_task_that_cannot_be_read_leaves_the_rest_of_the_schedule(device):
+    """A task the mower does not serve drops out, and the table can still be switched."""
+    await _connected_schedule_table_device(
+        device,
+        tables={2: [2, 0, 1, "", [[0, 1], [5, 1]], 7], 3: [3, 0, 1, "", [], 7]},
+        tasks={(2, 0): [0, 1, 0, 540, [1], []]},
+    )
+
+    schedules = await device.refresh_schedules()
+
+    assert schedules is not None
+    assert schedules[0]["tasks"] == [{"week_day": "monday", "type": "all_area", "start_time": 540}]
+    assert schedules[0]["tasks_stored"] is True
+
+
+@pytest.mark.asyncio
+async def test_set_schedule_enabled_switches_a_table_and_reads_the_slots_back(device):
+    """Switching a table on addresses it by number, and the mower turns the other one off."""
+    writes, _ = await _connected_schedule_table_device(
+        device,
+        tables={
+            2: [2, 1, 1, "Summer", [[0, 11]], 7],
+            3: [3, 0, 1, "Winter", [[0, 21]], 7],
+        },
+        tasks={(2, 0): [0, 1, 0, 540, [1], []], (3, 0): [0, 1, 0, 600, [2], []]},
+    )
+
+    schedules = await device.set_schedule_enabled(1, True)
+
+    assert writes == [[3, 1]]
+    assert schedules is not None
+    assert [schedule["enabled"] for schedule in schedules] == [False, True]
+    assert [schedule["enabled"] for schedule in device.schedules or []] == [False, True]
+
+
+@pytest.mark.asyncio
+async def test_set_schedule_enabled_refuses_an_empty_table(device):
+    """An empty table has nothing to run, so switching it on is refused."""
+    writes, _ = await _connected_schedule_table_device(device)
+
+    with pytest.raises(ValueError):
+        await device.set_schedule_enabled(1, True)
+
+    assert writes == []
+
+
+@pytest.mark.asyncio
+async def test_set_schedule_enabled_reports_a_table_write_the_mower_refused(device):
+    """A refused write leaves the slots as they were."""
+    writes, _ = await _connected_schedule_table_device(device, write_status=8)
+
+    assert await device.set_schedule_enabled(0, False) is None
+    assert writes == [[2, 0]]
+
+
 def _unreachable_responder(reason="Device offline: the mower did not answer"):
     """Build an action responder that fails the exchange the way the cloud does."""
 

@@ -152,6 +152,20 @@ from .const import (
     SCHEDULE_PLAN_TASKS_INDEX,
     SCHEDULE_STATUS_SUCCESS,
     SCHEDULE_STATUS_VERSION_ERROR,
+    SCHEDULE_SLOT_COUNT,
+    SCHEDULE_TABLE_CYCLIC_TYPE_OFFSET,
+    SCHEDULE_TABLE_ENABLE_KEY,
+    SCHEDULE_TABLE_ENABLED_INDEX,
+    SCHEDULE_TABLE_ID_INDEX,
+    SCHEDULE_TABLE_INFO_KEY,
+    SCHEDULE_TABLE_NAME_INDEX,
+    SCHEDULE_TABLE_TASK_DAYS_INDEX,
+    SCHEDULE_TABLE_TASK_ENABLED_INDEX,
+    SCHEDULE_TABLE_TASK_KEY,
+    SCHEDULE_TABLE_TASK_REGIONS_INDEX,
+    SCHEDULE_TABLE_TASK_START_INDEX,
+    SCHEDULE_TABLE_TASK_TYPE_INDEX,
+    SCHEDULE_TABLE_TASKS_INDEX,
     SCHEDULE_TASK_MINIMUM_LENGTH,
     SCHEDULE_TASK_START_MARKER,
     SCHEDULE_TASK_TYPE_MAPPING,
@@ -341,6 +355,10 @@ class DreameMowerDevice:
         self._schedules: list[dict[str, Any]] | None = None
         self._schedule_map_index: int | None = None
         self._schedule_version: int | None = None
+        # Decoded tasks of the schedule tables, by table and task id, alongside
+        # the version they were read at. The tables are numbered across maps, so
+        # the cache stays valid when the map changes.
+        self._schedule_table_tasks: dict[tuple[int, int], tuple[int, list[dict[str, Any]]]] = {}
 
         # Property change callbacks
         self._property_callbacks: list[Callable[[str, Any], None]] = []
@@ -1719,6 +1737,30 @@ class DreameMowerDevice:
             },
         }
 
+    def _build_get_schedule_tables_payload(self, table_ids: Sequence[int]) -> dict[str, Any]:
+        """Build the getter payload for the state and task list of schedule tables."""
+        return {
+            "m": "g",
+            "t": SCHEDULE_TABLE_INFO_KEY,
+            "d": [int(table_id) for table_id in table_ids],
+        }
+
+    def _build_get_schedule_table_task_payload(self, table_id: int, task_id: int) -> dict[str, Any]:
+        """Build the getter payload for one task of a schedule table."""
+        return {
+            "m": "g",
+            "t": SCHEDULE_TABLE_TASK_KEY,
+            "d": [int(table_id), int(task_id)],
+        }
+
+    def _build_set_schedule_table_enabled_payload(self, table_id: int, enabled: bool) -> dict[str, Any]:
+        """Build the setter payload that switches one schedule table on or off."""
+        return {
+            "m": "s",
+            "t": SCHEDULE_TABLE_ENABLE_KEY,
+            "d": [int(table_id), int(bool(enabled))],
+        }
+
     @staticmethod
     def _extract_custom_action_data(result: Any) -> dict[str, Any] | None:
         """Extract the first successful data payload from a custom action result."""
@@ -2465,6 +2507,9 @@ class DreameMowerDevice:
         if map_index is None:
             return None
 
+        if self._keeps_schedule_tables:
+            return await self._read_schedule_tables(map_index)
+
         read = await self._read_schedules(map_index)
         return None if read is None else read[0]
 
@@ -2480,6 +2525,12 @@ class DreameMowerDevice:
         if map_index is None:
             return None
 
+        # A mower that keeps tables reports the version of every task in the
+        # table read itself, and only a task that moved is read back, so a full
+        # refresh is as cheap as the poll gets.
+        if self._keeps_schedule_tables:
+            return await self.refresh_schedules(map_id)
+
         # The version only says anything about the map it was read from: every
         # map counts its own, so the same number on another map means nothing.
         if self._schedules is not None and self._schedule_map_index == map_index:
@@ -2493,7 +2544,7 @@ class DreameMowerDevice:
         self,
         map_index: int,
         schedules: Sequence[Mapping[str, Any]],
-        version: int,
+        version: int | None,
     ) -> None:
         """Cache the schedule slots of a map, which only describe the current one."""
         if not self._targets_current_map(map_index):
@@ -2519,6 +2570,9 @@ class DreameMowerDevice:
         map_index = self._preference_map_index(map_id)
         if map_index is None:
             return None
+
+        if self._keeps_schedule_tables:
+            return await self._write_schedule_table_state(map_index, slot, enabled)
 
         # The write has to quote the version the mower holds its schedules under,
         # so the slots are read back before every write. A write the mower rejects
@@ -2620,6 +2674,211 @@ class DreameMowerDevice:
             map_index,
             "enabled" if enabled else "disabled",
         )
+        return schedules
+
+    @property
+    def _keeps_schedule_tables(self) -> bool:
+        """Return whether the mower keeps its schedules as tables, not as a document."""
+        return self._account_type == "mova"
+
+    @staticmethod
+    def _decode_schedule_table_task(task: Any) -> list[dict[str, Any]]:
+        """Decode one task of a schedule table into one entry per week day it runs on.
+
+        A task the mower holds switched off does not run, so it yields nothing.
+        """
+        if not isinstance(task, (list, tuple)) or len(task) <= SCHEDULE_TABLE_TASK_REGIONS_INDEX:
+            raise ValueError(f"not a task record: {task}")
+
+        if not task[SCHEDULE_TABLE_TASK_ENABLED_INDEX]:
+            return []
+
+        task_type = int(task[SCHEDULE_TABLE_TASK_TYPE_INDEX])
+        if task_type >= SCHEDULE_TABLE_CYCLIC_TYPE_OFFSET:
+            task_type -= SCHEDULE_TABLE_CYCLIC_TYPE_OFFSET
+        start_time = int(task[SCHEDULE_TABLE_TASK_START_INDEX])
+        regions = task[SCHEDULE_TABLE_TASK_REGIONS_INDEX]
+        if not isinstance(regions, list):
+            regions = []
+
+        entries: list[dict[str, Any]] = []
+        for week_day in task[SCHEDULE_TABLE_TASK_DAYS_INDEX]:
+            week_day = int(week_day)
+            entry: dict[str, Any] = {
+                "week_day": (
+                    SCHEDULE_WEEK_DAYS[week_day] if 0 <= week_day < len(SCHEDULE_WEEK_DAYS) else "unknown"
+                ),
+                "type": SCHEDULE_TASK_TYPE_MAPPING.get(task_type, "unknown"),
+                "start_time": start_time,
+            }
+            if task_type == ScheduleTaskType.ZONE:
+                entry["zone_ids"] = [int(zone_id) for zone_id in regions]
+            elif task_type == ScheduleTaskType.EDGE:
+                entry["edges"] = [[int(value) for value in pair] for pair in regions]
+            entries.append(entry)
+
+        return entries
+
+    async def _get_schedule_table_task(
+        self,
+        table_id: int,
+        task_id: int,
+        version: int,
+    ) -> list[dict[str, Any]] | None:
+        """Read and decode one task of a schedule table, reusing an unchanged one."""
+        cached = self._schedule_table_tasks.get((table_id, task_id))
+        if cached is not None and cached[0] == version:
+            return deepcopy(cached[1])
+
+        result = await self._send_task_payload(
+            "schedule task read",
+            self._build_get_schedule_table_task_payload(table_id, task_id),
+        )
+        status, data = self._preference_response(result)
+        if status not in (None, 0) or not isinstance(data, list):
+            _LOGGER.error("Failed to read task %s of schedule table %s: %s", task_id, table_id, result)
+            return None
+
+        try:
+            entries = self._decode_schedule_table_task(data)
+        except (TypeError, ValueError) as ex:
+            _LOGGER.warning("Failed to decode task %s of schedule table %s: %s", task_id, table_id, ex)
+            return None
+
+        self._schedule_table_tasks[(table_id, task_id)] = (version, deepcopy(entries))
+        return entries
+
+    async def _decode_schedule_table(self, map_index: int, table: Any) -> dict[str, Any] | None:
+        """Describe the schedule slot one table of a map stands for."""
+        if not isinstance(table, (list, tuple)) or len(table) <= SCHEDULE_TABLE_TASKS_INDEX:
+            _LOGGER.error("Schedule table is not a table record: %s", table)
+            return None
+
+        try:
+            table_id = int(table[SCHEDULE_TABLE_ID_INDEX])
+            enabled = bool(table[SCHEDULE_TABLE_ENABLED_INDEX])
+        except (TypeError, ValueError):
+            _LOGGER.error("Schedule table carries no number and state: %s", table)
+            return None
+
+        slot = table_id - map_index * SCHEDULE_SLOT_COUNT
+        if not 0 <= slot < SCHEDULE_SLOT_COUNT:
+            _LOGGER.error("Schedule table %s does not belong to map index %s", table_id, map_index)
+            return None
+
+        task_infos = table[SCHEDULE_TABLE_TASKS_INDEX]
+        if not isinstance(task_infos, list):
+            task_infos = []
+
+        # As with the document, a table that holds tasks can be switched on even
+        # when some of them could not be read: only the mower knows what they mean.
+        tasks: list[dict[str, Any]] = []
+        for task_info in task_infos:
+            try:
+                task_id, version = int(task_info[0]), int(task_info[1])
+            except (IndexError, KeyError, TypeError, ValueError):
+                _LOGGER.warning("Schedule table %s lists a task it does not identify: %s", table_id, task_info)
+                continue
+
+            entries = await self._get_schedule_table_task(table_id, task_id, version)
+            if entries is not None:
+                tasks.extend(entries)
+
+        # Every task spans several week days, so the entries are put in the order
+        # the week runs in, as the document lists them.
+        def week_order(task: dict[str, Any]) -> tuple[int, int]:
+            week_day = task["week_day"]
+            day = SCHEDULE_WEEK_DAYS.index(week_day) if week_day in SCHEDULE_WEEK_DAYS else len(SCHEDULE_WEEK_DAYS)
+            return day, int(task["start_time"])
+
+        tasks.sort(key=week_order)
+        name = table[SCHEDULE_TABLE_NAME_INDEX]
+        return {
+            "slot": slot,
+            "enabled": enabled,
+            "name": str(name) if isinstance(name, str) and name else None,
+            "tasks": tasks,
+            "tasks_stored": bool(task_infos),
+        }
+
+    async def _read_schedule_tables(self, map_index: int) -> list[dict[str, Any]] | None:
+        """Read the schedule slots of a map from the tables that stand for them."""
+        table_ids = [map_index * SCHEDULE_SLOT_COUNT + slot for slot in range(SCHEDULE_SLOT_COUNT)]
+        result = await self._send_task_payload(
+            "schedule table read",
+            self._build_get_schedule_tables_payload(table_ids),
+        )
+        status, data = self._preference_response(result)
+        if status not in (None, 0) or not isinstance(data, list):
+            _LOGGER.error("Failed to read the schedule tables of map index %s: %s", map_index, result)
+            return None
+
+        schedules: list[dict[str, Any]] = []
+        for table in data:
+            schedule = await self._decode_schedule_table(map_index, table)
+            if schedule is not None:
+                schedules.append(schedule)
+
+        schedules.sort(key=lambda schedule: schedule["slot"])
+        self._update_schedule_cache(map_index, schedules, None)
+        return schedules
+
+    async def _write_schedule_table_state(
+        self,
+        map_index: int,
+        slot: int,
+        enabled: bool,
+    ) -> list[dict[str, Any]] | None:
+        """Switch the table that stands for one schedule slot of a map on or off.
+
+        The mower runs a single table of a map at a time and switches the other
+        one off itself, so the slots are read back afterwards to report what took
+        effect.
+        """
+        schedules = await self._read_schedule_tables(map_index)
+        if schedules is None:
+            return None
+
+        target = next((schedule for schedule in schedules if schedule["slot"] == slot), None)
+        if target is None:
+            raise ValueError(f"This mower keeps no schedule in slot {slot}")
+
+        if enabled and not target["tasks_stored"]:
+            raise ValueError(f"The schedule in slot {slot} holds no tasks to run")
+
+        result = await self._send_task_payload(
+            "schedule table state write",
+            self._build_set_schedule_table_enabled_payload(map_index * SCHEDULE_SLOT_COUNT + slot, enabled),
+        )
+        status, _ = self._preference_response(result)
+        if status != SCHEDULE_STATUS_SUCCESS:
+            _LOGGER.error(
+                "Failed to switch schedule slot %s of map index %s %s: %s",
+                slot,
+                map_index,
+                "on" if enabled else "off",
+                result,
+            )
+            return None
+
+        _LOGGER.info(
+            "Schedule slot %s of map index %s is now %s",
+            slot,
+            map_index,
+            "enabled" if enabled else "disabled",
+        )
+
+        read_back = await self._read_schedule_tables(map_index)
+        if read_back is not None:
+            return read_back
+
+        # The write took effect even though the read back did not come through.
+        for schedule in schedules:
+            if schedule["slot"] == slot:
+                schedule["enabled"] = enabled
+            elif enabled:
+                schedule["enabled"] = False
+        self._update_schedule_cache(map_index, schedules, None)
         return schedules
 
     def refresh_current_map_id(self) -> bool:

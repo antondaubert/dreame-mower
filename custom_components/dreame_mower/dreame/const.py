@@ -343,6 +343,35 @@ SCHEDULE_PLAN_TASKS_INDEX = 3
 SCHEDULE_TASK_START_MARKER = 0xAA
 SCHEDULE_TASK_MINIMUM_LENGTH = 7
 
+# MOVA mowers keep their schedules as tables instead of a single document, and
+# refuse the document reads above. Every schedule slot of every map is a table
+# of its own, numbered across the maps: map index * SCHEDULE_SLOT_COUNT + slot.
+# A table read reports each table's state, its name and the tasks it holds as
+# (task id, version) pairs, and every task is then read on its own. A task's
+# version moves whenever it is edited, so an unchanged one need not be read
+# again. A table is switched on or off on its own, by its number.
+SCHEDULE_TABLE_INFO_KEY = "SCHDI"
+SCHEDULE_TABLE_TASK_KEY = "SCHDC"
+SCHEDULE_TABLE_ENABLE_KEY = "SCHDS"
+
+# Layout of one table as the table read reports it.
+SCHEDULE_TABLE_ID_INDEX = 0
+SCHEDULE_TABLE_ENABLED_INDEX = 1
+SCHEDULE_TABLE_NAME_INDEX = 3
+SCHEDULE_TABLE_TASKS_INDEX = 4
+
+# Layout of one task of a table: its id, whether it is enabled, its type, its
+# start time in minutes since midnight, the week days it runs on, and the zones
+# or (zone, side) edge pairs it covers.
+SCHEDULE_TABLE_TASK_ENABLED_INDEX = 1
+SCHEDULE_TABLE_TASK_TYPE_INDEX = 2
+SCHEDULE_TABLE_TASK_START_INDEX = 3
+SCHEDULE_TABLE_TASK_DAYS_INDEX = 4
+SCHEDULE_TABLE_TASK_REGIONS_INDEX = 5
+
+# Task types from this offset on are the cyclic variants of the ones below it.
+SCHEDULE_TABLE_CYCLIC_TYPE_OFFSET = 8
+
 
 class ScheduleTaskType(IntEnum):
     """What a scheduled task tells the mower to do."""
