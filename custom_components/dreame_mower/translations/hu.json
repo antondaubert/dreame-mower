@@ -145,11 +145,6 @@
         "name": "Fiók"
       }
     },
-    "binary_sensor": {
-      "firmware_update_available": {
-        "name": "Firmware-frissítés elérhető"
-      }
-    },
     "camera": {
       "map_camera": {
         "name": "Térkép"

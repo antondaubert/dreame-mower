@@ -15,6 +15,8 @@ from custom_components.dreame_mower.const import DOMAIN
 from custom_components.dreame_mower.config_flow import CONF_ACCOUNT_TYPE, CONF_COUNTRY, CONF_DID, CONF_MAC, CONF_MODEL, CONF_SERIAL
 from custom_components.dreame_mower.dreame.const import (
     CURRENT_MAP_ID_PROPERTY_NAME,
+    FIRMWARE_INSTALL_STATE_PROPERTY,
+    FirmwareInstallState,
     SCHEDULING_SUMMARY_PROPERTY,
     MowingPreferenceMode,
 )
@@ -1131,3 +1133,24 @@ async def test_coordinator_refreshes_the_schedules_when_the_map_changes(
     await hass.async_block_till_done()
 
     coordinator.device.refresh_schedules.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    ("install_state", "rechecked"),
+    [
+        (FirmwareInstallState.UPGRADE_SUCCESS, True),
+        (FirmwareInstallState.UPGRADING, False),
+        (FirmwareInstallState.UPGRADE_FAILED, False),
+    ],
+)
+async def test_coordinator_rechecks_the_firmware_once_an_update_finished(
+    hass: HomeAssistant, minimal_config_entry, install_state, rechecked
+):
+    """A finished update changes the installed version without announcing it."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device.fetch_firmware_status = AsyncMock(return_value=True)
+
+    coordinator._handle_device_update(FIRMWARE_INSTALL_STATE_PROPERTY.name, install_state)
+    await hass.async_block_till_done()
+
+    assert coordinator.device.fetch_firmware_status.await_count == (1 if rechecked else 0)

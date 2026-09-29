@@ -145,11 +145,6 @@
         "name": "Обліковий запис"
       }
     },
-    "binary_sensor": {
-      "firmware_update_available": {
-        "name": "Доступне оновлення прошивки"
-      }
-    },
     "camera": {
       "map_camera": {
         "name": "Карта"

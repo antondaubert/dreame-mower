@@ -43,6 +43,8 @@ from .dreame.const import (
     EDGE_BLADE_OFFSET_KEY,
     EDGE_MOWING_AUTO_KEY,
     EDGE_MOWING_SAFE_KEY,
+    FIRMWARE_INSTALL_STATE_PROPERTY,
+    FirmwareInstallState,
     POWER_STATE_PROPERTY,
     RAIN_DEVICE_CODES,
     SCHEDULING_SUMMARY_PROPERTY,
@@ -213,6 +215,26 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def device_latest_firmware(self) -> str | None:
         """Return the latest available firmware version, if any."""
         return self.device.firmware_latest_version
+
+    @property
+    def device_firmware_release_notes(self) -> str | None:
+        """Return the release notes of the available firmware, if any."""
+        return self.device.firmware_release_notes
+
+    @property
+    def device_firmware_status_checked(self) -> bool:
+        """Return whether firmware update availability is known yet."""
+        return self.device.firmware_status_checked
+
+    @property
+    def device_firmware_update_in_progress(self) -> bool:
+        """Return whether the mower is downloading or installing a firmware update."""
+        return self.device.firmware_update_in_progress
+
+    @property
+    def device_firmware_update_percentage(self) -> int | None:
+        """Return how far a running firmware update has come, in percent."""
+        return self.device.firmware_update_percentage
 
     @property
     def device_manufacturer(self) -> str:
@@ -1065,6 +1087,13 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.hass.create_task(self._async_refresh_rain_protection_end())
         if property_name == STATUS_PROPERTY.name and int(value) == DeviceStatus.CHARGING:
             self.hass.create_task(self._async_refresh_consumables_on_charging())
+        if (
+            property_name == FIRMWARE_INSTALL_STATE_PROPERTY.name
+            and value == FirmwareInstallState.UPGRADE_SUCCESS
+        ):
+            # The installed version and whether anything newer is left both
+            # change with a finished update, and neither is announced.
+            self.hass.create_task(self._async_refresh_firmware_after_update())
         if property_name == CURRENT_MAP_ID_PROPERTY_NAME:
             # The mowing settings are stored per map, so they have to be re-read
             # whenever the active map changes.
@@ -1191,6 +1220,13 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except Exception as ex:
             _LOGGER.warning("Consumable refresh on charging failed: %s", ex)
 
+    async def _async_refresh_firmware_after_update(self) -> None:
+        """Re-check the firmware versions once the mower finished an update."""
+        try:
+            await self.async_fetch_firmware_status()
+        except Exception as ex:
+            _LOGGER.warning("Firmware status refresh after update failed: %s", ex)
+
     async def _async_handle_device_update(self) -> None:
         """Async handler for device updates."""
         try:
@@ -1227,6 +1263,10 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         await self.device.fetch_firmware_status()
         data = await self._async_update_data()
         self.async_set_updated_data(data)
+
+    async def async_start_firmware_update(self) -> bool:
+        """Ask the cloud to push the available firmware update to the mower."""
+        return await self.device.start_firmware_update()
 
     async def async_update_online_status(self) -> None:
         """Poll the cloud connectivity heartbeat to detect if the device is offline."""

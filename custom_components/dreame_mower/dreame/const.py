@@ -456,16 +456,34 @@ CHARGING_STATUS_MAPPING: dict[int, str] = {
     16: "charging_paused_low_temperature",  # Charging paused: battery temperature too low (issue #40)
 }
 
-# Firmware install state values for FIRMWARE_INSTALL_STATE_PROPERTY
-FIRMWARE_INSTALL_STATE_NEW_AVAILABLE = 2
+class FirmwareInstallState(IntEnum):
+    """Over-the-air update states reported on FIRMWARE_INSTALL_STATE_PROPERTY (1:2)."""
+    UNDEFINED = 0
+    IDLE = 1
+    UPGRADING = 2
+    UPGRADE_SUCCESS = 3
+    UPGRADE_FAILED = 4
+    CANNOT_UPGRADE = 5
 
-# Firmware install state mapping for FIRMWARE_INSTALL_STATE_PROPERTY
+
 FIRMWARE_INSTALL_STATE_MAPPING: dict[int, str] = {
-    1: "up_to_date",  # Idle / firmware is current (no update available)
-    FIRMWARE_INSTALL_STATE_NEW_AVAILABLE: "new_firmware_available",
-    3: "installing_firmware_after_download",
-    4: "firmware_download_failed",  # Observed in issues #98, #134
+    FirmwareInstallState.UNDEFINED: "undefined",
+    FirmwareInstallState.IDLE: "idle",
+    FirmwareInstallState.UPGRADING: "upgrading",
+    FirmwareInstallState.UPGRADE_SUCCESS: "upgrade_success",
+    FirmwareInstallState.UPGRADE_FAILED: "upgrade_failed",
+    FirmwareInstallState.CANNOT_UPGRADE: "cannot_upgrade",
 }
+
+# A firmware update is only started from a mower that is at rest: waiting in
+# standby or sitting on the station. It is refused below this battery level, as
+# the mower has to stay powered through the download and the install.
+FIRMWARE_UPDATE_ALLOWED_STATUSES: frozenset[int] = frozenset({
+    DeviceStatus.STANDBY,
+    DeviceStatus.CHARGING,
+    DeviceStatus.CHARGING_COMPLETE,
+})
+FIRMWARE_UPDATE_MIN_BATTERY_PERCENT = 20
 
 # Individual property names
 PROPERTY_FIRMWARE = "firmware"

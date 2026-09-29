@@ -145,11 +145,6 @@
         "name": "Compte"
       }
     },
-    "binary_sensor": {
-      "firmware_update_available": {
-        "name": "Mise à jour du micrologiciel disponible"
-      }
-    },
     "camera": {
       "map_camera": {
         "name": "Carte"

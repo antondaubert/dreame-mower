@@ -15,6 +15,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_track_time_interval
 
 from .const import (
@@ -34,13 +35,13 @@ _LOGGER = logging.getLogger(__name__)
 _MOWER_PLATFORMS = (
     Platform.LAWN_MOWER,
     Platform.SENSOR,
-    Platform.BINARY_SENSOR,
     Platform.CAMERA,
     Platform.SELECT,
     Platform.BUTTON,
     Platform.NUMBER,
     Platform.SWITCH,
     Platform.TIME,
+    Platform.UPDATE,
 )
 _SWBOT_PLATFORMS = (
     Platform.SENSOR,
@@ -194,6 +195,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 cancel_on_shutdown=True,
             )
         )
+
+    # Firmware updates used to be reported by a binary sensor, which the update
+    # entity replaces; drop it so it does not linger as an orphan.
+    entity_registry = er.async_get(hass)
+    if retired_entity_id := entity_registry.async_get_entity_id(
+        Platform.BINARY_SENSOR, DOMAIN, f"{coordinator.device_mac}_firmware_update_available"
+    ):
+        entity_registry.async_remove(retired_entity_id)
 
     # Set up all platforms for this device/entry.
     await hass.config_entries.async_forward_entry_setups(entry, platforms)

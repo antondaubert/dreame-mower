@@ -13,6 +13,7 @@ from custom_components.dreame_mower.dreame.device import DreameCommandError, Dre
 from custom_components.dreame_mower.dreame.const import (
     MowingDirectionMode,
     DeviceStatus,
+    FirmwareInstallState,
     MowingPreferenceMode,
     ONLINE_OFFLINE_DEBOUNCE_POLLS,
 )
@@ -42,6 +43,8 @@ class MockCloudDevice:
         self.set_property_calls = []
         self.batch_device_datas_result = None
         self.check_device_version_result = None
+        self.manual_firmware_update_result = {"code": 0, "success": True}
+        self.manual_firmware_update_calls = 0
         # get_properties returns a value, or raises when set to an Exception.
         self.get_properties_result = None
     
@@ -110,6 +113,13 @@ class MockCloudDevice:
     def check_device_version(self):
         """Mock cloud OTA firmware-availability check."""
         return self.check_device_version_result
+
+    def manual_firmware_update(self):
+        """Mock cloud OTA request to push the available firmware."""
+        self.manual_firmware_update_calls += 1
+        if isinstance(self.manual_firmware_update_result, Exception):
+            raise self.manual_firmware_update_result
+        return self.manual_firmware_update_result
 
     def get_properties(self, parameters=None, retry_count: int = 1):
         """Mock get_properties used by the online heartbeat poll."""
@@ -1927,6 +1937,128 @@ def test_fetch_firmware_status_notifies_on_change(device):
     asyncio.get_event_loop().run_until_complete(device.fetch_firmware_status())
 
     assert ("firmware_update_available", True) in notified
+
+
+def test_fetch_firmware_status_keeps_release_notes_and_marks_checked(device):
+    """The description of an available update is kept as its release notes."""
+    device._cloud_device.set_connected_state(True)
+    assert device.firmware_status_checked is False
+    device._cloud_device.check_device_version_result = {
+        "curVersion": "4.3.6_0625",
+        "newVersion": "4.3.6_0668",
+        "hasNewFirmware": True,
+        "description": "  1. Improved positioning.\n  ",
+    }
+
+    asyncio.get_event_loop().run_until_complete(device.fetch_firmware_status())
+
+    assert device.firmware_status_checked is True
+    assert device.firmware_release_notes == "1. Improved positioning."
+
+    device._cloud_device.check_device_version_result = {
+        "curVersion": "4.3.6_0668",
+        "hasNewFirmware": False,
+        "description": "1. Improved positioning.",
+    }
+    asyncio.get_event_loop().run_until_complete(device.fetch_firmware_status())
+
+    assert device.firmware_release_notes is None
+
+
+def test_fetch_firmware_status_adopts_the_reported_installed_version(device):
+    """curVersion replaces a stale installed version and announces it."""
+    device._cloud_device.set_connected_state(True)
+    device._firmware = "4.3.6_0625"
+    device._cloud_device.check_device_version_result = {
+        "curVersion": "4.3.6_0668",
+        "hasNewFirmware": False,
+    }
+    notified: list[tuple[str, object]] = []
+    device.register_property_callback(lambda name, value: notified.append((name, value)))
+
+    asyncio.get_event_loop().run_until_complete(device.fetch_firmware_status())
+
+    assert device.firmware == "4.3.6_0668"
+    assert ("firmware", "4.3.6_0668") in notified
+
+
+@pytest.mark.parametrize(
+    ("status_code", "install_state", "progress", "in_progress", "percentage"),
+    [
+        (DeviceStatus.CHARGING_COMPLETE, None, None, False, None),
+        (DeviceStatus.CHARGING_COMPLETE, FirmwareInstallState.UPGRADING, 40, True, 40),
+        # Download progress alone shows an update under way before 1:2 does.
+        (DeviceStatus.CHARGING_COMPLETE, FirmwareInstallState.IDLE, 12, True, 12),
+        (DeviceStatus.UPDATING, FirmwareInstallState.IDLE, None, True, None),
+        # A finished or failed update leaves its last progress value behind.
+        (DeviceStatus.CHARGING_COMPLETE, FirmwareInstallState.UPGRADE_SUCCESS, 100, False, None),
+        (DeviceStatus.CHARGING_COMPLETE, FirmwareInstallState.UPGRADE_FAILED, 45, False, None),
+    ],
+)
+def test_firmware_update_in_progress(device, status_code, install_state, progress, in_progress, percentage):
+    """An update runs while 1:2, 1:3 or the status say so."""
+    device._status_code = status_code
+    device._firmware_install_state = install_state
+    device._firmware_download_progress = progress
+
+    assert device.firmware_update_in_progress is in_progress
+    assert device.firmware_update_percentage == percentage
+
+
+def _ready_for_firmware_update(device):
+    device._firmware_new_available = True
+    device._firmware_latest_version = "4.3.6_0668"
+    device._status_code = DeviceStatus.CHARGING_COMPLETE
+    device._battery_percent = 80
+
+
+def test_start_firmware_update_requests_it_from_the_cloud(device):
+    """A docked, charged mower with an update pending gets it requested."""
+    _ready_for_firmware_update(device)
+
+    result = asyncio.get_event_loop().run_until_complete(device.start_firmware_update())
+
+    assert result is True
+    assert device._cloud_device.manual_firmware_update_calls == 1
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ({"_firmware_new_available": False}, "No firmware update"),
+        ({"_firmware_install_state": FirmwareInstallState.UPGRADING}, "already updating"),
+        ({"_online": False}, "offline"),
+        ({"_status_code": DeviceStatus.MOWING}, "standby or on the charging station"),
+        ({"_battery_percent": 19}, "at least 20% battery"),
+    ],
+)
+def test_start_firmware_update_refuses_when_the_mower_cannot_update(device, change, message):
+    """Nothing is requested unless the mower is at rest and charged enough."""
+    _ready_for_firmware_update(device)
+    for attribute, value in change.items():
+        setattr(device, attribute, value)
+
+    with pytest.raises(ValueError, match=message):
+        asyncio.get_event_loop().run_until_complete(device.start_firmware_update())
+
+    assert device._cloud_device.manual_firmware_update_calls == 0
+
+
+@pytest.mark.parametrize(
+    ("response", "message"),
+    [
+        ({"code": 10001, "msg": "device busy"}, "refused: device busy"),
+        (None, "got no answer"),
+        (ConnectionError("unreachable"), "unreachable"),
+    ],
+)
+def test_start_firmware_update_reports_a_failed_request(device, response, message):
+    """A request the OTA service did not accept is an error with its reason."""
+    _ready_for_firmware_update(device)
+    device._cloud_device.manual_firmware_update_result = response
+
+    with pytest.raises(DreameCommandError, match=message):
+        asyncio.get_event_loop().run_until_complete(device.start_firmware_update())
 
 
 

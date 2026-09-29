@@ -145,11 +145,6 @@
         "name": "Conta"
       }
     },
-    "binary_sensor": {
-      "firmware_update_available": {
-        "name": "Atualização de firmware disponível"
-      }
-    },
     "camera": {
       "map_camera": {
         "name": "Mapa"

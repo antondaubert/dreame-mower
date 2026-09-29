@@ -145,11 +145,6 @@
         "name": "Аккаунт"
       }
     },
-    "binary_sensor": {
-      "firmware_update_available": {
-        "name": "Доступно обновление прошивки"
-      }
-    },
     "camera": {
       "map_camera": {
         "name": "Карта"

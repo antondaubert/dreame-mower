@@ -69,6 +69,9 @@ from .const import (
     CHARGING_STATUS_MAPPING,
     TASK_STATUS_PROPERTY,
     FIRMWARE_INSTALL_STATE_MAPPING,
+    FIRMWARE_UPDATE_ALLOWED_STATUSES,
+    FIRMWARE_UPDATE_MIN_BATTERY_PERCENT,
+    FirmwareInstallState,
     SERVICE5_PROPERTY_100,
     SERVICE5_PROPERTY_101,
     SERVICE5_PROPERTY_105,
@@ -300,6 +303,10 @@ class DreameMowerDevice:
         self._firmware_download_progress: int | None = None
         self._firmware_new_available: bool = False
         self._firmware_latest_version: str | None = None
+        self._firmware_release_notes: str | None = None
+        # Whether the cloud OTA service has answered a version check yet; until
+        # it has, the latest firmware version is not known either way.
+        self._firmware_status_checked: bool = False
         self._service1_property_50: bool = False
         self._service1_property_51: bool = False
         self._service1_completion_flag: bool = False
@@ -425,6 +432,46 @@ class DreameMowerDevice:
     def firmware_latest_version(self) -> str | None:
         """Return the latest available firmware version, if any."""
         return self._firmware_latest_version
+
+    @property
+    def firmware_release_notes(self) -> str | None:
+        """Return the release notes of the available firmware, if any."""
+        return self._firmware_release_notes
+
+    @property
+    def firmware_status_checked(self) -> bool:
+        """Return whether the cloud has answered a firmware version check yet."""
+        return self._firmware_status_checked
+
+    @property
+    def firmware_update_in_progress(self) -> bool:
+        """Return whether the mower is downloading or installing a firmware update.
+
+        The mower reports the update on 1:2, and also shows it in its status
+        while installing. Download progress on 1:3 between 0 and 100 means an
+        update is under way even before 1:2 says so, unless 1:2 already reports
+        that the update ended.
+        """
+        if self._status_code == DeviceStatus.UPDATING:
+            return True
+        state = self._firmware_install_state
+        if state == FirmwareInstallState.UPGRADING:
+            return True
+        if state in (
+            FirmwareInstallState.UPGRADE_SUCCESS,
+            FirmwareInstallState.UPGRADE_FAILED,
+            FirmwareInstallState.CANNOT_UPGRADE,
+        ):
+            return False
+        progress = self._firmware_download_progress
+        return progress is not None and 0 < progress < 100
+
+    @property
+    def firmware_update_percentage(self) -> int | None:
+        """Return how far a running firmware update has come, in percent."""
+        if not self.firmware_update_in_progress:
+            return None
+        return self._firmware_download_progress
     
     @property
     def service1_property_50(self) -> bool:
@@ -732,8 +779,19 @@ class DreameMowerDevice:
 
         available = bool(data.get("hasNewFirmware"))
         latest = str(data["newVersion"]) if available and data.get("newVersion") else None
+        description = data.get("description")
 
+        # The service reports the version the device runs now, which moves on
+        # after an update even while the device list still names the old one.
+        current = data.get("curVersion")
+        if current and str(current) != self._firmware:
+            self._firmware = str(current)
+            self._notify_property_change(PROPERTY_FIRMWARE, self._firmware)
+
+        self._firmware_status_checked = True
         self._firmware_latest_version = latest
+        notes = str(description).strip() if available and description else ""
+        self._firmware_release_notes = notes or None
         if self._firmware_new_available != available:
             self._firmware_new_available = available
             self._notify_property_change("firmware_update_available", available)
@@ -743,6 +801,51 @@ class DreameMowerDevice:
                 data.get("curVersion"),
                 latest,
             )
+        return True
+
+    async def start_firmware_update(self) -> bool:
+        """Ask the cloud to push the available firmware update to the mower.
+
+        The mower then downloads and installs it on its own and reports its
+        progress on 1:2 and 1:3. It has to be at rest with enough charge left:
+        waiting in standby or on the station, and at or above
+        FIRMWARE_UPDATE_MIN_BATTERY_PERCENT.
+
+        Raises:
+            ValueError: No update is available, one is already running, or the
+                mower is not in a state it can update from.
+            DreameCommandError: The request did not reach the OTA service, or the
+                service turned it down.
+        """
+        if not self._firmware_new_available:
+            raise ValueError("No firmware update is available for the mower")
+        if self.firmware_update_in_progress:
+            raise ValueError("The mower is already updating its firmware")
+        if not self._online:
+            raise ValueError("The mower is offline")
+        if self._status_code not in FIRMWARE_UPDATE_ALLOWED_STATUSES:
+            raise ValueError("The mower can only update while in standby or on the charging station")
+        if self._battery_percent < FIRMWARE_UPDATE_MIN_BATTERY_PERCENT:
+            raise ValueError(
+                f"The mower needs at least {FIRMWARE_UPDATE_MIN_BATTERY_PERCENT}% battery to update its firmware"
+            )
+
+        try:
+            response = await asyncio.get_event_loop().run_in_executor(
+                None,
+                self._cloud_device.manual_firmware_update,
+            )
+        except Exception as ex:
+            raise DreameCommandError(f"Failed to request the firmware update: {ex}") from ex
+
+        if not isinstance(response, dict):
+            raise DreameCommandError("The firmware update request got no answer")
+        if response.get("code") != 0:
+            raise DreameCommandError(
+                f"The firmware update was refused: {response.get('msg') or response.get('code')}"
+            )
+
+        _LOGGER.info("Requested firmware update to %s", self._firmware_latest_version)
         return True
 
     def _set_online(self, online: bool) -> None:
@@ -1028,8 +1131,8 @@ class DreameMowerDevice:
                     _LOGGER.error("Failed to parse pose coverage property: %s", ex)
                     return False
             elif FIRMWARE_INSTALL_STATE_PROPERTY.matches(siid, piid):
-                # Handle firmware installation state property (1:2) - firmware update status
-                # Values: 2 = New Firmware Available, 3 = Installing firmware after download
+                # Handle firmware installation state property (1:2) - the over-the-air
+                # update state, see FirmwareInstallState
                 firmware_install_state = int(message["value"])
                 if firmware_install_state not in FIRMWARE_INSTALL_STATE_MAPPING:
                     _LOGGER.warning("Unknown firmware installation state value: %s", firmware_install_state)
