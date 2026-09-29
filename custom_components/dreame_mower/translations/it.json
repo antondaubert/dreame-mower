@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Scegli il tipo di account",
-        "description": "Seleziona il tipo di account per l'integrazione del tosaerba da sogno.",
+        "description": "Seleziona il tipo di account per l'integrazione del tosaerba Dreame / MOVA Mower.",
         "data": {
           "account_type": "Tipo di account"
         }
@@ -14,7 +14,7 @@
           "password": "Password",
           "country": "Paese del server"
         },
-        "description": "Accedi alla nuvola di Dreamehome."
+        "description": "Accedi al cloud di Dreamehome."
       },
       "mova": {
         "data": {
@@ -55,7 +55,7 @@
     "step": {
       "init": {
         "title": "Opzioni",
-        "description": "Connesso con {account} ({account_type}, {country}).\n\nConfigurare le impostazioni di notifica per l'integrazione del tosaerba da sogno.",
+        "description": "Connesso con {account} ({account_type}, {country}).\n\nConfigurare le impostazioni di notifica per l'integrazione del tosaerba Dreame / MOVA Mower.",
         "data": {
           "notify": "Tipi di notifica",
           "map_rotation": "Rotazione mappa",
@@ -76,10 +76,10 @@
           "standby": "Stand-by",
           "paused": "In pausa",
           "paused_due_to_errors": "In pausa a causa di errori",
-          "returning_to_station_to_charge": "Tornando alla stazione per caricare",
-          "charging": "Carica",
+          "returning_to_station_to_charge": "Rientro alla stazione per ricarica",
+          "charging": "In carica",
           "mapping": "Mappatura",
-          "charging_complete": "Accusa completa",
+          "charging_complete": "Ricarica completata",
           "updating": "Aggiornamento",
           "charging_paused_high_temperature": "Ricarica in pausa: temperatura della batteria troppo alta",
           "charging_paused_low_temperature": "Ricarica in pausa: temperatura della batteria troppo bassa",
@@ -90,9 +90,9 @@
         "name": "Stato di ricarica",
         "state": {
           "not_docked": "Non ancorato",
-          "charging": "Carica",
-          "not_charging": "Non ricarica",
-          "charging_completed": "Addebito completato",
+          "charging": "In carica",
+          "not_charging": "Non in carica",
+          "charging_completed": "Ricarica completata",
           "return_to_charge": "Torna alla carica",
           "charging_paused_high_temperature": "Ricarica in pausa: temperatura della batteria troppo alta",
           "charging_paused_low_temperature": "Ricarica in pausa: temperatura della batteria troppo bassa"
