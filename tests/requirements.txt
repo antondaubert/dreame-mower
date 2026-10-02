@@ -1,9 +1,8 @@
 # Test environment requirements
 # Tested with Python 3.13.7
-# pytest-homeassistant-custom-component v0.13.291 requires Python 3.13+
-# Provides Home Assistant 2025.11.0b1 with latest API features
-# Latest version from main branch
-git+https://github.com/MatthewFlamm/pytest-homeassistant-custom-component.git
+# Pinned to a release that ships a stable Home Assistant (0.13.367 -> HA 2026.9.4);
+# the main branch tracks HA betas
+pytest-homeassistant-custom-component==0.13.367
 python-miio==0.5.12
 pycryptodome==3.23.0
 pytest-mock==3.14.1
@@ -12,6 +11,3 @@ PyTurboJPEG==1.8.2
 py_mini_racer==0.6.0
 paho-mqtt==2.1.0
 types-requests
-
-# Note: If pytest-homeassistant-custom-component updates break compatibility,
-# you can pin to a specific commit by adding @<commit_hash> to the git URL above
