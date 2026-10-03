@@ -1,0 +1,128 @@
+blueprint:
+  name: Dreame mower - Home Assistant schedule
+  description: >-
+    Start a Dreame or MOVA mower from a Home Assistant Schedule helper.
+    This schedule is managed by Home Assistant and does not change the
+    schedules stored on the mower. The mower must be docked when the block
+    starts. Optionally select the mower's native schedule switches as a
+    safeguard; the run is skipped while any selected switch is on.
+  domain: automation
+  input:
+    schedule_entity:
+      name: Weekly schedule
+      description: A Schedule helper whose block start should launch mowing.
+      selector:
+        entity:
+          filter:
+            - domain: schedule
+    mower_entity:
+      name: Mower
+      selector:
+        entity:
+          filter:
+            - domain: lawn_mower
+              integration: dreame_mower
+    native_schedule_switches:
+      name: Native Dreame schedule switches (optional)
+      description: >-
+        Select the mower's schedule switches to prevent overlapping runs.
+        This automation only reads these switches; it never changes them.
+      default: []
+      selector:
+        entity:
+          multiple: true
+          filter:
+            - domain: switch
+              integration: dreame_mower
+    mowing_mode:
+      name: Mowing mode
+      default: all_area
+      selector:
+        select:
+          options:
+            - label: All area
+              value: all_area
+            - label: Zones
+              value: zones
+            - label: Edges
+              value: edges
+            - label: Spot areas
+              value: spots
+    zone_ids:
+      name: Zone IDs
+      description: Used only in Zones mode. Find IDs in the map's zone entities.
+      default: [1]
+      selector:
+        object:
+    contour_ids:
+      name: Contour IDs
+      description: Used only in Edges mode; each contour is a pair such as [1, 0].
+      default:
+        - [1, 0]
+      selector:
+        object:
+    spot_area_ids:
+      name: Spot-area IDs
+      description: Used only in Spot areas mode.
+      default: [1]
+      selector:
+        object:
+
+variables:
+  mower_entity: !input mower_entity
+  native_schedule_switches: !input native_schedule_switches
+  mowing_mode: !input mowing_mode
+  zone_ids: !input zone_ids
+  contour_ids: !input contour_ids
+  spot_area_ids: !input spot_area_ids
+
+triggers:
+  - trigger: schedule.block_started
+    target:
+      entity_id: !input schedule_entity
+
+conditions:
+  - condition: template
+    value_template: >-
+      {{ is_state(mower_entity, 'docked')
+         and expand(native_schedule_switches)
+         | selectattr('state', 'eq', 'on') | list | count == 0 }}
+
+actions:
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ mowing_mode == 'all_area' }}"
+        sequence:
+          - action: lawn_mower.start_mowing
+            target:
+              entity_id: "{{ mower_entity }}"
+      - conditions:
+          - condition: template
+            value_template: "{{ mowing_mode == 'zones' and zone_ids | length > 0 }}"
+        sequence:
+          - action: dreame_mower.start_zone_mowing
+            target:
+              entity_id: "{{ mower_entity }}"
+            data:
+              zone_ids: "{{ zone_ids }}"
+      - conditions:
+          - condition: template
+            value_template: "{{ mowing_mode == 'edges' and contour_ids | length > 0 }}"
+        sequence:
+          - action: dreame_mower.start_edge_mowing
+            target:
+              entity_id: "{{ mower_entity }}"
+            data:
+              contour_ids: "{{ contour_ids }}"
+      - conditions:
+          - condition: template
+            value_template: "{{ mowing_mode == 'spots' and spot_area_ids | length > 0 }}"
+        sequence:
+          - action: dreame_mower.start_spot_mowing
+            target:
+              entity_id: "{{ mower_entity }}"
+            data:
+              spot_area_ids: "{{ spot_area_ids }}"
+
+mode: single
