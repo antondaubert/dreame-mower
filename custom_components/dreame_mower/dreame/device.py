@@ -146,6 +146,9 @@ from .const import (
     SCHEDULE_DATA_KEY,
     SCHEDULE_ENABLE_KEY,
     SCHEDULE_INFO_KEY,
+    SCHEDULE_MOVA_DATA_KEY,
+    SCHEDULE_MOVA_ENABLE_KEY,
+    SCHEDULE_MOVA_INFO_KEY,
     SCHEDULE_PLAN_ENABLED_INDEX,
     SCHEDULE_PLAN_NAME_INDEX,
     SCHEDULE_PLAN_SLOT_INDEX,
@@ -162,6 +165,7 @@ from .const import (
     SCHEDULE_TABLE_TASK_DAYS_INDEX,
     SCHEDULE_TABLE_TASK_ENABLED_INDEX,
     SCHEDULE_TABLE_TASK_KEY,
+    SCHEDULE_TABLE_UNSUPPORTED_REPLY,
     SCHEDULE_TABLE_TASK_REGIONS_INDEX,
     SCHEDULE_TABLE_TASK_START_INDEX,
     SCHEDULE_TABLE_TASK_TYPE_INDEX,
@@ -279,6 +283,9 @@ class DreameMowerDevice:
         self._username = username
         self._password = password
         self._account_type = account_type
+        # Set once a MOVA mower turns the table read down, after which its
+        # schedules are read as a document for the rest of the session.
+        self._schedule_tables_unsupported = False
         self._country = country
         self._hass_config_dir = hass_config_dir
         
@@ -1702,7 +1709,7 @@ class DreameMowerDevice:
         """Build the getter payload for a map's schedule size and version."""
         return {
             "m": "g",
-            "t": SCHEDULE_INFO_KEY,
+            "t": self._schedule_document_keys[0],
             "d": {
                 "i": int(map_index),
             },
@@ -1712,7 +1719,7 @@ class DreameMowerDevice:
         """Build the getter payload for one chunk of the schedule document."""
         return {
             "m": "g",
-            "t": SCHEDULE_DATA_KEY,
+            "t": self._schedule_document_keys[1],
             "d": {
                 "s": int(start),
                 "l": int(size),
@@ -1729,7 +1736,7 @@ class DreameMowerDevice:
         """Build the setter payload for which schedule slots of a map are enabled."""
         return {
             "m": "s",
-            "t": SCHEDULE_ENABLE_KEY,
+            "t": self._schedule_document_keys[2],
             "d": {
                 "i": int(map_index),
                 "v": int(version),
@@ -2574,6 +2581,15 @@ class DreameMowerDevice:
         if self._keeps_schedule_tables:
             return await self._write_schedule_table_state(map_index, slot, enabled)
 
+        return await self._write_schedule_document_state(map_index, slot, enabled)
+
+    async def _write_schedule_document_state(
+        self,
+        map_index: int,
+        slot: int,
+        enabled: bool,
+    ) -> list[dict[str, Any]] | None:
+        """Switch one schedule slot of a map on or off through the schedule document."""
         # The write has to quote the version the mower holds its schedules under,
         # so the slots are read back before every write. A write the mower rejects
         # for a stale version is taken once more against the version it reports
@@ -2679,7 +2695,31 @@ class DreameMowerDevice:
     @property
     def _keeps_schedule_tables(self) -> bool:
         """Return whether the mower keeps its schedules as tables, not as a document."""
-        return self._account_type == "mova"
+        return self._account_type == "mova" and not self._schedule_tables_unsupported
+
+    @property
+    def _schedule_document_keys(self) -> tuple[str, str, str]:
+        """Return the info, data and enable keys of the schedule document."""
+        if self._account_type == "mova":
+            return SCHEDULE_MOVA_INFO_KEY, SCHEDULE_MOVA_DATA_KEY, SCHEDULE_MOVA_ENABLE_KEY
+        return SCHEDULE_INFO_KEY, SCHEDULE_DATA_KEY, SCHEDULE_ENABLE_KEY
+
+    @staticmethod
+    def _refuses_schedule_tables(result: Any) -> bool:
+        """Return whether a table read was answered by a mower that keeps no tables."""
+        if not isinstance(result, dict) or result.get("code") not in (None, 0):
+            return False
+
+        out_entries = result.get("out")
+        if not isinstance(out_entries, list):
+            return False
+
+        return any(
+            isinstance(out_entry, dict)
+            and "r" not in out_entry
+            and out_entry.get("d") == SCHEDULE_TABLE_UNSUPPORTED_REPLY
+            for out_entry in out_entries
+        )
 
     @staticmethod
     def _decode_schedule_table_task(task: Any) -> list[dict[str, Any]]:
@@ -2808,6 +2848,12 @@ class DreameMowerDevice:
             "schedule table read",
             self._build_get_schedule_tables_payload(table_ids),
         )
+        if self._refuses_schedule_tables(result):
+            _LOGGER.info("This mower keeps no schedule tables, reading its schedules as a document instead")
+            self._schedule_tables_unsupported = True
+            read = await self._read_schedules(map_index)
+            return None if read is None else read[0]
+
         status, data = self._preference_response(result)
         if status not in (None, 0) or not isinstance(data, list):
             _LOGGER.error("Failed to read the schedule tables of map index %s: %s", map_index, result)
@@ -2838,6 +2884,10 @@ class DreameMowerDevice:
         schedules = await self._read_schedule_tables(map_index)
         if schedules is None:
             return None
+
+        # The read may just have found that the mower keeps a document instead.
+        if not self._keeps_schedule_tables:
+            return await self._write_schedule_document_state(map_index, slot, enabled)
 
         target = next((schedule for schedule in schedules if schedule["slot"] == slot), None)
         if target is None:
