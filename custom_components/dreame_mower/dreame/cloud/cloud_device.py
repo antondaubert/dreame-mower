@@ -164,7 +164,9 @@ class DreameMowerCloudDevice:
         if rc == 0:
             return
 
-        _LOGGER.warning("Unexpected MQTT disconnect rc=%s", rc)
+        # Logged at debug: a quick reconnect is routine, and a lasting drop is
+        # reported by the device once its grace period runs out.
+        _LOGGER.debug("Unexpected MQTT disconnect rc=%s", rc)
 
         # Attempt to refresh credentials if auth related
         if not self._refresh_mqtt_credentials():

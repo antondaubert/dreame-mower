@@ -47,6 +47,12 @@ class EventIdentifier(NamedTuple):
 # to unavailable and back on a single missed poll.
 ONLINE_OFFLINE_DEBOUNCE_POLLS = 3
 
+# Seconds the cloud transport (MQTT) may stay down before the device is reported
+# disconnected. The cloud broker drops the link now and then and the client
+# reconnects within a second or two; without this grace every such drop flips all
+# entities to unavailable and back.
+TRANSPORT_DISCONNECT_GRACE_SECONDS = 60
+
 # Device property identifiers
 PROPERTY_1_1 = PropertyIdentifier(siid=1, piid=1, name="property_1_1")
 FIRMWARE_INSTALL_STATE_PROPERTY = PropertyIdentifier(siid=1, piid=2, name="firmware_install_state")
