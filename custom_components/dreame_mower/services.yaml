@@ -177,6 +177,7 @@ set_mowing_direction:
       example: crisscross
       selector:
         select:
+          translation_key: mowing_direction_mode
           options:
             - label: Always the same direction
               value: fixed
@@ -217,6 +218,7 @@ set_mowing_preference_mode:
       example: map_wide
       selector:
         select:
+          translation_key: mowing_preference_mode
           options:
             - label: One setting for the whole map
               value: map_wide
