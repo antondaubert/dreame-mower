@@ -310,6 +310,13 @@ SCHEDULE_INFO_KEY = "SCHDIV3"
 SCHEDULE_DATA_KEY = "SCHDDV3"
 SCHEDULE_ENABLE_KEY = "SCHDSV3"
 
+# MOVA mowers that refuse the table reads below keep their plans as the same
+# document, one generation back. They do not answer the keys above at all, so
+# only these reach them.
+SCHEDULE_MOVA_INFO_KEY = "SCHDIV2"
+SCHEDULE_MOVA_DATA_KEY = "SCHDDV2"
+SCHEDULE_MOVA_ENABLE_KEY = "SCHDSV2"
+
 # The maps of a mower are read from the mower itself in three steps. The map
 # list reports which of its fixed map slots hold a map and which one is
 # current, an info read reports the hash and byte length of one map, and the
@@ -365,6 +372,10 @@ SCHEDULE_TASK_MINIMUM_LENGTH = 7
 SCHEDULE_TABLE_INFO_KEY = "SCHDI"
 SCHEDULE_TABLE_TASK_KEY = "SCHDC"
 SCHEDULE_TABLE_ENABLE_KEY = "SCHDS"
+
+# A mower that does not keep tables answers the table read with this value and
+# no status, where a table it keeps comes with a zero status.
+SCHEDULE_TABLE_UNSUPPORTED_REPLY = 7
 
 # Layout of one table as the table read reports it.
 SCHEDULE_TABLE_ID_INDEX = 0

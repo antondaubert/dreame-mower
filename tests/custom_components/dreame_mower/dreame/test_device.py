@@ -4374,6 +4374,84 @@ async def test_set_schedule_enabled_switches_a_table_and_reads_the_slots_back(de
     assert [schedule["enabled"] for schedule in device.schedules or []] == [False, True]
 
 
+def _mova_document_responder(**kwargs):
+    """Serve a MOVA mower that keeps no tables, only the generation two document.
+
+    The table read is answered the way a MOVA 1000 answers it: no status, and 7
+    where the tables would be.
+    """
+    responder, writes, served = _schedule_responder(**kwargs)
+
+    def mova_responder(siid, aiid, parameters, retry_count):
+        payload = parameters[0]
+        if payload["t"] == "SCHDI":
+            return {"aiid": 50, "code": 0, "out": [{"d": 7, "m": "r", "q": 30}], "siid": 2}
+        if payload["t"] in ("SCHDIV2", "SCHDDV2", "SCHDSV2"):
+            return responder(siid, aiid, [{**payload, "t": payload["t"][:-1] + "3"}], retry_count)
+        raise AssertionError(f"Unexpected schedule payload: {payload}")
+
+    return mova_responder, writes, served
+
+
+async def _connected_mova_document_device(device, **kwargs):
+    """Connect a MOVA mower that keeps its schedules as a document."""
+    device._account_type = "mova"
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._current_map_id = 1
+    responder, writes, served = _mova_document_responder(**kwargs)
+    device._cloud_device.action_result = responder
+    return writes, served
+
+
+@pytest.mark.asyncio
+async def test_a_mova_mower_without_tables_has_its_schedules_read_as_a_document(device):
+    """A table read the mower turns down falls back to the document, once for the session."""
+    await _connected_mova_document_device(
+        device,
+        plans=[_schedule_plan(0, False), _schedule_plan(1, False)],
+        version=65535,
+    )
+
+    schedules = await device.refresh_schedules()
+
+    assert schedules == [
+        {"slot": 0, "enabled": False, "name": None, "tasks": [], "tasks_stored": False},
+        {"slot": 1, "enabled": False, "name": None, "tasks": [], "tasks_stored": False},
+    ]
+    assert device.schedules == schedules
+    assert _sent_tags(device)[:2] == ["SCHDI", "SCHDIV2"]
+    assert "SCHDIV3" not in _sent_tags(device)
+
+    device._cloud_device.action_calls.clear()
+    await device.refresh_changed_schedules()
+    assert _sent_tags(device) == ["SCHDIV2"]
+
+
+@pytest.mark.asyncio
+async def test_a_mova_mower_without_tables_switches_its_schedules_through_the_document(device):
+    """Switching a slot on such a mower writes the generation two document state."""
+    writes, _ = await _connected_mova_document_device(device)
+
+    schedules = await device.set_schedule_enabled(0, False)
+
+    assert writes == [{"i": 0, "v": 4711, "s": [0, 0]}]
+    assert schedules is not None
+    assert [schedule["enabled"] for schedule in schedules] == [False, False]
+    assert "SCHDSV2" in _sent_tags(device)
+    assert "SCHDS" not in _sent_tags(device)
+
+
+@pytest.mark.asyncio
+async def test_a_failed_table_read_does_not_switch_to_the_document(device):
+    """Only the reply of a mower that keeps no tables moves the reads to the document."""
+    await _connected_schedule_table_device(device)
+    device._cloud_device.action_result = lambda *args: {"code": 0, "out": [{"m": "r", "r": 7}]}
+
+    assert await device.refresh_schedules() is None
+    assert device._keeps_schedule_tables
+
+
 @pytest.mark.asyncio
 async def test_set_schedule_enabled_refuses_an_empty_table(device):
     """An empty table has nothing to run, so switching it on is refused."""
