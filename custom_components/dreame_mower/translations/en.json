@@ -220,5 +220,132 @@
         "name": "After-Rain Delay"
       }
     }
+  },
+  "selector": {
+    "mowing_direction_mode": {
+      "options": {
+        "fixed": "Always the same direction",
+        "crisscross": "Crisscross, turning 45° each session",
+        "chequerboard": "Chequerboard, turning 90° each session"
+      }
+    },
+    "mowing_preference_mode": {
+      "options": {
+        "map_wide": "One setting for the whole map",
+        "per_zone": "A setting per zone"
+      }
+    }
+  },
+  "services": {
+    "start_zone_mowing": {
+      "name": "Start zone mowing",
+      "description": "Start mowing for one or more explicit zone IDs.",
+      "fields": {
+        "zone_ids": {
+          "name": "Zone IDs",
+          "description": "List of zone IDs to mow, for example [1, 3]."
+        }
+      }
+    },
+    "start_edge_mowing": {
+      "name": "Start edge mowing",
+      "description": "Start mowing the edges for one or more explicit contour IDs.",
+      "fields": {
+        "contour_ids": {
+          "name": "Contour IDs",
+          "description": "List of contour ID pairs to mow, for example [[1, 0], [2, 0]]. Available contour IDs are exposed in the mower entity's contours attribute once the map has been fetched."
+        }
+      }
+    },
+    "start_spot_mowing": {
+      "name": "Start spot mowing",
+      "description": "Start mowing for one or more explicit spot area IDs.",
+      "fields": {
+        "spot_area_ids": {
+          "name": "Spot area IDs",
+          "description": "List of spot area IDs to mow, for example [2, 4]."
+        }
+      }
+    },
+    "set_cutting_height": {
+      "name": "Set cutting height",
+      "description": "Set the cutting height for a whole map, or for a single zone of it. Not every model supports adjusting the cutting height, and the range depends on the model.",
+      "fields": {
+        "height": {
+          "name": "Cutting height",
+          "description": "Cutting height in centimeters, in steps of 0.5 cm."
+        },
+        "map_id": {
+          "name": "Map ID",
+          "description": "Map to change. Defaults to the active map. Available map IDs are exposed in the mower entity's maps attribute once the map has been fetched."
+        },
+        "zone_id": {
+          "name": "Zone ID",
+          "description": "Zone to change instead of the whole map. Setting a zone also switches the map to per-zone mowing settings, so the other zones keep their own heights and the map-wide height stops applying. Available zone IDs are exposed in the mower entity's zones attribute."
+        }
+      }
+    },
+    "set_edge_mowing_settings": {
+      "name": "Set edge mowing settings",
+      "description": "Switch the edge mowing settings for a whole map, or for a single zone of it. Every setting left out keeps the value it has. A map that follows its per-zone settings gets the change written into every zone as well, since the mower no longer reads its map-wide settings. The same settings are available as switch entities for the active map.",
+      "fields": {
+        "automatic_edge_mowing": {
+          "name": "Automatic edge mowing",
+          "description": "Whether the mower mows the edges on its own once all-area or zone mowing has finished."
+        },
+        "safe_edge_mowing": {
+          "name": "Safe edge mowing",
+          "description": "Whether the mower keeps a small buffer from the lawn boundary while it mows the edges. Not every model offers this setting."
+        },
+        "edge_blade_offset": {
+          "name": "Edge blade offset",
+          "description": "Whether the blade disc shifts to the side for the edge laps so the mower cuts closer to the boundary. Switching this on also raises a single edge lap to two, which the offset disc needs to cover the edge."
+        },
+        "map_id": {
+          "name": "Map ID",
+          "description": "Map to change. Defaults to the active map. Available map IDs are exposed in the mower entity's maps attribute once the map has been fetched."
+        },
+        "zone_id": {
+          "name": "Zone ID",
+          "description": "Zone to change instead of the whole map. Setting a zone also switches the map to per-zone mowing settings, so the other zones keep their own settings and the map-wide ones stop applying. Available zone IDs are exposed in the mower entity's zones attribute."
+        }
+      }
+    },
+    "set_mowing_direction": {
+      "name": "Set mowing direction",
+      "description": "Set the direction the mower drives its lanes in for a whole map, or for a single zone of it, and how that direction carries from one session to the next. A map that follows its per-zone settings gets the change written into every zone as well, since the mower no longer reads its map-wide settings. The same settings are available as a number and a select entity for the active map.",
+      "fields": {
+        "angle": {
+          "name": "Angle",
+          "description": "The direction in degrees, as the app shows it. A direction is a line rather than a heading, so anything from 180 on names the same lanes as the angle half a turn below it."
+        },
+        "mode": {
+          "name": "Mode",
+          "description": "Whether every session mows in the same direction, or turns against the session before it."
+        },
+        "map_id": {
+          "name": "Map ID",
+          "description": "Map to change. Defaults to the active map."
+        },
+        "zone_id": {
+          "name": "Zone ID",
+          "description": "Zone to change instead of the whole map. Setting a zone also switches the map to per-zone mowing settings, so the other zones keep their own settings and the map-wide ones stop applying."
+        }
+      }
+    },
+    "set_mowing_preference_mode": {
+      "name": "Set mowing preference mode",
+      "description": "Choose whether a map applies one set of mowing settings or per-zone settings. Use this to return to a single map-wide cutting height after setting one for an individual zone. The mode covers the other mowing settings too, not only the cutting height.",
+      "fields": {
+        "mode": {
+          "name": "Mode",
+          "description": "Whether the map follows its map-wide or its per-zone settings."
+        },
+        "map_id": {
+          "name": "Map ID",
+          "description": "Map to change. Defaults to the active map."
+        }
+      }
+    }
   }
 }
