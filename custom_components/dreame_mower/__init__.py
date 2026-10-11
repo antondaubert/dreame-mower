@@ -12,8 +12,8 @@ from datetime import timedelta
 import logging
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP, Platform
+from homeassistant.core import Event, HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_track_time_interval
@@ -118,6 +118,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         DATA_COORDINATOR: coordinator,
         DATA_PLATFORMS: platforms,
     }
+
+    # Home Assistant does not unload config entries when it stops, so the MQTT
+    # client would keep handing pushes from a working mower to an event loop
+    # that is already closed. Drop the cloud connection before that happens.
+    async def _async_disconnect_on_stop(event: Event) -> None:
+        await coordinator.async_disconnect_device()
+
+    entry.async_on_unload(
+        hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, _async_disconnect_on_stop)
+    )
 
     # Periodically poll for firmware update availability (mowers only). The value
     # changes rarely and the device does not reliably push it, so poll on an interval.

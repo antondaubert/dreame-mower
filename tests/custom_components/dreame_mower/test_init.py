@@ -5,7 +5,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from homeassistant.const import CONF_NAME, CONF_PASSWORD, CONF_USERNAME
+from homeassistant.const import (
+    CONF_NAME,
+    CONF_PASSWORD,
+    CONF_USERNAME,
+    EVENT_HOMEASSISTANT_STOP,
+)
 from homeassistant.exceptions import ConfigEntryNotReady
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -69,6 +74,7 @@ def _make_coordinator() -> MagicMock:
     coordinator.supports_schedules = True
     coordinator.async_fetch_firmware_status = AsyncMock(return_value=None)
     coordinator.async_update_online_status = AsyncMock(return_value=None)
+    coordinator.async_disconnect_device = AsyncMock(return_value=None)
     return coordinator
 
 
@@ -96,6 +102,27 @@ async def test_async_setup_entry_fetches_vector_map_for_mowers(hass):
     forward_entry_setups.assert_awaited_once()
     assert hass.data[DOMAIN][entry.entry_id][DATA_COORDINATOR] is coordinator
 
+
+async def test_stopping_home_assistant_drops_the_cloud_connection(hass):
+    """The MQTT client must not outlive the event loop it hands pushes to."""
+    entry = _make_entry()
+    entry.add_to_hass(hass)
+
+    coordinator = _make_coordinator()
+
+    with patch("custom_components.dreame_mower.DreameMowerCoordinator", return_value=coordinator), patch.object(
+        hass.config_entries,
+        "async_forward_entry_setups",
+        AsyncMock(return_value=None),
+    ):
+        assert await async_setup_entry(hass, entry) is True
+
+    coordinator.async_disconnect_device.assert_not_awaited()
+
+    hass.bus.async_fire(EVENT_HOMEASSISTANT_STOP)
+    await hass.async_block_till_done()
+
+    coordinator.async_disconnect_device.assert_awaited_once()
 
 async def test_async_setup_entry_reads_the_preferences_of_fixed_height_models(hass):
     """A model with a manual height dial still keeps the other mowing settings."""
