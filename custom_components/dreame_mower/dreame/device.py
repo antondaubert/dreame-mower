@@ -11,17 +11,28 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 from collections.abc import Iterable, Mapping, Sequence
 from copy import deepcopy
 from enum import Enum
 import json
 import logging
 import os
+import threading
 from typing import Any, Callable
 from datetime import datetime
 
 from .cloud.cloud_device import DreameMowerCloudDevice
-from .map_data_parser import MowerVectorMap, parse_batch_map_data
+from .map_data_parser import (
+    MowerVectorMap,
+    assemble_vector_map,
+    convert_device_map,
+    has_map,
+    parse_batch_map_data,
+    parse_cached_maps,
+    parse_mow_paths,
+    parse_mower_map,
+)
 from .utils import download_file
 from .property import (
     MiscPropertyHandler,
@@ -143,6 +154,10 @@ from .const import (
     DEVICE_SETTINGS_BATTERY_KEY,
     DEVICE_SETTINGS_RAIN_KEY,
     SCHEDULE_CHUNK_SIZE,
+    MAP_LIST_KEY,
+    MAP_INFO_KEY,
+    MAP_DATA_KEY,
+    MAP_CHUNK_SIZE,
     SCHEDULE_DATA_KEY,
     SCHEDULE_ENABLE_KEY,
     SCHEDULE_INFO_KEY,
@@ -334,9 +349,15 @@ class DreameMowerDevice:
         self._mission_completion_handler = MissionCompletionEventHandler()
         self._pose_coverage_handler = PoseCoveragePropertyHandler()
         
-        # Vector map from batch API
+        # Vector map, read from the mower and the cloud copy of its maps
         self._vector_map: MowerVectorMap | None = None
         self._current_map_id: int | None = None
+        # Hash of every map slot that holds a map, as of the last map read; None
+        # while the maps have not been read from the mower itself.
+        self._map_hashes: dict[int, str] | None = None
+        # A map data read continues whichever map the info read before it named,
+        # so two map reads must not interleave.
+        self._map_read_lock = threading.Lock()
 
         # Mowing settings of the current map, alongside the mode that decides
         # which of them the mower applies. Read on demand from the mowing
@@ -639,12 +660,12 @@ class DreameMowerDevice:
 
     @property
     def vector_map(self) -> MowerVectorMap | None:
-        """Return the current vector map data from batch API."""
+        """Return the vector map of the current map."""
         return self._resolved_vector_map()
 
     @property
     def available_maps(self) -> list[dict[str, Any]]:
-        """Return map descriptors discovered in batch map data."""
+        """Return a descriptor for every map the mower holds."""
         if self._vector_map is None:
             return []
 
@@ -731,43 +752,254 @@ class DreameMowerDevice:
         return None
 
     def fetch_vector_map(self) -> bool:
-        """Fetch vector map data from the batch device data API.
+        """Read the mower's maps.
 
-        Requests all keys from the cloud batch API and parses
-        MAP.* and M_PATH.* into a MowerVectorMap.
+        The MAP.* keys of the batch device data hold a copy of the maps that is
+        only brought up to date from time to time, and keep a slot for every map
+        the mower can hold, whether it holds one or not. The mower itself reports
+        which slots hold a map and the hash of each, so a cached map is only used
+        while its hash still matches, and any other is read from the mower. When
+        the mower does not answer, the cached maps are used as they stand.
 
         Returns:
             True if map data was updated, False otherwise.
         """
-        try:
-            # Pass empty list to get all available keys (MAP.*, M_PATH.*, etc.)
-            # The API returns all keys when no specific keys are requested.
-            # M_PATH can have 28+ chunks depending on path history size.
-            batch_data = self._cloud_device.get_batch_device_datas([])
-            if not batch_data:
-                _LOGGER.debug("No batch data returned from cloud API")
+        with self._map_read_lock:
+            try:
+                updated = self._read_vector_map()
+            except Exception as ex:
+                _LOGGER.warning("Failed to fetch the vector map: %s", ex)
                 return False
 
-            vector_map = parse_batch_map_data(batch_data)
-            if vector_map is None:
-                _LOGGER.debug("Failed to parse batch map data")
-                return False
+        if not updated:
+            return False
 
-            self._vector_map = vector_map
-            self.refresh_current_map_id()
-            active_vector_map = self._resolved_vector_map() or vector_map
+        self.refresh_current_map_id()
+        active_vector_map = self._resolved_vector_map() or self._vector_map
+        if active_vector_map is not None:
             _LOGGER.debug(
                 "Vector map updated: %d zones, %d paths, boundary=%s",
                 len(active_vector_map.zones),
                 len(active_vector_map.paths),
                 active_vector_map.boundary,
             )
-            self._notify_property_change("vector_map_updated", True)
+        self._notify_property_change("vector_map_updated", True)
+        return True
+
+    def refresh_changed_vector_map(self) -> bool:
+        """Read the mower's maps back only when one of them changed.
+
+        The mower does not announce an edited map, so noticing one takes asking.
+        The hash of every map comes out of a single read each, and the maps are
+        only read back once one of the hashes, or the set of maps, moved.
+
+        Returns:
+            True if map data was read back and updated, False otherwise.
+        """
+        with self._map_read_lock:
+            try:
+                slots = self._read_map_slots()
+            except Exception as ex:
+                _LOGGER.debug("Failed to read the map hashes: %s", ex)
+                return False
+
+        if slots is None:
+            return False
+
+        if self._map_hashes is not None and {
+            slot["index"]: slot["hash"] for slot in slots
+        } == self._map_hashes:
+            return False
+
+        return self.fetch_vector_map()
+
+    def _read_vector_map(self) -> bool:
+        """Read the maps, preferring the mower's own over the cloud copy."""
+        batch_data = self._cloud_device.get_batch_device_datas([]) or {}
+        try:
+            slots = self._read_map_slots()
+        except Exception as ex:
+            _LOGGER.debug("Failed to read the map slots: %s", ex)
+            slots = None
+
+        if slots is None:
+            vector_map = parse_batch_map_data(batch_data)
+            if vector_map is None:
+                _LOGGER.debug("Failed to parse batch map data")
+                return False
+
+            self._vector_map = vector_map
             return True
 
-        except Exception as ex:
-            _LOGGER.warning("Failed to fetch vector map from batch API: %s", ex)
-            return False
+        cached_maps = {vmap.map_index: vmap for vmap in parse_cached_maps(batch_data)}
+        maps: list[MowerVectorMap] = []
+        hashes: dict[int, str] = {}
+        for slot in slots:
+            map_index = slot["index"]
+            cached = cached_maps.get(map_index)
+            vmap: MowerVectorMap
+            if cached is not None and cached.md5sum == slot["hash"]:
+                vmap = cached
+                hashes[map_index] = slot["hash"]
+            else:
+                fresh = self._read_device_map(map_index)
+                if fresh is not None:
+                    vmap = fresh
+                    hashes[map_index] = fresh.md5sum or slot["hash"]
+                elif cached is not None and has_map(cached):
+                    # A stale map still beats none. Its own hash is kept, so the
+                    # next check reads the map again.
+                    vmap = cached
+                    hashes[map_index] = cached.md5sum or ""
+                else:
+                    continue
+
+            if has_map(vmap):
+                maps.append(vmap)
+
+        vector_map = assemble_vector_map(maps, parse_mow_paths(batch_data))
+        if vector_map is None:
+            if slots:
+                _LOGGER.debug("None of the mower's maps could be read")
+                return False
+
+            # The mower holds no map at all, for instance once its last one was
+            # deleted, so none is offered any longer.
+            _LOGGER.debug("The mower reports no maps")
+
+        self._vector_map = vector_map
+        self._map_hashes = hashes
+        return True
+
+    def _read_device_map(self, map_index: int) -> MowerVectorMap | None:
+        """Read one map from the mower and parse it, or None when that fails."""
+        read = self._read_map_document(map_index)
+        if read is None:
+            return None
+
+        document, md5sum = read
+        try:
+            return parse_mower_map(convert_device_map(document, map_index, md5sum))
+        except (KeyError, TypeError, ValueError, IndexError) as ex:
+            _LOGGER.warning("Map index %s could not be parsed: %s", map_index, ex)
+            return None
+
+    def _read_map_slots(self) -> list[dict[str, Any]] | None:
+        """Read the map slots that hold a map, with the hash of each.
+
+        Returns None when the mower does not report its map slots.
+        """
+        result = self._cloud_device.action(
+            SCHEDULING_TASK_PROPERTY.siid,
+            SCHEDULING_TASK_PROPERTY.piid,
+            [self._build_get_map_list_payload()],
+        )
+        status, rows = self._preference_response(result)
+        if status not in (None, 0) or not isinstance(rows, list):
+            _LOGGER.debug("Map list read returned no map slots: %s", result)
+            return None
+
+        slots: list[dict[str, Any]] = []
+        for row in rows:
+            # A slot row is [index, is current, holds a map, has a backup, ...].
+            if not isinstance(row, (list, tuple)) or len(row) < 3:
+                continue
+
+            try:
+                map_index = int(row[0])
+            except (TypeError, ValueError):
+                continue
+
+            if not row[2]:
+                continue
+
+            info = self._read_map_info(map_index)
+            if info is None:
+                return None
+
+            slots.append({"index": map_index, "hash": info[0]})
+
+        return slots
+
+    def _read_map_info(self, map_index: int) -> tuple[str, int] | None:
+        """Read the hash and byte length of one map.
+
+        Naming the map is also what the data reads that follow continue from.
+        """
+        result = self._cloud_device.action(
+            SCHEDULING_TASK_PROPERTY.siid,
+            SCHEDULING_TASK_PROPERTY.piid,
+            [self._build_get_map_info_payload(map_index)],
+        )
+        status, data = self._preference_response(result)
+        if status not in (None, 0) or not isinstance(data, dict):
+            _LOGGER.debug("Failed to read the info of map index %s: %s", map_index, result)
+            return None
+
+        try:
+            return str(data["hash"]), int(data["size"])
+        except (KeyError, TypeError, ValueError):
+            _LOGGER.debug("Info of map index %s carries no hash and size: %s", map_index, data)
+            return None
+
+    def _read_map_document(self, map_index: int) -> tuple[dict[str, Any], str] | None:
+        """Read one map document from the mower, alongside the hash it is held under.
+
+        The mower counts the document in bytes, so the chunks are put back
+        together as bytes and only read as text once the whole document is in.
+        """
+        info = self._read_map_info(map_index)
+        if info is None:
+            return None
+
+        md5sum, length = info
+        chunks: list[bytes] = []
+        offset = 0
+        while offset < length:
+            result = self._cloud_device.action(
+                SCHEDULING_TASK_PROPERTY.siid,
+                SCHEDULING_TASK_PROPERTY.piid,
+                [self._build_get_map_data_payload(offset, min(length - offset, MAP_CHUNK_SIZE))],
+            )
+            status, data = self._preference_response(result)
+            if status not in (None, 0) or not isinstance(data, dict) or not isinstance(data.get("data"), str):
+                _LOGGER.warning("Failed to read map index %s at byte %d: %s", map_index, offset, result)
+                return None
+
+            chunk = data["data"].encode("utf-8")
+            # The mower reports how many bytes the chunk covers, which is what
+            # the next read continues from.
+            try:
+                chunk_length = int(data["size"])
+            except (KeyError, TypeError, ValueError):
+                chunk_length = len(chunk)
+
+            if chunk_length <= 0:
+                _LOGGER.warning("Map index %s read at byte %d returned no bytes: %s", map_index, offset, data)
+                return None
+
+            chunks.append(chunk[:chunk_length])
+            offset += chunk_length
+
+        # The hash is that of the document itself, so it proves the chunks came
+        # from the map named and add up to all of it: the data reads continue
+        # whichever map was named last, by this client or any other.
+        raw_document = b"".join(chunks)
+        if hashlib.md5(raw_document).hexdigest() != md5sum:
+            _LOGGER.warning("Map index %s did not read back intact", map_index)
+            return None
+
+        try:
+            document = json.loads(raw_document.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as ex:
+            _LOGGER.warning("Map index %s could not be read: %s", map_index, ex)
+            return None
+
+        if not isinstance(document, dict):
+            _LOGGER.warning("Map index %s is not a map document: %s", map_index, document)
+            return None
+
+        return document, md5sum
 
     async def fetch_firmware_status(self) -> bool:
         """Fetch firmware update availability from the cloud OTA service.
@@ -1606,7 +1838,28 @@ class DreameMowerDevice:
         """Build the 2:50 getter payload for MAPL."""
         return {
             "m": "g",
-            "t": "MAPL",
+            "t": MAP_LIST_KEY,
+        }
+
+    def _build_get_map_info_payload(self, map_index: int) -> dict[str, Any]:
+        """Build the 2:50 getter payload for the hash and size of one map."""
+        return {
+            "m": "g",
+            "t": MAP_INFO_KEY,
+            "d": {
+                "idx": int(map_index),
+            },
+        }
+
+    def _build_get_map_data_payload(self, start: int, size: int) -> dict[str, Any]:
+        """Build the 2:50 getter payload for one chunk of the map last named by an info read."""
+        return {
+            "m": "g",
+            "t": MAP_DATA_KEY,
+            "d": {
+                "start": int(start),
+                "size": int(size),
+            },
         }
 
     def _build_get_consumable_payload(self) -> dict[str, Any]:
@@ -4354,9 +4607,8 @@ class DreameMowerDevice:
     async def start_mowing_edges(self, contour_ids: list[list[int]]) -> bool:
         """Start edge mowing for specific contours.
 
-        Contour IDs are two-integer pairs such as [[1, 0], [2, 0]]. They match
-        entries in the batch map device data under MAP.* -> contours.value, where
-        each contour entry is keyed by an ID pair like [1, 0]. In Home Assistant,
+        Contour IDs are two-integer pairs such as [[1, 0], [2, 0]]: the zone and
+        the index of one of its edges, as the contours of the map name them. In Home Assistant,
         these IDs are exposed in the mower entity's contours state attribute after
         the map has been fetched.
         """

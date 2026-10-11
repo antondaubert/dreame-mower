@@ -26,6 +26,7 @@ from .const import (
     ONLINE_POLL_INTERVAL_SECONDS,
     RAIN_POLL_INTERVAL_SECONDS,
     SCHEDULE_POLL_INTERVAL_SECONDS,
+    MAP_POLL_INTERVAL_SECONDS,
 )
 from .coordinator import DreameMowerCoordinator
 from .config_flow import DEVICE_TYPE_SWBOT
@@ -192,6 +193,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 hass,
                 _async_poll_schedules,
                 timedelta(seconds=SCHEDULE_POLL_INTERVAL_SECONDS),
+                cancel_on_shutdown=True,
+            )
+        )
+
+    # Keep the maps in step with edits made elsewhere, such as a renamed zone or
+    # a deleted map. Neither is announced, so the poll compares the hash of every
+    # map and only reads the maps back when one moved.
+    if coordinator.device_type != DEVICE_TYPE_SWBOT:
+        async def _async_poll_maps(now=None) -> None:
+            try:
+                await hass.async_add_executor_job(coordinator.device.refresh_changed_vector_map)
+            except Exception as ex:
+                _LOGGER.warning("Map poll failed: %s", ex)
+
+        entry.async_on_unload(
+            async_track_time_interval(
+                hass,
+                _async_poll_maps,
+                timedelta(seconds=MAP_POLL_INTERVAL_SECONDS),
                 cancel_on_shutdown=True,
             )
         )

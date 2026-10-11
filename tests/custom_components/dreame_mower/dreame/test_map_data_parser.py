@@ -7,6 +7,8 @@ import pytest
 
 from custom_components.dreame_mower.dreame.map_data_parser import (
     MowerMapBoundary,
+    convert_device_map,
+    has_map,
     parse_batch_map_data,
     parse_mow_paths,
     parse_mower_map,
@@ -428,3 +430,193 @@ def test_parse_batch_map_data_real_large_two_map_payload():
     assert result.maps[2].boundary == MowerMapBoundary(
         x1=-40720, y1=-6300, x2=0, y2=31290
     )
+
+
+def test_parse_batch_map_data_drops_slots_that_hold_no_map():
+    """A slot without a map is stored with an empty hash and no zones.
+
+    Every mower keeps a fixed number of map slots, so a mower with a single map
+    still stores a second, empty one. Listing it offers a map that does not
+    exist.
+    """
+    batch = _load_fixture("batch_map_circles_tilted_rect.json")
+
+    result = parse_batch_map_data(batch)
+
+    assert result is not None
+    assert [(e.map_index, e.name) for e in result.available_maps] == [(0, "Map1")]
+    assert sorted(result.maps) == [1]
+
+
+def test_has_map_keeps_a_map_whose_source_carries_no_hash():
+    """Only an explicitly empty hash marks an empty slot."""
+    assert has_map(parse_mower_map({"mapIndex": 0}))
+    assert not has_map(parse_mower_map({"mapIndex": 1, "md5sum": ""}))
+
+
+# ---------------------------------------------------------------------------
+# convert_device_map
+# ---------------------------------------------------------------------------
+
+
+def _as_comparable(stored_map: dict) -> dict:
+    """Reduce a stored map to what parse_mower_map reads, with rounded points."""
+    comparable = {}
+    for key, value in stored_map.items():
+        if isinstance(value, dict) and value.get("dataType") == "Map":
+            comparable[key] = {
+                str(item_key): {
+                    field: (
+                        [(round(p["x"], 3), round(p["y"], 3)) for p in item[field]]
+                        if field == "path"
+                        else item[field]
+                    )
+                    for field in item
+                }
+                for item_key, item in value["value"]
+            }
+        else:
+            comparable[key] = value
+    return comparable
+
+
+@pytest.mark.parametrize("map_position", [0, 1])
+def test_convert_device_map_matches_the_stored_copy_of_the_same_map(map_position):
+    """A map read from the mower converts to the form the MAP.* keys store it in.
+
+    The stored copy of each map was written for the same hash the mower reports,
+    so the two must agree on every field the stored form carries.
+    """
+    fixture = _load_fixture("device_map_two_maps.json")
+    device_map = fixture["maps"][map_position]
+    stored = _as_comparable(fixture["cache"][map_position])
+
+    converted = _as_comparable(
+        convert_device_map(
+            device_map["document"],
+            fixture["map_list"][map_position][0],
+            device_map["info"]["hash"],
+        )
+    )
+
+    for key, value in converted.items():
+        assert value == stored[key], key
+
+
+def test_convert_device_map_names_unnamed_zones_by_their_position():
+    """A zone without a name is called Zone<n>, n counting zones in order."""
+    document = {
+        "map": [
+            {"id": 7, "type": 0, "name": "", "data": [[0, 0], [10, 0], [10, 10]]},
+            {"id": 3, "type": 0, "name": "Front lawn", "data": [[0, 0], [5, 0], [5, 5]]},
+            {"id": 9, "type": 0, "data": [[0, 0], [2, 0], [2, 2]]},
+        ],
+    }
+
+    vmap = parse_mower_map(convert_device_map(document, 0, "abc"))
+
+    assert [(zone.zone_id, zone.name) for zone in vmap.zones] == [
+        (7, "Zone1"),
+        (3, "Front lawn"),
+        (9, "Zone3"),
+    ]
+
+
+def test_convert_device_map_keeps_a_default_name_apart_from_a_taken_one():
+    """A default name another zone already carries gets a trailing underscore."""
+    document = {
+        "map": [
+            {"id": 1, "type": 0, "name": "", "data": [[0, 0], [10, 0], [10, 10]]},
+            {"id": 2, "type": 0, "name": "Zone1", "data": [[0, 0], [5, 0], [5, 5]]},
+        ],
+    }
+
+    vmap = parse_mower_map(convert_device_map(document, 0, "abc"))
+
+    assert [zone.name for zone in vmap.zones] == ["Zone1_", "Zone1"]
+
+
+def test_convert_device_map_without_zones_holds_no_map():
+    """A map with no zones is stored as an empty slot, like a deleted one."""
+    document = {
+        "name": "Back",
+        "map": [{"id": 4, "type": 2, "data": [[0, 0], [1, 0], [1, 1]]}],
+    }
+
+    vmap = parse_mower_map(convert_device_map(document, 1, "abc"))
+
+    assert vmap.md5sum == ""
+    assert vmap.forbidden_areas == []
+    assert not has_map(vmap)
+
+
+def test_convert_device_map_scales_points_and_sorts_items_by_type():
+    """Coordinates are scaled to map units and each item lands in its collection."""
+    document = {
+        "name": "Garden",
+        "total_area": 12.5,
+        "map": [
+            {"id": 1, "type": 0, "name": "Lawn", "area": 12.5, "time": 30, "data": [[0, 0], [20, 0], [20, 10], [0, 10]]},
+            {"id": 5, "type": 1, "data": [[0, 0], [-4, 3]]},
+        ],
+        "spot": [{"id": 11, "type": 3, "name": "Corner", "data": [[1, 1], [2, 1], [2, 2]]}],
+        "point": [
+            {"id": 1, "type": 1, "point": [3, 4, 0]},
+            {"id": 2, "type": 2, "point": [5, 6, 0]},
+        ],
+        "trajectory": [{"id": [1, 0], "data": [[0, 0], [20, 0]]}],
+    }
+
+    vmap = parse_mower_map(convert_device_map(document, 0, "abc"))
+
+    assert vmap.name == "Garden"
+    assert vmap.total_area == 12.5
+    assert vmap.md5sum == "abc"
+    assert vmap.zones[0].path == [(0, 0), (200, 0), (200, 100), (0, 100)]
+    assert vmap.zones[0].etime == 30
+    assert vmap.paths[0].path == [(0, 0), (-40, 30)]
+    assert vmap.spot_areas[0].name == "Corner"
+    assert vmap.spot_areas[0].path == [(10, 10), (20, 10), (20, 20)]
+    # Only a point of type 1 is a maintenance point.
+    assert [(p.point_id, p.x, p.y) for p in vmap.maintenance_points] == [(1, 30, 40)]
+    assert vmap.contours[0].contour_id == (1, 0)
+    assert vmap.contours[0].path == [(0, 0), (200, 0)]
+    # The boundary spans zones and paths, not spot areas or points.
+    assert vmap.boundary == MowerMapBoundary(x1=-40, y1=0, x2=200, y2=100)
+
+
+def test_convert_device_map_keeps_a_circle_as_its_bounding_box():
+    """A circular no-go area is reported by centre and radius."""
+    document = {
+        "map": [
+            {"id": 1, "type": 0, "data": [[0, 0], [20, 0], [20, 10]]},
+            {"id": 2, "type": 2, "data": [[5, 5]], "description": {"type": 3, "points": [[5, 5]], "radius": 2}},
+        ],
+    }
+
+    vmap = parse_mower_map(convert_device_map(document, 0, "abc"))
+
+    assert vmap.forbidden_areas[0].shape_type == 3
+    assert vmap.forbidden_areas[0].path == [(30, 30), (70, 70)]
+
+
+def test_convert_device_map_stores_a_tilted_rectangle_the_way_it_renders():
+    """A tilted rectangular no-go area renders back at the corners it was reported at."""
+    corners = [(10.0, 0.0), (18.660254, 5.0), (13.660254, 13.660254), (5.0, 8.660254)]
+    document = {
+        "map": [
+            {"id": 1, "type": 0, "data": [[0, 0], [20, 0], [20, 20]]},
+            {"id": 2, "type": 2, "data": [list(c) for c in corners], "description": {"type": 2}},
+        ],
+    }
+
+    vmap = parse_mower_map(convert_device_map(document, 0, "abc"))
+    area = vmap.forbidden_areas[0]
+    rendered = resolve_zone_polygon(area.shape_type, area.angle, area.path)
+
+    assert area.angle != 0
+    # Stored axis-aligned: two distinct x and two distinct y values.
+    assert len({round(x, 3) for x, _ in area.path}) == 2
+    assert len({round(y, 3) for _, y in area.path}) == 2
+    assert sorted(rendered) == sorted((round(x * 10), round(y * 10)) for x, y in corners)
+

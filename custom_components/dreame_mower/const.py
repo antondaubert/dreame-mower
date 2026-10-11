@@ -36,3 +36,8 @@ RAIN_POLL_INTERVAL_SECONDS = 300
 # under is a single command, so the schedules themselves are only read back once
 # that version moved.
 SCHEDULE_POLL_INTERVAL_SECONDS = 900
+
+# How often to check whether a map changed. An edited map is not announced
+# either, and its hash is a single command per map, so the maps themselves are
+# only read back once a hash moved.
+MAP_POLL_INTERVAL_SECONDS = 900

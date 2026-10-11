@@ -98,7 +98,7 @@ class DreameMowerCameraEntity(DreameMowerEntity, Camera):
         )
 
         # Build historical files cache first, then render from historical data
-        # or fall back to batch API vector map
+        # or fall back to the vector map
         self.hass.create_task(self._async_initial_image_load())
 
         # If a mowing session is active, request initial pose coverage and start timer
@@ -118,7 +118,7 @@ class DreameMowerCameraEntity(DreameMowerEntity, Camera):
         await super().async_will_remove_from_hass()
 
     async def _async_initial_image_load(self) -> None:
-        """Load initial image: prefer historical files, fall back to batch API vector map.
+        """Load initial image: prefer historical files, fall back to the vector map.
 
         Always fetches vector map in the background so it's available for live mode,
         since live pose coordinates use the same coordinate system as the vector map
@@ -133,7 +133,7 @@ class DreameMowerCameraEntity(DreameMowerEntity, Camera):
             await self._async_fetch_vector_map()
 
     async def _async_fetch_vector_map(self) -> None:
-        """Fetch vector map data from batch API and render it as the camera image."""
+        """Fetch the vector map and render it as the camera image."""
         try:
             loop = asyncio.get_event_loop()
             updated = await loop.run_in_executor(
@@ -145,7 +145,7 @@ class DreameMowerCameraEntity(DreameMowerEntity, Camera):
             _LOGGER.warning("Failed to fetch vector map: %s", ex)
 
     async def _async_fetch_vector_map_silent(self) -> None:
-        """Fetch vector map data from batch API without rendering.
+        """Fetch the vector map without rendering.
 
         Used when historical data is already displayed but we need the vector
         map cached for live mode coordinate matching.
@@ -456,7 +456,7 @@ class DreameMowerCameraEntity(DreameMowerEntity, Camera):
             return None
 
     async def _async_update_vector_map_image(self) -> None:
-        """Update camera image using vector map data from batch API."""
+        """Update camera image using the vector map."""
         vector_map = self.coordinator.device.vector_map
         if not vector_map or not vector_map.boundary:
             return
@@ -477,7 +477,7 @@ class DreameMowerCameraEntity(DreameMowerEntity, Camera):
 
         historical_file = await self._find_most_recent_historical_file(force_refresh=force_refresh)
         if not historical_file:
-            # No historical files — try vector map from batch API
+            # No historical files — try the vector map
             await self._async_update_vector_map_image()
             return
 

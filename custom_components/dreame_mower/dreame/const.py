@@ -310,6 +310,18 @@ SCHEDULE_INFO_KEY = "SCHDIV3"
 SCHEDULE_DATA_KEY = "SCHDDV3"
 SCHEDULE_ENABLE_KEY = "SCHDSV3"
 
+# The maps of a mower are read from the mower itself in three steps. The map
+# list reports which of its fixed map slots hold a map and which one is
+# current, an info read reports the hash and byte length of one map, and the
+# map document is then read in chunks. A data read carries no map index: it
+# continues the map the info read before it named.
+MAP_LIST_KEY = "MAPL"
+MAP_INFO_KEY = "MAPI"
+MAP_DATA_KEY = "MAPD"
+
+# Bytes requested per chunk of a map document.
+MAP_CHUNK_SIZE = 400
+
 # Schedule slots every map is known to hold. The mower reports the slots it
 # keeps, so this only stands in while they have not been read yet.
 SCHEDULE_SLOT_COUNT = 2

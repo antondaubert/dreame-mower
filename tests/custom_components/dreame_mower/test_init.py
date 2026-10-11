@@ -136,6 +136,23 @@ async def test_async_setup_entry_raises_not_ready_on_connect_failure(hass):
     coordinator.async_config_entry_first_refresh.assert_not_awaited()
     assert DOMAIN not in hass.data or entry.entry_id not in hass.data.get(DOMAIN, {})
 
+async def _setup_with_callbacks(hass, coordinator) -> list:
+    """Run setup with a stubbed coordinator and return the registered poll callbacks."""
+    entry = _make_entry()
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.dreame_mower.DreameMowerCoordinator", return_value=coordinator
+    ), patch.object(
+        hass.config_entries, "async_forward_entry_setups", AsyncMock(return_value=None)
+    ), patch(
+        "custom_components.dreame_mower.async_track_time_interval"
+    ) as track_time_interval:
+        assert await async_setup_entry(hass, entry) is True
+
+    return [call.args[1] for call in track_time_interval.call_args_list]
+
+
 async def _setup_with(hass, coordinator):
     """Run setup with a stubbed coordinator and report the registered intervals."""
     entry = _make_entry()
@@ -213,3 +230,30 @@ async def test_async_setup_entry_skips_the_schedule_fetch_for_swbot(hass):
     await _setup_with(hass, coordinator)
 
     coordinator.async_fetch_schedules.assert_not_awaited()
+
+
+async def test_async_setup_entry_polls_the_maps(hass):
+    """An edited or deleted map is not announced, so setup has to poll for it."""
+    coordinator = _make_coordinator()
+    coordinator.device.refresh_changed_vector_map = MagicMock(return_value=False)
+    callbacks = await _setup_with_callbacks(hass, coordinator)
+
+    for callback in callbacks:
+        await callback()
+
+    coordinator.device.refresh_changed_vector_map.assert_called_once_with()
+
+
+async def test_async_setup_entry_skips_the_map_poll_for_swbot(hass):
+    """Sweeping robots keep no mower maps to check."""
+    coordinator = _make_coordinator()
+    coordinator.device_type = DEVICE_TYPE_SWBOT
+    coordinator.supports_rain_protection = False
+    coordinator.device.refresh_changed_vector_map = MagicMock(return_value=False)
+    callbacks = await _setup_with_callbacks(hass, coordinator)
+
+    for callback in callbacks:
+        await callback()
+
+    coordinator.device.refresh_changed_vector_map.assert_not_called()
+

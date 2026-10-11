@@ -126,6 +126,9 @@ class MowerVectorMap:
     name: str = ""
     map_id: int = 1
     map_index: int = 0
+    # The hash the mower reports for this map: empty for a slot that holds none,
+    # None when the source does not say.
+    md5sum: str | None = None
     mow_paths: list[MowerMowPath] = field(default_factory=list)
     available_maps: list[MowerAvailableMap] = field(default_factory=list)
     current_map_id: int | None = None
@@ -244,16 +247,17 @@ def _extract_contour_id(raw_contour_id: str | list[int] | tuple[int, int]) -> tu
     return (int(raw_contour_id[0]), int(raw_contour_id[1]))
 
 
-def parse_mower_map(map_json_str: str) -> MowerVectorMap:
-    """Parse a single map JSON string into a MowerVectorMap.
+def parse_mower_map(map_json: str | dict) -> MowerVectorMap:
+    """Parse a single map into a MowerVectorMap.
 
     Args:
-        map_json_str: JSON string for one map (after unescaping from the chunk array).
+        map_json: one map, either as the JSON string held in the chunk array or
+            as the object that string decodes to.
 
     Returns:
         MowerVectorMap with zones, paths, boundary, etc.
     """
-    data = json.loads(map_json_str)
+    data = json.loads(map_json) if isinstance(map_json, str) else map_json
     vmap = MowerVectorMap()
 
     # Parse mowing area zones
@@ -339,9 +343,237 @@ def parse_mower_map(map_json_str: str) -> MowerVectorMap:
     vmap.name = data.get("name", "")
     vmap.map_index = data.get("mapIndex", 0)
     vmap.map_id = _map_id_from_index(vmap.map_index)
+    md5sum = data.get("md5sum")
+    vmap.md5sum = md5sum if isinstance(md5sum, str) else None
     vmap.last_updated = time.time()
 
     return vmap
+
+
+# Component types of the items in a map document the mower reports.
+_ITEM_MOWING_AREA = 0
+_ITEM_PATH = 1
+_ITEM_FORBIDDEN_AREA = 2
+_ITEM_SPOT_AREA = 3
+_ITEM_CLEAN_POINT = 6
+_ITEM_CRUISE_POINT = 8
+_ITEM_NOT_OBSTACLE_AREA = 10
+_ITEM_CONTOUR = 7
+
+# A point the mower reports with this type is a maintenance point; any other
+# type is a point it cruises to.
+_POINT_TYPE_CLEAN = 1
+
+_SHAPE_POINT = 5
+_SHAPE_SPOT_AREA = 7
+_SHAPE_CIRCLE_PATTERN = 11
+
+# Forbidden-area shapes the mower stores rotated: rectangles and the patterned
+# shapes. Lines, circles and plain outlines carry no rotation.
+_ROTATED_FORBIDDEN_SHAPES = frozenset({_SHAPE_RECTANGLE, 9, 10, *range(12, 35)})
+
+# The mower reports coordinates in units ten times coarser than the map uses.
+_DEVICE_COORDINATE_SCALE = 10
+
+
+def _device_points_to_path(shape_type: int, points: list, radius: float | None) -> list[dict[str, float]]:
+    """Scale the points of one map item to map coordinates.
+
+    A circle is reported as its centre and radius, and is kept as the two
+    opposite corners of its bounding box, the form resolve_zone_polygon expands.
+    """
+    scale = _DEVICE_COORDINATE_SCALE
+    if shape_type in (_SHAPE_CIRCLE, _SHAPE_CIRCLE_PATTERN) and points:
+        cx, cy = points[0][0], points[0][1]
+        r = radius or 0
+        return [
+            {"x": (cx - r) * scale, "y": (cy - r) * scale},
+            {"x": (cx + r) * scale, "y": (cy + r) * scale},
+        ]
+    return [{"x": point[0] * scale, "y": point[1] * scale} for point in points]
+
+
+def _signed_angle(a: dict, b: dict, c: dict) -> float:
+    """Return the angle at ``b`` from ``a`` to ``c`` in degrees, signed by turn direction."""
+    bax, bay = a["x"] - b["x"], a["y"] - b["y"]
+    bcx, bcy = c["x"] - b["x"], c["y"] - b["y"]
+    lengths = math.hypot(bax, bay) * math.hypot(bcx, bcy)
+    if lengths == 0:
+        return 0.0
+    cosine = max(-1.0, min(1.0, (bax * bcx + bay * bcy) / lengths))
+    angle = math.degrees(math.acos(cosine))
+    return -angle if bax * bcy - bay * bcx < 0 else angle
+
+
+def _rotate_points(path: list[dict], center: tuple[float, float], angle_deg: float) -> list[dict]:
+    """Rotate map points by ``angle_deg`` degrees around ``center``."""
+    theta = math.radians(angle_deg)
+    cos_t, sin_t = math.cos(theta), math.sin(theta)
+    cx, cy = center
+    return [
+        {
+            "x": cx + (p["x"] - cx) * cos_t - (p["y"] - cy) * sin_t,
+            "y": cy + (p["x"] - cx) * sin_t + (p["y"] - cy) * cos_t,
+        }
+        for p in path
+    ]
+
+
+def _unrotate_rectangle(path: list[dict]) -> tuple[list[dict], float]:
+    """Turn a tilted rectangle into its axis-aligned outline plus a rotation angle.
+
+    This is the form the map keeps rectangles in, and the one
+    resolve_zone_polygon tilts back for rendering. A rectangle is reported either
+    by all four corners or by two opposite ones; any other outline is kept as it
+    is, without a rotation.
+    """
+    if len(path) == 4:
+        p0, p1, p2 = path[0], path[1], path[2]
+        angle = math.fmod(_signed_angle(p0, p1, {"x": p1["x"] + 1, "y": p1["y"]}), 180)
+        center = ((p0["x"] + p2["x"]) / 2, (p0["y"] + p2["y"]) / 2)
+    elif len(path) == 2:
+        p0, p1 = path
+        angle = 45 + _signed_angle(p0, p1, {"x": p1["x"], "y": p1["y"] - 1})
+        center = ((p0["x"] + p1["x"]) / 2, (p0["y"] + p1["y"]) / 2)
+    else:
+        return path, 0.0
+    return _rotate_points(path, center, angle), angle
+
+
+def _as_map_value(items: dict) -> dict:
+    """Wrap items the way the map keeps its keyed collections."""
+    return {"dataType": "Map", "value": [[key, value] for key, value in items.items()]}
+
+
+def convert_device_map(document: dict, map_index: int, md5sum: str) -> dict:
+    """Convert a map document read from the mower into the stored map form.
+
+    The mower reports a map as plain item lists in coarse coordinates. The form
+    this returns is the one the MAP.* keys hold, so parse_mower_map reads both
+    the same way. A zone the mower holds no name for is called "Zone<n>", n
+    counting the zones in the order the mower lists them.
+    """
+    items: list[dict] = [*document.get("map", []), *document.get("spot", [])]
+    for point in document.get("point", []):
+        items.append({
+            **point,
+            "type": _ITEM_CLEAN_POINT if point.get("type") == _POINT_TYPE_CLEAN else _ITEM_CRUISE_POINT,
+            "data": [list(point.get("point", [])[:2])],
+        })
+    items.extend({**area, "type": _ITEM_NOT_OBSTACLE_AREA} for area in document.get("semantic", []))
+
+    taken_names = {item["name"] for item in items if item.get("name")}
+    collections: dict[str, dict] = {
+        name: {}
+        for name in (
+            "mowingAreas", "paths", "forbiddenAreas", "spotAreas",
+            "cleanPoints", "cruisePoints", "notObsAreas",
+        )
+    }
+    zone_count = 0
+    for item in items:
+        description = item.get("description") or {}
+        shape_type = description.get("type", 0)
+        item_type = item.get("type", _ITEM_MOWING_AREA)
+        points = description.get("points", item.get("data")) or []
+        entry: dict = {
+            "id": item["id"],
+            "type": item_type,
+            "shapeType": shape_type,
+            "path": _device_points_to_path(shape_type, points, description.get("radius")),
+        }
+
+        if item_type in (_ITEM_CLEAN_POINT, _ITEM_CRUISE_POINT):
+            entry["shapeType"] = _SHAPE_POINT
+        elif len(entry["path"]) < 2:
+            continue
+
+        if item_type == _ITEM_MOWING_AREA:
+            zone_count += 1
+            default_name = f"Zone{zone_count}"
+            if default_name in taken_names:
+                default_name += "_"
+            entry.update(
+                name=item.get("name") or default_name,
+                time=item.get("time"),
+                etime=item.get("etime", item.get("time")),
+                area=item.get("area"),
+            )
+            collections["mowingAreas"][item["id"]] = entry
+        elif item_type == _ITEM_PATH:
+            collections["paths"][item["id"]] = entry
+        elif item_type == _ITEM_FORBIDDEN_AREA:
+            if shape_type in _ROTATED_FORBIDDEN_SHAPES:
+                entry["path"], entry["angle"] = _unrotate_rectangle(entry["path"])
+            collections["forbiddenAreas"][item["id"]] = entry
+        elif item_type == _ITEM_SPOT_AREA:
+            # Spot areas keep the outline the mower reports: they are drawn
+            # as they stand, without a separate rotation.
+            entry.update(
+                shapeType=_SHAPE_SPOT_AREA,
+                name=item.get("name", ""),
+                time=item.get("time"),
+                etime=item.get("etime", item.get("time")),
+                area=item.get("area"),
+            )
+            collections["spotAreas"][item["id"]] = entry
+        elif item_type == _ITEM_CLEAN_POINT:
+            collections["cleanPoints"][item["id"]] = entry
+        elif item_type == _ITEM_CRUISE_POINT:
+            entry.update(time=item.get("time"), etime=item.get("etime", item.get("time")))
+            collections["cruisePoints"][item["id"]] = entry
+        elif item_type == _ITEM_NOT_OBSTACLE_AREA:
+            entry["shapeType"] = _SHAPE_RECTANGLE
+            entry["path"], entry["angle"] = _unrotate_rectangle(entry["path"])
+            collections["notObsAreas"][item["id"]] = entry
+
+    # A contour is keyed by its [zone, index] pair, which parse_mower_map reads
+    # back as its contour ID.
+    contours = [
+        [
+            contour["id"],
+            {
+                "id": contour["id"],
+                "type": contour.get("type", _ITEM_CONTOUR),
+                "shapeType": 0,
+                "path": _device_points_to_path(0, contour.get("data") or [], None),
+            },
+        ]
+        for contour in document.get("trajectory", [])
+    ]
+
+    # The bounding box covers what the mower drives in or must keep out of.
+    bounded_points = [
+        point
+        for collection in ("mowingAreas", "paths", "forbiddenAreas")
+        for entry in collections[collection].values()
+        for point in entry["path"]
+    ]
+    boundary = (
+        {
+            "x1": min(point["x"] for point in bounded_points),
+            "y1": min(point["y"] for point in bounded_points),
+            "x2": max(point["x"] for point in bounded_points),
+            "y2": max(point["y"] for point in bounded_points),
+        }
+        if bounded_points
+        else {"x1": 0, "y1": 0, "x2": 0, "y2": 0}
+    )
+
+    has_zones = bool(collections["mowingAreas"])
+    converted: dict = {
+        "mapIndex": map_index,
+        "md5sum": md5sum if has_zones else "",
+        "name": document.get("name") or "",
+        "totalArea": document.get("total_area", 0),
+        "boundary": boundary,
+        "contours": {"dataType": "Map", "value": contours},
+        "cut": document.get("cut_relation", []),
+    }
+    for collection, entries in collections.items():
+        # A map without zones keeps none of its other areas either.
+        converted[collection] = _as_map_value(entries if has_zones else {})
+    return converted
 
 
 def parse_mow_paths(batch_data: dict) -> list[MowerMowPath]:
@@ -486,33 +718,24 @@ def vector_map_to_map_data(vector_map: MowerVectorMap) -> dict:
     }
 
 
-def parse_batch_map_data(batch_data: dict) -> MowerVectorMap | None:
-    """Parse complete batch device data response into a MowerVectorMap.
+def parse_cached_maps(batch_data: dict) -> list[MowerVectorMap]:
+    """Parse every map slot held in the MAP.* keys of the batch device data.
 
-    This is the main entry point. It:
-    1. Reassembles MAP.* chunks into a full JSON string
-    2. Parses the JSON array (may contain multiple maps by mapIndex)
-    3. Keeps all parsed maps and returns the primary map (mapIndex 0) as the fallback/root entry
-    4. Attaches mowing paths from M_PATH.* keys
-
-    Args:
-        batch_data: Full response dict from get_batch_device_datas
-
-    Returns:
-        MowerVectorMap for the primary map, with all parsed maps attached for active-map resolution.
+    The slots are returned as they are stored, including any that hold no map;
+    has_map tells those apart.
     """
     if not batch_data:
-        return None
+        return []
 
     raw_map = reassemble_map_chunks(batch_data, "MAP")
     if not raw_map:
         _LOGGER.debug("No MAP chunks found in batch data")
-        return None
+        return []
 
-    # MAP.info contains the character length of the primary JSON array, which
-    # holds every map (one element per mapIndex). Any data beyond that length is
-    # trailing auxiliary content (md5 sums, etc.), not a JSON array, so we parse
-    # only the primary array and ignore the remainder.
+    # MAP.info holds the character length of the JSON array that carries every
+    # map (one element per mapIndex). The keys are rewritten without removing
+    # the higher-numbered ones a longer earlier write left behind, so anything
+    # beyond that length is stale and only the array itself is parsed.
     map_info = batch_data.get("MAP.info", "")
     try:
         split_pos = int(map_info) if map_info.isdigit() else 0
@@ -534,7 +757,7 @@ def parse_batch_map_data(batch_data: dict) -> MowerVectorMap | None:
 
     if not map_arrays:
         _LOGGER.warning("No valid MAP arrays found in batch data")
-        return None
+        return []
 
     parsed_maps: list[MowerVectorMap] = []
     for map_json_str in map_arrays:
@@ -544,16 +767,32 @@ def parse_batch_map_data(batch_data: dict) -> MowerVectorMap | None:
             _LOGGER.warning("Failed to parse map entry: %s", ex)
             continue
 
-    primary_map = next((vmap for vmap in parsed_maps if vmap.map_index == 0), None)
-    if primary_map is None and map_arrays:
-        try:
-            primary_map = parse_mower_map(map_arrays[0])
-        except (json.JSONDecodeError, KeyError, TypeError) as ex:
-            _LOGGER.warning("Failed to parse fallback map entry: %s", ex)
-            return None
+    return parsed_maps
 
-    if primary_map is None:
+
+def has_map(vmap: MowerVectorMap) -> bool:
+    """Return whether a map slot holds a map.
+
+    Every mower keeps a fixed number of map slots, and a slot without a map,
+    including one whose map was deleted, carries an empty hash and no zones.
+    """
+    return vmap.md5sum != "" or bool(vmap.zones)
+
+
+def assemble_vector_map(
+    parsed_maps: list[MowerVectorMap],
+    mow_paths: list[MowerMowPath],
+) -> MowerVectorMap | None:
+    """Combine the maps of a mower into the root entry the device works from.
+
+    The root is the primary map (mapIndex 0), or the first map when there is
+    none; every map is attached to it for active-map resolution.
+    """
+    if not parsed_maps:
         return None
+
+    ordered_maps = sorted(parsed_maps, key=lambda item: item.map_id)
+    primary_map = next((vmap for vmap in ordered_maps if vmap.map_index == 0), ordered_maps[0])
 
     available_maps = [
         MowerAvailableMap(
@@ -562,18 +801,34 @@ def parse_batch_map_data(batch_data: dict) -> MowerVectorMap | None:
             name=vmap.name,
             total_area=vmap.total_area,
         )
-        for vmap in sorted(parsed_maps, key=lambda item: item.map_id)
+        for vmap in ordered_maps
     ]
 
-    mow_paths = parse_mow_paths(batch_data)
-    parsed_maps_by_id = {vmap.map_id: vmap for vmap in parsed_maps}
-
-    for vmap in parsed_maps_by_id.values():
+    parsed_maps_by_id = {vmap.map_id: vmap for vmap in ordered_maps}
+    for vmap in ordered_maps:
         vmap.available_maps = available_maps
         vmap.mow_paths = mow_paths
 
-    primary_map.available_maps = available_maps
-    primary_map.mow_paths = mow_paths
     primary_map.maps = parsed_maps_by_id
-
     return primary_map
+
+
+def parse_batch_map_data(batch_data: dict) -> MowerVectorMap | None:
+    """Parse complete batch device data response into a MowerVectorMap.
+
+    The MAP.* keys are a copy of the mower's maps that is only brought up to
+    date from time to time, so this reads them as they stand. It:
+    1. Reassembles MAP.* chunks into a full JSON string
+    2. Parses the JSON array (may contain multiple maps by mapIndex)
+    3. Drops the slots that hold no map
+    4. Returns the primary map (mapIndex 0) with all maps attached for active-map resolution
+    5. Attaches mowing paths from M_PATH.* keys
+
+    Args:
+        batch_data: Full response dict from get_batch_device_datas
+
+    Returns:
+        MowerVectorMap for the primary map, with all parsed maps attached for active-map resolution.
+    """
+    parsed_maps = [vmap for vmap in parse_cached_maps(batch_data) if has_map(vmap)]
+    return assemble_vector_map(parsed_maps, parse_mow_paths(batch_data))

@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+import hashlib
 import json
 import logging
 import pytest
@@ -1027,6 +1028,229 @@ def test_fetch_vector_map_updates_current_map_id_from_mapl(device):
     assert result is True
     assert device.vector_map is vector_map
     assert device.current_map_id == 2
+
+
+_DEVICE_MAP_FIXTURE = (
+    __import__("pathlib").Path(__file__).parent / "fixtures" / "device_map_two_maps.json"
+)
+
+
+def _device_map_fixture() -> dict:
+    return json.loads(_DEVICE_MAP_FIXTURE.read_text())
+
+
+def _cached_map_batch(stored_maps: list[dict]) -> dict[str, str]:
+    """Store maps in the MAP.* keys the way the batch device data holds them."""
+    array = json.dumps([json.dumps(stored_map) for stored_map in stored_maps])
+    return {"MAP.0": array, "MAP.info": str(len(array))}
+
+
+def _encoded_map(document: dict) -> bytes:
+    """Encode a map document the way the mower holds it."""
+    return json.dumps(document, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+
+def _map_responder(map_list, documents, failing=(), wrong_hashes=()):
+    """Answer the map list, map info and map data reads like a mower holding these maps.
+
+    ``documents`` is keyed by map index, and each map's hash is that of its
+    encoded document. A read of a key named in ``failing`` is answered with an
+    error, and a map index in ``wrong_hashes`` reports a hash its document does
+    not match.
+    """
+    reads: list[str] = []
+    named = {"index": None}
+
+    def reply(data):
+        return {"code": 0, "out": [{"d": data, "m": "r", "q": 1, "r": 0}]}
+
+    def respond(_siid, _aiid, parameters, _retry_count=2):
+        payload = parameters[0]
+        key = payload["t"]
+        reads.append(key)
+        if key in failing:
+            return {"code": 0, "out": [{"m": "r", "q": 1, "r": 3}]}
+        if key == "MAPL":
+            return reply(map_list)
+        if key == "MAPI":
+            index = payload["d"]["idx"]
+            named["index"] = index
+            encoded = _encoded_map(documents[index])
+            md5sum = "0" * 32 if index in wrong_hashes else hashlib.md5(encoded).hexdigest()
+            return reply({"hash": md5sum, "idx": index, "size": len(encoded)})
+        if key == "MAPD":
+            encoded = _encoded_map(documents[named["index"]])
+            start, size = payload["d"]["start"], payload["d"]["size"]
+            chunk = encoded[start:start + size]
+            return reply({"data": chunk.decode("utf-8"), "size": len(chunk), "start": start})
+        raise AssertionError(f"unexpected read {payload}")
+
+    return respond, reads
+
+
+def _fixture_documents(fixture: dict) -> dict[int, dict]:
+    return {m["info"]["idx"]: m["document"] for m in fixture["maps"]}
+
+
+def _connect_with_stored_maps(device, stored_maps: list[dict]) -> None:
+    device._cloud_device.set_connected_state(True)
+    device._cloud_device.batch_device_datas_result = _cached_map_batch(stored_maps)
+
+
+def test_fetch_vector_map_uses_the_stored_copy_while_its_hash_matches(device):
+    """A map whose stored copy carries the hash the mower reports is not read again."""
+    fixture = _device_map_fixture()
+    _connect_with_stored_maps(device, fixture["cache"])
+    device._cloud_device.action_result, reads = _map_responder(fixture["map_list"], _fixture_documents(fixture))
+
+    assert device.fetch_vector_map() is True
+
+    assert "MAPD" not in reads
+    assert [(m["index"], m["name"]) for m in device.available_maps] == [(0, "Zuhause"), (1, "Keller")]
+
+
+def test_fetch_vector_map_reads_a_changed_map_from_the_mower(device):
+    """A map edited since its stored copy was written is read from the mower.
+
+    The stored copy is only brought up to date from time to time, so a zone
+    renamed in the meantime would otherwise keep its old name.
+    """
+    fixture = _device_map_fixture()
+    documents = _fixture_documents(fixture)
+    documents[0]["map"][0]["name"] = "Vorgarten Süd"
+    _connect_with_stored_maps(device, fixture["cache"])
+    device._cloud_device.action_result, reads = _map_responder(fixture["map_list"], documents)
+
+    assert device.fetch_vector_map() is True
+
+    # The document spans several chunks, which are put back together.
+    assert reads.count("MAPD") > 1
+    assert device.current_map_id == 1
+    assert [zone["name"] for zone in device.zones] == ["Vorgarten Süd"]
+    assert device.vector_map.md5sum == hashlib.md5(_encoded_map(documents[0])).hexdigest()
+
+
+def test_fetch_vector_map_lists_only_the_slots_that_hold_a_map(device):
+    """A slot the mower reports as holding no map is left out, whatever the stored copy says."""
+    fixture = _device_map_fixture()
+    map_list = [list(fixture["map_list"][0]), [1, 0, 0, 1, 0]]
+    _connect_with_stored_maps(device, fixture["cache"])
+    device._cloud_device.action_result, _ = _map_responder(map_list, _fixture_documents(fixture))
+
+    assert device.fetch_vector_map() is True
+
+    assert [m["index"] for m in device.available_maps] == [0]
+
+
+def test_fetch_vector_map_offers_no_map_once_the_mower_holds_none(device):
+    """Once the last map is deleted, no map is offered any longer."""
+    fixture = _device_map_fixture()
+    documents = _fixture_documents(fixture)
+    _connect_with_stored_maps(device, fixture["cache"])
+    device._cloud_device.action_result, _ = _map_responder(fixture["map_list"], documents)
+    assert device.fetch_vector_map() is True
+
+    empty_list = [[0, 1, 0, 1, 0], [1, 0, 0, 1, 0]]
+    device._cloud_device.action_result, _ = _map_responder(empty_list, documents)
+
+    assert device.refresh_changed_vector_map() is True
+    assert device.available_maps == []
+    assert device.refresh_changed_vector_map() is False
+
+
+def test_fetch_vector_map_falls_back_to_the_stored_copy_without_a_map_list(device):
+    """When the mower does not report its map slots, the stored maps are used, empty slots left out."""
+    fixture = _device_map_fixture()
+    stored = [fixture["cache"][0], {**fixture["cache"][1], "md5sum": "", "mowingAreas": {"dataType": "Map", "value": []}}]
+    _connect_with_stored_maps(device, stored)
+    device._cloud_device.action_result, _ = _map_responder([], {}, failing=("MAPL",))
+
+    assert device.fetch_vector_map() is True
+
+    assert [m["index"] for m in device.available_maps] == [0]
+
+
+def test_fetch_vector_map_keeps_a_stale_map_it_cannot_read_and_retries_it(device):
+    """A map that fails to read keeps its stored copy, and the next check reads it again."""
+    fixture = _device_map_fixture()
+    documents = _fixture_documents(fixture)
+    documents[1]["name"] = "Hinterhof"
+    _connect_with_stored_maps(device, fixture["cache"])
+    device._cloud_device.action_result, _ = _map_responder(
+        fixture["map_list"], documents, failing=("MAPD",)
+    )
+
+    assert device.fetch_vector_map() is True
+    assert [(m["index"], m["name"]) for m in device.available_maps] == [(0, "Zuhause"), (1, "Keller")]
+
+    device._cloud_device.action_result, reads = _map_responder(fixture["map_list"], documents)
+    assert device.refresh_changed_vector_map() is True
+    assert "MAPD" in reads
+    assert [(m["index"], m["name"]) for m in device.available_maps] == [(0, "Zuhause"), (1, "Hinterhof")]
+
+
+def test_fetch_vector_map_rejects_a_map_that_does_not_match_its_hash(device):
+    """A map that does not read back as the hash it is held under is not taken.
+
+    The data reads continue whichever map was named last, so a read that got
+    mixed up with another one must not be stored as the current map.
+    """
+    fixture = _device_map_fixture()
+    documents = _fixture_documents(fixture)
+    documents[1]["name"] = "Hinterhof"
+    _connect_with_stored_maps(device, fixture["cache"])
+    device._cloud_device.action_result, reads = _map_responder(
+        fixture["map_list"], documents, wrong_hashes=(1,)
+    )
+
+    assert device.fetch_vector_map() is True
+
+    assert "MAPD" in reads
+    assert [(m["index"], m["name"]) for m in device.available_maps] == [(0, "Zuhause"), (1, "Keller")]
+
+
+def test_fetch_vector_map_reads_the_other_maps_when_one_is_malformed(device):
+    """A map document that cannot be parsed does not hold back the other maps."""
+    fixture = _device_map_fixture()
+    documents = _fixture_documents(fixture)
+    documents[0]["map"][0]["name"] = "Front lawn"
+    documents[1]["map"] = [{"type": 0, "data": [[0, 0], [1, 0], [1, 1]]}]
+    _connect_with_stored_maps(device, fixture["cache"])
+    device._cloud_device.action_result, _ = _map_responder(fixture["map_list"], documents)
+
+    assert device.fetch_vector_map() is True
+
+    assert [(m["index"], m["name"]) for m in device.available_maps] == [(0, "Zuhause"), (1, "Keller")]
+    assert [zone["name"] for zone in device.zones] == ["Front lawn"]
+
+
+def test_refresh_changed_vector_map_reads_nothing_back_while_no_hash_moved(device):
+    """The poll only compares hashes when no map changed."""
+    fixture = _device_map_fixture()
+    documents = _fixture_documents(fixture)
+    _connect_with_stored_maps(device, fixture["cache"])
+    device._cloud_device.action_result, _ = _map_responder(fixture["map_list"], documents)
+    assert device.fetch_vector_map() is True
+
+    device._cloud_device.action_result, reads = _map_responder(fixture["map_list"], documents)
+
+    assert device.refresh_changed_vector_map() is False
+    assert set(reads) == {"MAPL", "MAPI"}
+
+
+def test_refresh_changed_vector_map_reads_the_maps_back_once_a_map_was_deleted(device):
+    """A deleted map changes the set of map slots, which reads the maps back."""
+    fixture = _device_map_fixture()
+    documents = _fixture_documents(fixture)
+    _connect_with_stored_maps(device, fixture["cache"])
+    device._cloud_device.action_result, _ = _map_responder(fixture["map_list"], documents)
+    assert device.fetch_vector_map() is True
+
+    map_list = [list(fixture["map_list"][0]), [1, 0, 0, 1, 0]]
+    device._cloud_device.action_result, _ = _map_responder(map_list, documents)
+
+    assert device.refresh_changed_vector_map() is True
+    assert [m["index"] for m in device.available_maps] == [0]
 
 
 def test_active_map_geometry_uses_current_map_id(device):
