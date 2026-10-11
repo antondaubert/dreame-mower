@@ -19,6 +19,7 @@ import json
 import logging
 import os
 import threading
+import time
 from typing import Any, Callable
 from datetime import datetime
 
@@ -104,6 +105,7 @@ from .const import (
     DEVICE_CODE_PROPERTY,
     PROPERTY_1_1,
     ONLINE_OFFLINE_DEBOUNCE_POLLS,
+    TRANSPORT_DISCONNECT_GRACE_SECONDS,
     CURRENT_MAP_ID_PROPERTY_NAME,
     CUTTING_HEIGHT_ABSOLUTE_MAX_CM,
     CUTTING_HEIGHT_MIN_CM,
@@ -328,6 +330,11 @@ class DreameMowerDevice:
         # Consecutive offline heartbeat polls seen so far; the device is only
         # flipped offline once this reaches ONLINE_OFFLINE_DEBOUNCE_POLLS.
         self._offline_poll_count = 0
+        # Monotonic time the transport dropped while we were connected, or None.
+        # While set and within TRANSPORT_DISCONNECT_GRACE_SECONDS the device is
+        # still reported connected, so a quick broker reconnect does not flap.
+        self._transport_down_since: float | None = None
+        self._transport_grace_timer: threading.Timer | None = None
 
         # MQTT properties
         self._bluetooth_connected: bool | None = None
@@ -396,8 +403,18 @@ class DreameMowerDevice:
 
     @property
     def connected(self) -> bool:
-        """Return True if device is connected."""
-        return self._cloud_device.connected
+        """Return True if device is connected.
+
+        A transport drop is only reported once it has outlasted
+        TRANSPORT_DISCONNECT_GRACE_SECONDS.
+        """
+        if self._cloud_device.connected:
+            return True
+        down_since = self._transport_down_since
+        return (
+            down_since is not None
+            and time.monotonic() - down_since < TRANSPORT_DISCONNECT_GRACE_SECONDS
+        )
 
     @property
     def device_reachable(self) -> bool:
@@ -1687,14 +1704,51 @@ class DreameMowerDevice:
             _LOGGER.error("Failed to handle MQTT props: %s", ex)
             return False
 
+    def _cancel_transport_grace(self) -> None:
+        """Cancel a pending transport grace timer and clear the drop time."""
+        if self._transport_grace_timer is not None:
+            self._transport_grace_timer.cancel()
+            self._transport_grace_timer = None
+        self._transport_down_since = None
+
     def _handle_connected(self) -> None:
         """Handle cloud device connection established."""
+        down_since = self._transport_down_since
+        if down_since is not None:
+            _LOGGER.debug(
+                "Cloud device %s reconnected after %.1fs",
+                self._device_id, time.monotonic() - down_since,
+            )
+        self._cancel_transport_grace()
         self._last_update = datetime.now()
         self._notify_property_change("connected", True)
 
     def _handle_disconnected(self) -> None:
-        """Handle cloud device disconnection."""
-        _LOGGER.warning("Cloud device disconnected for %s", self._device_id)
+        """Handle cloud device disconnection.
+
+        The drop is only reported once it outlasts the grace period; a reconnect
+        within it cancels the report.
+        """
+        _LOGGER.debug("Cloud device transport dropped for %s", self._device_id)
+        self._cancel_transport_grace()
+        self._transport_down_since = time.monotonic()
+        timer = threading.Timer(
+            TRANSPORT_DISCONNECT_GRACE_SECONDS, self._transport_grace_expired
+        )
+        timer.daemon = True
+        self._transport_grace_timer = timer
+        timer.start()
+
+    def _transport_grace_expired(self) -> None:
+        """Report the disconnection if the transport is still down."""
+        self._transport_grace_timer = None
+        if self._cloud_device.connected:
+            return
+        self._transport_down_since = None
+        _LOGGER.warning(
+            "Cloud device disconnected for %s (no reconnect within %ss)",
+            self._device_id, TRANSPORT_DISCONNECT_GRACE_SECONDS,
+        )
         self._notify_property_change("connected", False)
 
     async def connect(self) -> bool:
@@ -1735,6 +1789,7 @@ class DreameMowerDevice:
         try:
             # Run disconnect in executor to avoid blocking
             await asyncio.get_event_loop().run_in_executor(None, self._cloud_device.disconnect)
+            self._cancel_transport_grace()
             self._notify_property_change("connected", False)
         except Exception as ex:
             _LOGGER.error("Error disconnecting from device %s: %s", self._device_id, ex)

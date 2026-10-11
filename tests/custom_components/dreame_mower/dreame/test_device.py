@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, Mock, patch, PropertyMock
 
 from custom_components.dreame_mower.dreame.device import DreameCommandError, DreameMowerDevice, MowingMode
 from custom_components.dreame_mower.dreame.const import (
+    TRANSPORT_DISCONNECT_GRACE_SECONDS,
     MowingDirectionMode,
     DeviceStatus,
     FirmwareInstallState,
@@ -2389,6 +2390,114 @@ def test_incoming_message_restores_online(device):
 
     assert device.online is True
     assert ("online", True) in notified
+
+
+class _FakeTimer:
+    """Stand-in for threading.Timer that only fires when told to."""
+
+    instances: list["_FakeTimer"] = []
+
+    def __init__(self, interval, function):
+        self.interval = interval
+        self.function = function
+        self.cancelled = False
+        self.daemon = False
+        _FakeTimer.instances.append(self)
+
+    def start(self):
+        pass
+
+    def cancel(self):
+        self.cancelled = True
+
+
+@pytest.fixture
+def fake_timer():
+    """Replace the transport grace timer with a manually fired one."""
+    _FakeTimer.instances = []
+    with patch(
+        "custom_components.dreame_mower.dreame.device.threading.Timer", _FakeTimer
+    ):
+        yield _FakeTimer
+
+
+def test_transport_drop_within_grace_stays_connected(device, fake_timer, caplog):
+    """A transport drop followed by a quick reconnect never reports disconnected."""
+    notified: list[tuple[str, object]] = []
+    device.register_property_callback(lambda name, value: notified.append((name, value)))
+    device._cloud_device.set_connected_state(True)
+
+    device._cloud_device.set_connected_state(False)
+    with caplog.at_level(logging.WARNING):
+        device._handle_disconnected()
+        # Still within the grace period: reported connected, nothing notified.
+        assert device.connected is True
+        assert ("connected", False) not in notified
+
+        device._cloud_device.set_connected_state(True)
+        device._handle_connected()
+
+    assert fake_timer.instances[0].cancelled is True
+    assert device.connected is True
+    assert ("connected", False) not in notified
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+
+def test_transport_drop_past_grace_reports_disconnected(device, fake_timer, caplog):
+    """A drop that outlasts the grace period is reported once, with one warning."""
+    notified: list[tuple[str, object]] = []
+    device.register_property_callback(lambda name, value: notified.append((name, value)))
+    device._cloud_device.set_connected_state(True)
+
+    device._cloud_device.set_connected_state(False)
+    with caplog.at_level(logging.WARNING):
+        device._handle_disconnected()
+        timer = fake_timer.instances[0]
+        assert timer.interval == TRANSPORT_DISCONNECT_GRACE_SECONDS
+        timer.function()
+
+    assert device.connected is False
+    assert notified.count(("connected", False)) == 1
+    warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert len(warnings) == 1
+    assert "Cloud device disconnected" in warnings[0].getMessage()
+
+
+def test_transport_grace_expires_by_clock(device, fake_timer):
+    """The connected property itself stops covering the drop once the grace has run."""
+    device._cloud_device.set_connected_state(False)
+    with patch(
+        "custom_components.dreame_mower.dreame.device.time.monotonic",
+        side_effect=[1000.0, 1000.0 + TRANSPORT_DISCONNECT_GRACE_SECONDS + 1],
+    ):
+        device._handle_disconnected()
+        assert device.connected is False
+
+
+def test_transport_grace_timer_ignored_after_reconnect(device, fake_timer):
+    """A grace timer that fires after the link came back reports nothing."""
+    notified: list[tuple[str, object]] = []
+    device.register_property_callback(lambda name, value: notified.append((name, value)))
+
+    device._cloud_device.set_connected_state(False)
+    device._handle_disconnected()
+    device._cloud_device.set_connected_state(True)
+    fake_timer.instances[0].function()
+
+    assert device.connected is True
+    assert ("connected", False) not in notified
+
+
+@pytest.mark.asyncio
+async def test_disconnect_cancels_transport_grace(device, fake_timer):
+    """An explicit disconnect drops the grace and reports disconnected at once."""
+    device._cloud_device.set_connected_state(False)
+    device._handle_disconnected()
+
+    await device.disconnect()
+
+    assert fake_timer.instances[0].cancelled is True
+    assert device.connected is False
 
 
 # A full mowing preference record as reported for a map-wide (area 0) entry.
