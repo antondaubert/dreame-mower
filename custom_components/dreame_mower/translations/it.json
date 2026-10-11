@@ -220,5 +220,132 @@
         "name": "Attesa dopo la pioggia"
       }
     }
+  },
+  "selector": {
+    "mowing_direction_mode": {
+      "options": {
+        "fixed": "Sempre nella stessa direzione",
+        "crisscross": "Incrociato, rotazione di 45° a ogni sessione",
+        "chequerboard": "A scacchiera, rotazione di 90° a ogni sessione"
+      }
+    },
+    "mowing_preference_mode": {
+      "options": {
+        "map_wide": "Un'unica impostazione per tutta la mappa",
+        "per_zone": "Un'impostazione per zona"
+      }
+    }
+  },
+  "services": {
+    "start_zone_mowing": {
+      "name": "Avvia la rasatura delle zone",
+      "description": "Avvia la rasatura di una o più zone selezionate.",
+      "fields": {
+        "zone_ids": {
+          "name": "ID delle zone",
+          "description": "Elenco degli ID delle zone da rasare, ad esempio [1, 3]."
+        }
+      }
+    },
+    "start_edge_mowing": {
+      "name": "Avvia la rasatura dei bordi",
+      "description": "Avvia la rasatura di uno o più bordi selezionati.",
+      "fields": {
+        "contour_ids": {
+          "name": "ID dei contorni",
+          "description": "Elenco di coppie di ID dei contorni da rasare, ad esempio [[1, 0], [2, 0]]. Gli ID disponibili sono nell'attributo «contours» dell'entità del robot dopo il caricamento della mappa."
+        }
+      }
+    },
+    "start_spot_mowing": {
+      "name": "Avvia la rasatura di aree specifiche",
+      "description": "Avvia la rasatura di una o più aree selezionate.",
+      "fields": {
+        "spot_area_ids": {
+          "name": "ID delle aree",
+          "description": "Elenco degli ID delle aree da rasare, ad esempio [2, 4]."
+        }
+      }
+    },
+    "set_cutting_height": {
+      "name": "Imposta l'altezza di taglio",
+      "description": "Imposta l'altezza di taglio per un'intera mappa o per una delle sue zone. Non tutti i modelli supportano la regolazione dell'altezza; l'intervallo disponibile dipende dal modello.",
+      "fields": {
+        "height": {
+          "name": "Altezza di taglio",
+          "description": "Altezza di taglio in centimetri, con incrementi di 0,5 cm."
+        },
+        "map_id": {
+          "name": "ID mappa",
+          "description": "Mappa da modificare. Per impostazione predefinita, la mappa attiva. Gli ID disponibili sono nell'attributo «maps» dell'entità del robot dopo il caricamento della mappa."
+        },
+        "zone_id": {
+          "name": "ID zona",
+          "description": "Zona da modificare al posto dell'intera mappa. Attiva le impostazioni per zona: le altre zone mantengono la propria altezza e l'altezza generale della mappa non si applica più. Gli ID disponibili sono nell'attributo «zones» dell'entità del robot."
+        }
+      }
+    },
+    "set_edge_mowing_settings": {
+      "name": "Imposta le opzioni di rasatura dei bordi",
+      "description": "Modifica le impostazioni di rasatura dei bordi per un'intera mappa o per una delle sue zone. Le impostazioni omesse mantengono il valore attuale. Se la mappa usa impostazioni per zona, le modifiche si applicano a tutte le zone perché il robot non usa più le impostazioni generali della mappa. Queste impostazioni sono disponibili anche come interruttori per la mappa attiva.",
+      "fields": {
+        "automatic_edge_mowing": {
+          "name": "Rasatura automatica dei bordi",
+          "description": "Indica se il robot rasa automaticamente i bordi dopo aver completato la rasatura dell'intera mappa o di una zona."
+        },
+        "safe_edge_mowing": {
+          "name": "Rasatura sicura dei bordi",
+          "description": "Indica se il robot mantiene una piccola distanza dal limite del prato durante la rasatura dei bordi. Non disponibile su tutti i modelli."
+        },
+        "edge_blade_offset": {
+          "name": "Spostamento laterale del disco",
+          "description": "Indica se il disco di taglio si sposta lateralmente durante i passaggi sui bordi per tagliare più vicino al limite. Attivando l'opzione, i passaggi sui bordi aumentano da uno a due per coprire l'intero bordo."
+        },
+        "map_id": {
+          "name": "ID mappa",
+          "description": "Mappa da modificare. Per impostazione predefinita, la mappa attiva. Gli ID disponibili sono nell'attributo «maps» dell'entità del robot dopo il caricamento della mappa."
+        },
+        "zone_id": {
+          "name": "ID zona",
+          "description": "Zona da modificare al posto dell'intera mappa. Attiva le impostazioni per zona: le altre zone mantengono le proprie impostazioni e quelle generali della mappa non si applicano più. Gli ID disponibili sono nell'attributo «zones» dell'entità del robot."
+        }
+      }
+    },
+    "set_mowing_direction": {
+      "name": "Imposta la direzione di taglio",
+      "description": "Imposta la direzione delle linee di taglio per un'intera mappa o per una delle sue zone e il modo in cui cambia tra una sessione e l'altra. Se la mappa usa impostazioni per zona, le modifiche si applicano a tutte le zone perché il robot non usa più le impostazioni generali della mappa. Per la mappa attiva, queste impostazioni sono disponibili anche come numero e selettore.",
+      "fields": {
+        "angle": {
+          "name": "Angolo",
+          "description": "Direzione di taglio in gradi, come mostrata nell'app. Indica l'orientamento di una linea, non la direzione di marcia: gli angoli da 180° in poi rappresentano le stesse linee dell'angolo inferiore di 180°."
+        },
+        "mode": {
+          "name": "Modalità di taglio",
+          "description": "Scegli se ogni sessione mantiene la stessa direzione di taglio o alterna rispetto alla sessione precedente."
+        },
+        "map_id": {
+          "name": "ID mappa",
+          "description": "Mappa da modificare. Per impostazione predefinita, la mappa attiva."
+        },
+        "zone_id": {
+          "name": "ID zona",
+          "description": "Zona da modificare al posto dell'intera mappa. Attiva le impostazioni per zona: le altre zone mantengono le proprie impostazioni e quelle generali della mappa non si applicano più."
+        }
+      }
+    },
+    "set_mowing_preference_mode": {
+      "name": "Imposta la modalità delle impostazioni di taglio",
+      "description": "Scegli se una mappa usa un unico insieme di impostazioni di taglio o impostazioni separate per zona. Consente, ad esempio, di ripristinare un'altezza di taglio generale dopo averne impostata una per una singola zona. La modalità si applica anche alle altre impostazioni di taglio.",
+      "fields": {
+        "mode": {
+          "name": "Modalità delle impostazioni",
+          "description": "Indica se la mappa usa impostazioni generali o impostazioni specifiche per ogni zona."
+        },
+        "map_id": {
+          "name": "ID mappa",
+          "description": "Mappa da modificare. Per impostazione predefinita, la mappa attiva."
+        }
+      }
+    }
   }
 }

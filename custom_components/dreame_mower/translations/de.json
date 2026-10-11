@@ -220,5 +220,132 @@
         "name": "Wartezeit nach Regen"
       }
     }
+  },
+  "selector": {
+    "mowing_direction_mode": {
+      "options": {
+        "fixed": "Immer in dieselbe Richtung",
+        "crisscross": "Kreuzmuster, Drehung um 45° je Sitzung",
+        "chequerboard": "Schachbrettmuster, Drehung um 90° je Sitzung"
+      }
+    },
+    "mowing_preference_mode": {
+      "options": {
+        "map_wide": "Eine Einstellung für die gesamte Karte",
+        "per_zone": "Eine Einstellung pro Zone"
+      }
+    }
+  },
+  "services": {
+    "start_zone_mowing": {
+      "name": "Zonen mähen starten",
+      "description": "Das Mähen für eine oder mehrere ausgewählte Zonen starten.",
+      "fields": {
+        "zone_ids": {
+          "name": "Zonen-IDs",
+          "description": "Liste der zu mähenden Zonen-IDs, zum Beispiel [1, 3]."
+        }
+      }
+    },
+    "start_edge_mowing": {
+      "name": "Kantenmähen starten",
+      "description": "Das Mähen einer oder mehrerer ausgewählter Kanten starten.",
+      "fields": {
+        "contour_ids": {
+          "name": "Kontur-IDs",
+          "description": "Liste der zu mähenden Kontur-ID-Paare, zum Beispiel [[1, 0], [2, 0]]. Verfügbare IDs stehen nach dem Abrufen der Karte im Attribut „contours“ der Mähroboter-Entität."
+        }
+      }
+    },
+    "start_spot_mowing": {
+      "name": "Punktmähen starten",
+      "description": "Das Mähen eines oder mehrerer ausgewählter Bereiche starten.",
+      "fields": {
+        "spot_area_ids": {
+          "name": "Bereichs-IDs",
+          "description": "Liste der zu mähenden Bereichs-IDs, zum Beispiel [2, 4]."
+        }
+      }
+    },
+    "set_cutting_height": {
+      "name": "Schnitthöhe festlegen",
+      "description": "Die Schnitthöhe für eine gesamte Karte oder eine ihrer Zonen festlegen. Nicht jedes Modell unterstützt die Höhenverstellung; der verfügbare Bereich hängt vom Modell ab.",
+      "fields": {
+        "height": {
+          "name": "Schnitthöhe",
+          "description": "Schnitthöhe in Zentimetern, in Schritten von 0,5 cm."
+        },
+        "map_id": {
+          "name": "Karten-ID",
+          "description": "Zu ändernde Karte. Standardmäßig die aktive Karte. Verfügbare IDs stehen nach dem Abrufen der Karte im Attribut „maps“ der Mähroboter-Entität."
+        },
+        "zone_id": {
+          "name": "Zonen-ID",
+          "description": "Statt der gesamten Karte zu ändernde Zone. Dadurch werden zonenbezogene Einstellungen aktiviert: Andere Zonen behalten ihre eigene Höhe und die kartenweite Höhe gilt nicht mehr. Verfügbare IDs stehen im Attribut „zones“ der Mähroboter-Entität."
+        }
+      }
+    },
+    "set_edge_mowing_settings": {
+      "name": "Kantenmäh-Einstellungen festlegen",
+      "description": "Kantenmäh-Einstellungen für eine gesamte Karte oder eine ihrer Zonen ändern. Nicht angegebene Einstellungen behalten ihren aktuellen Wert. Bei zonenbezogenen Einstellungen werden Änderungen auf alle Zonen angewendet, da der Mähroboter die kartenweiten Einstellungen dann nicht mehr verwendet. Diese Einstellungen sind für die aktive Karte auch als Schalter verfügbar.",
+      "fields": {
+        "automatic_edge_mowing": {
+          "name": "Automatisches Kantenmähen",
+          "description": "Legt fest, ob der Mähroboter die Kanten nach dem Mähen der gesamten Karte oder einer Zone automatisch mäht."
+        },
+        "safe_edge_mowing": {
+          "name": "Sicheres Kantenmähen",
+          "description": "Legt fest, ob der Mähroboter beim Kantenmähen einen kleinen Abstand zur Rasengrenze hält. Nicht bei allen Modellen verfügbar."
+        },
+        "edge_blade_offset": {
+          "name": "Seitlicher Messerversatz",
+          "description": "Legt fest, ob sich die Schneidscheibe bei Kantenfahrten seitlich verschiebt, damit näher an der Grenze gemäht wird. Beim Aktivieren werden außerdem aus einer Kantenrunde zwei, damit die versetzte Scheibe die Kante vollständig abdeckt."
+        },
+        "map_id": {
+          "name": "Karten-ID",
+          "description": "Zu ändernde Karte. Standardmäßig die aktive Karte. Verfügbare IDs stehen nach dem Abrufen der Karte im Attribut „maps“ der Mähroboter-Entität."
+        },
+        "zone_id": {
+          "name": "Zonen-ID",
+          "description": "Statt der gesamten Karte zu ändernde Zone. Dadurch werden zonenbezogene Einstellungen aktiviert: Andere Zonen behalten ihre eigenen Einstellungen und die kartenweiten Einstellungen gelten nicht mehr. Verfügbare IDs stehen im Attribut „zones“ der Mähroboter-Entität."
+        }
+      }
+    },
+    "set_mowing_direction": {
+      "name": "Mährichtung festlegen",
+      "description": "Die Richtung der Mähbahnen für eine gesamte Karte oder eine ihrer Zonen sowie deren Änderung zwischen den Sitzungen festlegen. Bei zonenbezogenen Einstellungen werden Änderungen auf alle Zonen angewendet, da der Mähroboter die kartenweiten Einstellungen dann nicht mehr verwendet. Für die aktive Karte sind diese Einstellungen auch als Zahl und Auswahl verfügbar.",
+      "fields": {
+        "angle": {
+          "name": "Winkel",
+          "description": "Mährichtung in Grad, wie in der App angezeigt. Der Winkel beschreibt eine Linienausrichtung, keine Fahrtrichtung: Winkel ab 180° entsprechen denselben Bahnen wie der um 180° kleinere Winkel."
+        },
+        "mode": {
+          "name": "Mähmodus",
+          "description": "Auswählen, ob jede Sitzung dieselbe Mährichtung verwendet oder gegenüber der vorherigen Sitzung wechselt."
+        },
+        "map_id": {
+          "name": "Karten-ID",
+          "description": "Zu ändernde Karte. Standardmäßig die aktive Karte."
+        },
+        "zone_id": {
+          "name": "Zonen-ID",
+          "description": "Statt der gesamten Karte zu ändernde Zone. Dadurch werden zonenbezogene Einstellungen aktiviert: Andere Zonen behalten ihre eigenen Einstellungen und die kartenweiten Einstellungen gelten nicht mehr."
+        }
+      }
+    },
+    "set_mowing_preference_mode": {
+      "name": "Mäh-Einstellungsmodus festlegen",
+      "description": "Auswählen, ob eine Karte einheitliche Mäh-Einstellungen oder separate Einstellungen pro Zone verwendet. Damit lässt sich zum Beispiel eine kartenweite Schnitthöhe wiederherstellen, nachdem für eine einzelne Zone eine Höhe festgelegt wurde. Der Modus gilt auch für die übrigen Mäh-Einstellungen.",
+      "fields": {
+        "mode": {
+          "name": "Einstellungsmodus",
+          "description": "Auswählen, ob die Karte kartenweite Einstellungen oder Einstellungen für jede Zone verwendet."
+        },
+        "map_id": {
+          "name": "Karten-ID",
+          "description": "Zu ändernde Karte. Standardmäßig die aktive Karte."
+        }
+      }
+    }
   }
 }

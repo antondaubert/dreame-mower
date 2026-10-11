@@ -220,5 +220,132 @@
         "name": "Opóźnienie po deszczu"
       }
     }
+  },
+  "selector": {
+    "mowing_direction_mode": {
+      "options": {
+        "fixed": "Zawsze w tym samym kierunku",
+        "crisscross": "Krzyżowo, obrót o 45° przy każdej sesji",
+        "chequerboard": "Szachownica, obrót o 90° przy każdej sesji"
+      }
+    },
+    "mowing_preference_mode": {
+      "options": {
+        "map_wide": "Jedno ustawienie dla całej mapy",
+        "per_zone": "Ustawienie dla każdej strefy"
+      }
+    }
+  },
+  "services": {
+    "start_zone_mowing": {
+      "name": "Rozpocznij koszenie stref",
+      "description": "Rozpoczyna koszenie jednej lub kilku wybranych stref.",
+      "fields": {
+        "zone_ids": {
+          "name": "Identyfikatory stref",
+          "description": "Lista identyfikatorów koszonych stref, na przykład [1, 3]."
+        }
+      }
+    },
+    "start_edge_mowing": {
+      "name": "Rozpocznij koszenie krawędzi",
+      "description": "Rozpoczyna koszenie jednej lub kilku wybranych krawędzi.",
+      "fields": {
+        "contour_ids": {
+          "name": "Identyfikatory konturów",
+          "description": "Lista par identyfikatorów koszonych konturów, na przykład [[1, 0], [2, 0]]. Dostępne identyfikatory są widoczne w atrybucie „contours” encji kosiarki po pobraniu mapy."
+        }
+      }
+    },
+    "start_spot_mowing": {
+      "name": "Rozpocznij koszenie punktowe",
+      "description": "Rozpoczyna koszenie jednego lub kilku wybranych obszarów punktowych.",
+      "fields": {
+        "spot_area_ids": {
+          "name": "Identyfikatory obszarów punktowych",
+          "description": "Lista identyfikatorów koszonych obszarów punktowych, na przykład [2, 4]."
+        }
+      }
+    },
+    "set_cutting_height": {
+      "name": "Ustaw wysokość koszenia",
+      "description": "Ustawia wysokość koszenia dla całej mapy lub jednej ze stref. Nie każdy model obsługuje regulację wysokości; dostępny zakres zależy od modelu.",
+      "fields": {
+        "height": {
+          "name": "Wysokość koszenia",
+          "description": "Wysokość koszenia w centymetrach, co 0,5 cm."
+        },
+        "map_id": {
+          "name": "Identyfikator mapy",
+          "description": "Mapa do zmiany. Domyślnie aktywna mapa. Dostępne identyfikatory są widoczne w atrybucie „maps” encji kosiarki po pobraniu mapy."
+        },
+        "zone_id": {
+          "name": "Identyfikator strefy",
+          "description": "Strefa do zmiany zamiast całej mapy. Włącza ustawienia dla stref: pozostałe strefy zachowują własną wysokość, a wysokość dla całej mapy przestaje obowiązywać. Dostępne identyfikatory są widoczne w atrybucie „zones” encji kosiarki."
+        }
+      }
+    },
+    "set_edge_mowing_settings": {
+      "name": "Ustaw koszenie krawędzi",
+      "description": "Zmienia ustawienia koszenia krawędzi dla całej mapy lub jednej ze stref. Pominięte ustawienia zachowują bieżące wartości. Jeśli mapa korzysta z ustawień dla stref, zmiany są stosowane do wszystkich stref, ponieważ kosiarka nie używa wtedy ustawień dla całej mapy. Te ustawienia są również dostępne jako przełączniki dla aktywnej mapy.",
+      "fields": {
+        "automatic_edge_mowing": {
+          "name": "Automatyczne koszenie krawędzi",
+          "description": "Określa, czy kosiarka automatycznie kosi krawędzie po zakończeniu koszenia całej mapy lub strefy."
+        },
+        "safe_edge_mowing": {
+          "name": "Bezpieczne koszenie krawędzi",
+          "description": "Określa, czy podczas koszenia krawędzi kosiarka zachowuje niewielki odstęp od granicy trawnika. Funkcja nie jest dostępna we wszystkich modelach."
+        },
+        "edge_blade_offset": {
+          "name": "Boczne przesunięcie tarczy",
+          "description": "Określa, czy tarcza tnąca przesuwa się na bok podczas przejazdów przy krawędzi, aby kosić bliżej granicy. Włączenie tej opcji zwiększa też liczbę przejazdów przy krawędzi z jednego do dwóch, by przesunięta tarcza skosiła całą krawędź."
+        },
+        "map_id": {
+          "name": "Identyfikator mapy",
+          "description": "Mapa do zmiany. Domyślnie aktywna mapa. Dostępne identyfikatory są widoczne w atrybucie „maps” encji kosiarki po pobraniu mapy."
+        },
+        "zone_id": {
+          "name": "Identyfikator strefy",
+          "description": "Strefa do zmiany zamiast całej mapy. Włącza ustawienia dla stref: pozostałe strefy zachowują własne ustawienia, a ustawienia dla całej mapy przestają obowiązywać. Dostępne identyfikatory są widoczne w atrybucie „zones” encji kosiarki."
+        }
+      }
+    },
+    "set_mowing_direction": {
+      "name": "Ustaw kierunek koszenia",
+      "description": "Ustawia kierunek pasów koszenia dla całej mapy lub jednej ze stref oraz sposób jego zmiany między sesjami. Jeśli mapa korzysta z ustawień dla stref, zmiany są stosowane do wszystkich stref, ponieważ kosiarka nie używa wtedy ustawień dla całej mapy. Dla aktywnej mapy ustawienia te są również dostępne jako liczba i lista wyboru.",
+      "fields": {
+        "angle": {
+          "name": "Kąt",
+          "description": "Kierunek koszenia w stopniach, zgodnie z aplikacją. Określa orientację linii, a nie kierunek jazdy: kąty od 180° opisują te same pasy co kąt mniejszy o 180°."
+        },
+        "mode": {
+          "name": "Tryb koszenia",
+          "description": "Wybierz, czy każda sesja używa tego samego kierunku koszenia, czy zmienia go względem poprzedniej sesji."
+        },
+        "map_id": {
+          "name": "Identyfikator mapy",
+          "description": "Mapa do zmiany. Domyślnie aktywna mapa."
+        },
+        "zone_id": {
+          "name": "Identyfikator strefy",
+          "description": "Strefa do zmiany zamiast całej mapy. Włącza ustawienia dla stref: pozostałe strefy zachowują własne ustawienia, a ustawienia dla całej mapy przestają obowiązywać."
+        }
+      }
+    },
+    "set_mowing_preference_mode": {
+      "name": "Ustaw tryb ustawień koszenia",
+      "description": "Wybierz, czy mapa używa jednego zestawu ustawień koszenia, czy osobnych ustawień dla każdej strefy. Pozwala to na przykład przywrócić wysokość koszenia dla całej mapy po ustawieniu jej dla pojedynczej strefy. Tryb obejmuje również pozostałe ustawienia koszenia.",
+      "fields": {
+        "mode": {
+          "name": "Tryb ustawień",
+          "description": "Określa, czy mapa używa ustawień dla całej mapy, czy osobnych ustawień dla każdej strefy."
+        },
+        "map_id": {
+          "name": "Identyfikator mapy",
+          "description": "Mapa do zmiany. Domyślnie aktywna mapa."
+        }
+      }
+    }
   }
 }
