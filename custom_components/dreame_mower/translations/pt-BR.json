@@ -220,5 +220,132 @@
         "name": "Espera após a chuva"
       }
     }
+  },
+  "selector": {
+    "mowing_direction_mode": {
+      "options": {
+        "fixed": "Sempre na mesma direção",
+        "crisscross": "Cruzado, rotação de 45° a cada sessão",
+        "chequerboard": "Tabuleiro, rotação de 90° a cada sessão"
+      }
+    },
+    "mowing_preference_mode": {
+      "options": {
+        "map_wide": "Uma configuração para todo o mapa",
+        "per_zone": "Uma configuração por zona"
+      }
+    }
+  },
+  "services": {
+    "start_zone_mowing": {
+      "name": "Iniciar corte de zonas",
+      "description": "Inicia o corte de uma ou mais zonas selecionadas.",
+      "fields": {
+        "zone_ids": {
+          "name": "IDs das zonas",
+          "description": "Lista de IDs das zonas a cortar, por exemplo [1, 3]."
+        }
+      }
+    },
+    "start_edge_mowing": {
+      "name": "Iniciar corte das bordas",
+      "description": "Inicia o corte de uma ou mais bordas selecionadas.",
+      "fields": {
+        "contour_ids": {
+          "name": "IDs dos contornos",
+          "description": "Lista de pares de IDs dos contornos a cortar, por exemplo [[1, 0], [2, 0]]. Os IDs disponíveis aparecem no atributo 'contours' da entidade do cortador após o carregamento do mapa."
+        }
+      }
+    },
+    "start_spot_mowing": {
+      "name": "Iniciar corte de áreas específicas",
+      "description": "Inicia o corte de uma ou mais áreas específicas selecionadas.",
+      "fields": {
+        "spot_area_ids": {
+          "name": "IDs das áreas específicas",
+          "description": "Lista de IDs das áreas a cortar, por exemplo [2, 4]."
+        }
+      }
+    },
+    "set_cutting_height": {
+      "name": "Definir altura de corte",
+      "description": "Define a altura de corte para todo o mapa ou para uma de suas zonas. Nem todos os modelos permitem ajustar a altura; o intervalo disponível depende do modelo.",
+      "fields": {
+        "height": {
+          "name": "Altura de corte",
+          "description": "Altura de corte em centímetros, em incrementos de 0,5 cm."
+        },
+        "map_id": {
+          "name": "ID do mapa",
+          "description": "Mapa a alterar. Por padrão, o mapa ativo. Os IDs disponíveis aparecem no atributo 'maps' da entidade do cortador após o carregamento do mapa."
+        },
+        "zone_id": {
+          "name": "ID da zona",
+          "description": "Zona a alterar em vez do mapa inteiro. Isso ativa as configurações por zona: as demais zonas mantêm suas próprias alturas e a altura geral do mapa deixa de ser aplicada. Os IDs disponíveis aparecem no atributo 'zones' da entidade do cortador."
+        }
+      }
+    },
+    "set_edge_mowing_settings": {
+      "name": "Definir configurações de corte das bordas",
+      "description": "Altera as configurações de corte das bordas para todo o mapa ou para uma de suas zonas. As configurações omitidas mantêm o valor atual. Se o mapa usar configurações por zona, as alterações serão aplicadas a todas as zonas, pois o cortador deixa de usar as configurações gerais do mapa. Essas configurações também estão disponíveis como interruptores para o mapa ativo.",
+      "fields": {
+        "automatic_edge_mowing": {
+          "name": "Corte automático das bordas",
+          "description": "Indica se o cortador corta as bordas automaticamente após terminar o corte de todo o mapa ou de uma zona."
+        },
+        "safe_edge_mowing": {
+          "name": "Corte seguro das bordas",
+          "description": "Indica se o cortador mantém uma pequena margem em relação ao limite do gramado ao cortar as bordas. Não disponível em todos os modelos."
+        },
+        "edge_blade_offset": {
+          "name": "Deslocamento lateral do disco",
+          "description": "Indica se o disco de corte se desloca lateralmente nas passadas pelas bordas para cortar mais perto do limite. Ativar esta opção também aumenta as passadas nas bordas de uma para duas, para que o disco deslocado cubra toda a borda."
+        },
+        "map_id": {
+          "name": "ID do mapa",
+          "description": "Mapa a alterar. Por padrão, o mapa ativo. Os IDs disponíveis aparecem no atributo 'maps' da entidade do cortador após o carregamento do mapa."
+        },
+        "zone_id": {
+          "name": "ID da zona",
+          "description": "Zona a alterar em vez do mapa inteiro. Isso ativa as configurações por zona: as demais zonas mantêm suas próprias configurações e as configurações gerais do mapa deixam de ser aplicadas. Os IDs disponíveis aparecem no atributo 'zones' da entidade do cortador."
+        }
+      }
+    },
+    "set_mowing_direction": {
+      "name": "Definir direção do corte",
+      "description": "Define a direção das linhas de corte para todo o mapa ou para uma de suas zonas, e como ela muda entre as sessões. Se o mapa usar configurações por zona, as alterações serão aplicadas a todas as zonas, pois o cortador deixa de usar as configurações gerais do mapa. Essas configurações também estão disponíveis como número e seletor para o mapa ativo.",
+      "fields": {
+        "angle": {
+          "name": "Ângulo",
+          "description": "Direção do corte em graus, conforme exibida no aplicativo. É a orientação de uma linha, não o sentido de deslocamento: ângulos a partir de 180° representam as mesmas linhas que o ângulo 180° menor."
+        },
+        "mode": {
+          "name": "Modo de corte",
+          "description": "Escolha se cada sessão mantém a mesma direção de corte ou alterna em relação à sessão anterior."
+        },
+        "map_id": {
+          "name": "ID do mapa",
+          "description": "Mapa a alterar. Por padrão, o mapa ativo."
+        },
+        "zone_id": {
+          "name": "ID da zona",
+          "description": "Zona a alterar em vez do mapa inteiro. Isso ativa as configurações por zona: as demais zonas mantêm suas próprias configurações e as configurações gerais do mapa deixam de ser aplicadas."
+        }
+      }
+    },
+    "set_mowing_preference_mode": {
+      "name": "Definir modo de configuração do corte",
+      "description": "Escolha se o mapa usa um único conjunto de configurações de corte ou configurações separadas por zona. Isso permite, por exemplo, restaurar uma altura de corte geral após definir uma altura para uma zona específica. Esse modo também se aplica às demais configurações de corte.",
+      "fields": {
+        "mode": {
+          "name": "Modo de configuração",
+          "description": "Indica se o mapa usa configurações gerais ou configurações próprias para cada zona."
+        },
+        "map_id": {
+          "name": "ID do mapa",
+          "description": "Mapa a alterar. Por padrão, o mapa ativo."
+        }
+      }
+    }
   }
 }

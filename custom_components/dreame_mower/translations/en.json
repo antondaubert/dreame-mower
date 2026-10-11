@@ -220,5 +220,132 @@
         "name": "After-Rain Delay"
       }
     }
+  },
+  "selector": {
+    "mowing_direction_mode": {
+      "options": {
+        "fixed": "Always the same direction",
+        "crisscross": "Crisscross, turning 45° each session",
+        "chequerboard": "Chequerboard, turning 90° each session"
+      }
+    },
+    "mowing_preference_mode": {
+      "options": {
+        "map_wide": "One setting for the whole map",
+        "per_zone": "A setting per zone"
+      }
+    }
+  },
+  "services": {
+    "start_zone_mowing": {
+      "name": "Start zone mowing",
+      "description": "Start mowing for one or more selected zones.",
+      "fields": {
+        "zone_ids": {
+          "name": "Zone IDs",
+          "description": "List of zone IDs to mow, for example [1, 3]."
+        }
+      }
+    },
+    "start_edge_mowing": {
+      "name": "Start edge mowing",
+      "description": "Start mowing one or more selected edges.",
+      "fields": {
+        "contour_ids": {
+          "name": "Contour IDs",
+          "description": "List of contour ID pairs to mow, for example [[1, 0], [2, 0]]. Available IDs appear in the mower entity's contours attribute after the map is fetched."
+        }
+      }
+    },
+    "start_spot_mowing": {
+      "name": "Start spot mowing",
+      "description": "Start mowing one or more selected spot areas.",
+      "fields": {
+        "spot_area_ids": {
+          "name": "Spot area IDs",
+          "description": "List of spot area IDs to mow, for example [2, 4]."
+        }
+      }
+    },
+    "set_cutting_height": {
+      "name": "Set cutting height",
+      "description": "Set the cutting height for a whole map or one of its zones. Not every model supports height adjustment; the available range depends on the model.",
+      "fields": {
+        "height": {
+          "name": "Cutting height",
+          "description": "Cutting height in centimeters, in steps of 0.5 cm."
+        },
+        "map_id": {
+          "name": "Map ID",
+          "description": "Map to change. Defaults to the active map. Available IDs appear in the mower entity's maps attribute after the map is fetched."
+        },
+        "zone_id": {
+          "name": "Zone ID",
+          "description": "Zone to change instead of the whole map. This enables per-zone settings: other zones keep their own heights and the map-wide height no longer applies. Available IDs appear in the mower entity's zones attribute."
+        }
+      }
+    },
+    "set_edge_mowing_settings": {
+      "name": "Set edge mowing settings",
+      "description": "Change edge mowing settings for a whole map or one of its zones. Omitted settings keep their current values. If the map uses per-zone settings, changes are applied to every zone because the mower no longer uses the map-wide settings. These settings are also available as switches for the active map.",
+      "fields": {
+        "automatic_edge_mowing": {
+          "name": "Automatic edge mowing",
+          "description": "Whether the mower automatically mows the edges after finishing all-area or zone mowing."
+        },
+        "safe_edge_mowing": {
+          "name": "Safe edge mowing",
+          "description": "Whether the mower keeps a small buffer from the lawn boundary while mowing the edges. Not available on every model."
+        },
+        "edge_blade_offset": {
+          "name": "Edge blade offset",
+          "description": "Whether the cutting disc shifts sideways on edge passes to cut closer to the boundary. Enabling this also increases edge laps from one to two so the offset disc can cover the edge."
+        },
+        "map_id": {
+          "name": "Map ID",
+          "description": "Map to change. Defaults to the active map. Available IDs appear in the mower entity's maps attribute after the map is fetched."
+        },
+        "zone_id": {
+          "name": "Zone ID",
+          "description": "Zone to change instead of the whole map. This enables per-zone settings: other zones keep their own settings and the map-wide settings no longer apply. Available IDs appear in the mower entity's zones attribute."
+        }
+      }
+    },
+    "set_mowing_direction": {
+      "name": "Set mowing direction",
+      "description": "Set the direction of the mowing lanes for a whole map or one of its zones, and how that direction changes between sessions. If the map uses per-zone settings, changes are applied to every zone because the mower no longer uses the map-wide settings. These settings are also available as a number and select entity for the active map.",
+      "fields": {
+        "angle": {
+          "name": "Angle",
+          "description": "Mowing direction in degrees, as shown in the app. This is a line orientation, not a travel heading: angles from 180° onward describe the same lanes as the angle 180° lower."
+        },
+        "mode": {
+          "name": "Mowing mode",
+          "description": "Choose whether each session uses the same mowing direction or alternates relative to the previous session."
+        },
+        "map_id": {
+          "name": "Map ID",
+          "description": "Map to change. Defaults to the active map."
+        },
+        "zone_id": {
+          "name": "Zone ID",
+          "description": "Zone to change instead of the whole map. This enables per-zone settings: other zones keep their own settings and the map-wide settings no longer apply."
+        }
+      }
+    },
+    "set_mowing_preference_mode": {
+      "name": "Set mowing preference mode",
+      "description": "Choose whether a map uses one set of mowing settings or separate settings per zone. Use this to restore a map-wide cutting height after setting a height for an individual zone. This mode also applies to the other mowing settings.",
+      "fields": {
+        "mode": {
+          "name": "Settings mode",
+          "description": "Choose whether the map uses map-wide settings or settings for each zone."
+        },
+        "map_id": {
+          "name": "Map ID",
+          "description": "Map to change. Defaults to the active map."
+        }
+      }
+    }
   }
 }

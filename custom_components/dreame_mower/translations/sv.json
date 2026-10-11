@@ -220,5 +220,132 @@
         "name": "Väntetid efter regn"
       }
     }
+  },
+  "selector": {
+    "mowing_direction_mode": {
+      "options": {
+        "fixed": "Alltid samma riktning",
+        "crisscross": "Korsvis, 45° rotation varje klipptillfälle",
+        "chequerboard": "Schackrutigt, 90° rotation varje klipptillfälle"
+      }
+    },
+    "mowing_preference_mode": {
+      "options": {
+        "map_wide": "En inställning för hela kartan",
+        "per_zone": "En inställning per zon"
+      }
+    }
+  },
+  "services": {
+    "start_zone_mowing": {
+      "name": "Starta klippning av zoner",
+      "description": "Startar klippning av en eller flera valda zoner.",
+      "fields": {
+        "zone_ids": {
+          "name": "Zon-ID:n",
+          "description": "Lista över zon-ID:n som ska klippas, till exempel [1, 3]."
+        }
+      }
+    },
+    "start_edge_mowing": {
+      "name": "Starta kantklippning",
+      "description": "Startar klippning av en eller flera valda kanter.",
+      "fields": {
+        "contour_ids": {
+          "name": "Kontur-ID:n",
+          "description": "Lista över par av kontur-ID:n som ska klippas, till exempel [[1, 0], [2, 0]]. Tillgängliga ID:n visas i gräsklipparens attribut 'contours' när kartan har hämtats."
+        }
+      }
+    },
+    "start_spot_mowing": {
+      "name": "Starta punktklippning",
+      "description": "Startar klippning av ett eller flera valda punktområden.",
+      "fields": {
+        "spot_area_ids": {
+          "name": "Områdes-ID:n",
+          "description": "Lista över punktområdes-ID:n som ska klippas, till exempel [2, 4]."
+        }
+      }
+    },
+    "set_cutting_height": {
+      "name": "Ställ in klipphöjd",
+      "description": "Ställer in klipphöjden för en hel karta eller en av dess zoner. Alla modeller stöder inte höjdjustering; tillgängligt intervall beror på modellen.",
+      "fields": {
+        "height": {
+          "name": "Klipphöjd",
+          "description": "Klipphöjd i centimeter, i steg om 0,5 cm."
+        },
+        "map_id": {
+          "name": "Kart-ID",
+          "description": "Karta som ska ändras. Standard är den aktiva kartan. Tillgängliga ID:n visas i gräsklipparens attribut 'maps' när kartan har hämtats."
+        },
+        "zone_id": {
+          "name": "Zon-ID",
+          "description": "Zon som ska ändras i stället för hela kartan. Aktiverar zoninställningar: övriga zoner behåller sina egna höjder och kartans övergripande höjd gäller inte längre. Tillgängliga ID:n visas i gräsklipparens attribut 'zones'."
+        }
+      }
+    },
+    "set_edge_mowing_settings": {
+      "name": "Ställ in kantklippning",
+      "description": "Ändrar inställningar för kantklippning för en hel karta eller en av dess zoner. Utelämnade inställningar behåller sina aktuella värden. Om kartan använder zoninställningar tillämpas ändringarna på alla zoner eftersom gräsklipparen då inte längre använder kartans övergripande inställningar. Inställningarna finns även som växlar för den aktiva kartan.",
+      "fields": {
+        "automatic_edge_mowing": {
+          "name": "Automatisk kantklippning",
+          "description": "Anger om gräsklipparen automatiskt klipper kanterna när klippningen av hela kartan eller en zon är klar."
+        },
+        "safe_edge_mowing": {
+          "name": "Säker kantklippning",
+          "description": "Anger om gräsklipparen håller ett litet avstånd till gräsmattans gräns vid kantklippning. Finns inte på alla modeller."
+        },
+        "edge_blade_offset": {
+          "name": "Sidoförskjutning av klippskivan",
+          "description": "Anger om klippskivan förskjuts i sidled vid kantvarven för att klippa närmare gränsen. När detta aktiveras ökar även antalet kantvarv från ett till två så att den förskjutna skivan täcker hela kanten."
+        },
+        "map_id": {
+          "name": "Kart-ID",
+          "description": "Karta som ska ändras. Standard är den aktiva kartan."
+        },
+        "zone_id": {
+          "name": "Zon-ID",
+          "description": "Zon som ska ändras i stället för hela kartan. Aktiverar zoninställningar: övriga zoner behåller sina egna inställningar och kartans övergripande inställningar gäller inte längre."
+        }
+      }
+    },
+    "set_mowing_direction": {
+      "name": "Ställ in klippriktning",
+      "description": "Ställer in riktningen för klippstråken för en hel karta eller en av dess zoner, samt hur riktningen ändras mellan klipptillfällen. Om kartan använder zoninställningar tillämpas ändringarna på alla zoner eftersom gräsklipparen då inte längre använder kartans övergripande inställningar. Inställningarna finns även som tal och väljare för den aktiva kartan.",
+      "fields": {
+        "angle": {
+          "name": "Vinkel",
+          "description": "Klippriktning i grader, som den visas i appen. Det här är en linjeorientering, inte en färdriktning: vinklar från 180° motsvarar samma stråk som vinkeln 180° lägre."
+        },
+        "mode": {
+          "name": "Klippningsläge",
+          "description": "Välj om varje klipptillfälle använder samma klippriktning eller växlar i förhållande till föregående tillfälle."
+        },
+        "map_id": {
+          "name": "Kart-ID",
+          "description": "Karta som ska ändras. Standard är den aktiva kartan."
+        },
+        "zone_id": {
+          "name": "Zon-ID",
+          "description": "Zon som ska ändras i stället för hela kartan. Aktiverar zoninställningar: övriga zoner behåller sina egna inställningar och kartans övergripande inställningar gäller inte längre."
+        }
+      }
+    },
+    "set_mowing_preference_mode": {
+      "name": "Ställ in läge för klippningsinställningar",
+      "description": "Välj om en karta använder en gemensam uppsättning klippningsinställningar eller separata inställningar per zon. Det kan till exempel återställa en gemensam klipphöjd efter att en höjd har ställts in för en enskild zon. Läget gäller även övriga klippningsinställningar.",
+      "fields": {
+        "mode": {
+          "name": "Inställningsläge",
+          "description": "Anger om kartan använder gemensamma inställningar eller separata inställningar för varje zon."
+        },
+        "map_id": {
+          "name": "Kart-ID",
+          "description": "Karta som ska ändras. Standard är den aktiva kartan."
+        }
+      }
+    }
   }
 }

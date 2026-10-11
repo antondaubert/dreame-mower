@@ -220,5 +220,132 @@
         "name": "Wachttijd na regen"
       }
     }
+  },
+  "selector": {
+    "mowing_direction_mode": {
+      "options": {
+        "fixed": "Altijd dezelfde richting",
+        "crisscross": "Kruislings, 45° draaien per sessie",
+        "chequerboard": "Schaakbord, 90° draaien per sessie"
+      }
+    },
+    "mowing_preference_mode": {
+      "options": {
+        "map_wide": "Eén instelling voor de hele kaart",
+        "per_zone": "Een instelling per zone"
+      }
+    }
+  },
+  "services": {
+    "start_zone_mowing": {
+      "name": "Zonemaaien starten",
+      "description": "Start het maaien van een of meer geselecteerde zones.",
+      "fields": {
+        "zone_ids": {
+          "name": "Zone-ID's",
+          "description": "Lijst met te maaien zone-ID's, bijvoorbeeld [1, 3]."
+        }
+      }
+    },
+    "start_edge_mowing": {
+      "name": "Randmaaien starten",
+      "description": "Start het maaien van een of meer geselecteerde randen.",
+      "fields": {
+        "contour_ids": {
+          "name": "Contour-ID's",
+          "description": "Lijst met paren van te maaien contour-ID's, bijvoorbeeld [[1, 0], [2, 0]]. Beschikbare ID's staan na het ophalen van de kaart in het attribuut 'contours' van de maaier-entiteit."
+        }
+      }
+    },
+    "start_spot_mowing": {
+      "name": "Plekmaaien starten",
+      "description": "Start het maaien van een of meer geselecteerde plekken.",
+      "fields": {
+        "spot_area_ids": {
+          "name": "Plek-ID's",
+          "description": "Lijst met te maaien plek-ID's, bijvoorbeeld [2, 4]."
+        }
+      }
+    },
+    "set_cutting_height": {
+      "name": "Maaihoogte instellen",
+      "description": "Stelt de maaihoogte in voor een hele kaart of een zone daarvan. Niet elk model ondersteunt hoogteaanpassing; het beschikbare bereik is afhankelijk van het model.",
+      "fields": {
+        "height": {
+          "name": "Maaihoogte",
+          "description": "Maaihoogte in centimeters, in stappen van 0,5 cm."
+        },
+        "map_id": {
+          "name": "Kaart-ID",
+          "description": "Kaart om te wijzigen. Standaard de actieve kaart. Beschikbare ID's staan na het ophalen van de kaart in het attribuut 'maps' van de maaier-entiteit."
+        },
+        "zone_id": {
+          "name": "Zone-ID",
+          "description": "Zone om te wijzigen in plaats van de hele kaart. Hiermee worden zone-instellingen ingeschakeld: andere zones behouden hun eigen hoogte en de kaartbrede hoogte is niet langer van toepassing. Beschikbare ID's staan in het attribuut 'zones' van de maaier-entiteit."
+        }
+      }
+    },
+    "set_edge_mowing_settings": {
+      "name": "Instellingen voor randmaaien",
+      "description": "Wijzigt de instellingen voor randmaaien voor een hele kaart of een zone daarvan. Niet opgegeven instellingen behouden hun huidige waarde. Als de kaart zone-instellingen gebruikt, worden wijzigingen op alle zones toegepast omdat de maaier de kaartbrede instellingen dan niet meer gebruikt. Deze instellingen zijn ook beschikbaar als schakelaars voor de actieve kaart.",
+      "fields": {
+        "automatic_edge_mowing": {
+          "name": "Automatisch randmaaien",
+          "description": "Of de maaier de randen automatisch maait nadat het maaien van de hele kaart of een zone is voltooid."
+        },
+        "safe_edge_mowing": {
+          "name": "Veilig randmaaien",
+          "description": "Of de maaier tijdens het randmaaien een kleine afstand tot de gazonrand houdt. Niet op elk model beschikbaar."
+        },
+        "edge_blade_offset": {
+          "name": "Zijdelingse verschuiving van de maaischijf",
+          "description": "Of de maaischijf tijdens randpasses zijwaarts verschuift om dichter langs de rand te maaien. Hierdoor wordt het aantal randpasses ook verhoogd van één naar twee, zodat de verschoven schijf de rand volledig kan maaien."
+        },
+        "map_id": {
+          "name": "Kaart-ID",
+          "description": "Kaart om te wijzigen. Standaard de actieve kaart. Beschikbare ID's staan na het ophalen van de kaart in het attribuut 'maps' van de maaier-entiteit."
+        },
+        "zone_id": {
+          "name": "Zone-ID",
+          "description": "Zone om te wijzigen in plaats van de hele kaart. Hiermee worden zone-instellingen ingeschakeld: andere zones behouden hun eigen instellingen en de kaartbrede instellingen zijn niet langer van toepassing. Beschikbare ID's staan in het attribuut 'zones' van de maaier-entiteit."
+        }
+      }
+    },
+    "set_mowing_direction": {
+      "name": "Maairichting instellen",
+      "description": "Stelt de richting van de maaibanen in voor een hele kaart of een zone daarvan, en hoe die richting tussen sessies verandert. Als de kaart zone-instellingen gebruikt, worden wijzigingen op alle zones toegepast omdat de maaier de kaartbrede instellingen dan niet meer gebruikt. Voor de actieve kaart zijn deze instellingen ook beschikbaar als getal en keuzelijst.",
+      "fields": {
+        "angle": {
+          "name": "Hoek",
+          "description": "Maairichting in graden, zoals weergegeven in de app. Dit is de oriëntatie van een lijn, niet de rijrichting: hoeken vanaf 180° beschrijven dezelfde banen als de hoek die 180° lager ligt."
+        },
+        "mode": {
+          "name": "Maaiwijze",
+          "description": "Kies of elke sessie dezelfde maairichting gebruikt of afwisselt ten opzichte van de vorige sessie."
+        },
+        "map_id": {
+          "name": "Kaart-ID",
+          "description": "Kaart om te wijzigen. Standaard de actieve kaart."
+        },
+        "zone_id": {
+          "name": "Zone-ID",
+          "description": "Zone om te wijzigen in plaats van de hele kaart. Hiermee worden zone-instellingen ingeschakeld: andere zones behouden hun eigen instellingen en de kaartbrede instellingen zijn niet langer van toepassing."
+        }
+      }
+    },
+    "set_mowing_preference_mode": {
+      "name": "Maai-instellingenmodus instellen",
+      "description": "Kies of een kaart één set maai-instellingen gebruikt of aparte instellingen per zone. Hiermee kan bijvoorbeeld een kaartbrede maaihoogte worden hersteld nadat voor één zone een hoogte is ingesteld. Deze modus geldt ook voor de overige maai-instellingen.",
+      "fields": {
+        "mode": {
+          "name": "Instellingenmodus",
+          "description": "Geef aan of de kaart kaartbrede instellingen of afzonderlijke instellingen per zone gebruikt."
+        },
+        "map_id": {
+          "name": "Kaart-ID",
+          "description": "Kaart om te wijzigen. Standaard de actieve kaart."
+        }
+      }
+    }
   }
 }

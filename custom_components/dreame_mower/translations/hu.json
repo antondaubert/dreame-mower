@@ -220,5 +220,132 @@
         "name": "Várakozás eső után"
       }
     }
+  },
+  "selector": {
+    "mowing_direction_mode": {
+      "options": {
+        "fixed": "Mindig ugyanabba az irányba",
+        "crisscross": "Keresztirányú, 45°-os fordulat minden menetben",
+        "chequerboard": "Sakktáblaszerű, 90°-os fordulat minden menetben"
+      }
+    },
+    "mowing_preference_mode": {
+      "options": {
+        "map_wide": "Egy beállítás a teljes térképhez",
+        "per_zone": "Külön beállítás zónánként"
+      }
+    }
+  },
+  "services": {
+    "start_zone_mowing": {
+      "name": "Zónák nyírásának indítása",
+      "description": "Elindítja egy vagy több kiválasztott zóna nyírását.",
+      "fields": {
+        "zone_ids": {
+          "name": "Zónaazonosítók",
+          "description": "A nyírandó zónák azonosítóinak listája, például [1, 3]."
+        }
+      }
+    },
+    "start_edge_mowing": {
+      "name": "Szegélynyírás indítása",
+      "description": "Elindítja egy vagy több kiválasztott szegély nyírását.",
+      "fields": {
+        "contour_ids": {
+          "name": "Kontúrazonosítók",
+          "description": "A nyírandó kontúrpárok azonosítóinak listája, például [[1, 0], [2, 0]]. A térkép betöltése után az elérhető azonosítók a fűnyíró entitás „contours” attribútumában láthatók."
+        }
+      }
+    },
+    "start_spot_mowing": {
+      "name": "Pontszerű terület nyírásának indítása",
+      "description": "Elindítja egy vagy több kiválasztott pontszerű terület nyírását.",
+      "fields": {
+        "spot_area_ids": {
+          "name": "Területazonosítók",
+          "description": "A nyírandó pontszerű területek azonosítóinak listája, például [2, 4]."
+        }
+      }
+    },
+    "set_cutting_height": {
+      "name": "Vágási magasság beállítása",
+      "description": "Beállítja a vágási magasságot a teljes térképen vagy annak egyik zónájában. Nem minden modell támogatja a magasságállítást; az elérhető tartomány modellenként eltérő.",
+      "fields": {
+        "height": {
+          "name": "Vágási magasság",
+          "description": "Vágási magasság centiméterben, 0,5 cm-es lépésekben."
+        },
+        "map_id": {
+          "name": "Térképazonosító",
+          "description": "A módosítandó térkép. Alapértelmezés szerint az aktív térkép. A térkép betöltése után az elérhető azonosítók a fűnyíró entitás „maps” attribútumában láthatók."
+        },
+        "zone_id": {
+          "name": "Zónaazonosító",
+          "description": "A teljes térkép helyett módosítandó zóna. Ezzel zónánkénti beállítások lépnek életbe: a többi zóna megtartja a saját magasságát, és a teljes térképre vonatkozó magasság nem alkalmazható többé. Az elérhető azonosítók a fűnyíró entitás „zones” attribútumában láthatók."
+        }
+      }
+    },
+    "set_edge_mowing_settings": {
+      "name": "Szegélynyírási beállítások megadása",
+      "description": "Módosítja a szegélynyírás beállításait a teljes térképen vagy annak egyik zónájában. A kihagyott beállítások megtartják jelenlegi értéküket. Zónánkénti beállítások esetén a módosítás minden zónára érvényes, mert a fűnyíró ilyenkor nem használja a teljes térképre vonatkozó beállításokat. Ezek a beállítások az aktív térképhez kapcsolóként is elérhetők.",
+      "fields": {
+        "automatic_edge_mowing": {
+          "name": "Automatikus szegélynyírás",
+          "description": "Megadja, hogy a fűnyíró automatikusan lenyírja-e a szegélyeket a teljes térkép vagy egy zóna nyírásának befejezése után."
+        },
+        "safe_edge_mowing": {
+          "name": "Biztonságos szegélynyírás",
+          "description": "Megadja, hogy a fűnyíró kis távolságot tart-e a gyep szélétől szegélynyírás közben. Nem minden modellen érhető el."
+        },
+        "edge_blade_offset": {
+          "name": "A vágótárcsa oldalirányú eltolása",
+          "description": "Megadja, hogy a vágótárcsa oldalra tolódik-e a szegély menti menetek során, hogy közelebb vágjon a gyep széléhez. A funkció bekapcsolásakor a szegélymenetek száma egyről kettőre nő, hogy az eltolt tárcsa a teljes szegélyt lefedje."
+        },
+        "map_id": {
+          "name": "Térképazonosító",
+          "description": "A módosítandó térkép. Alapértelmezés szerint az aktív térkép."
+        },
+        "zone_id": {
+          "name": "Zónaazonosító",
+          "description": "A teljes térkép helyett módosítandó zóna. Ezzel zónánkénti beállítások lépnek életbe: a többi zóna megtartja saját értékeit, a teljes térképre vonatkozó beállítások pedig nem alkalmazhatók többé."
+        }
+      }
+    },
+    "set_mowing_direction": {
+      "name": "Nyírási irány beállítása",
+      "description": "Beállítja a nyírási sávok irányát a teljes térképen vagy annak egyik zónájában, valamint azt, hogyan változik ez az irány az egyes menetek között. Zónánkénti beállítások esetén a módosítás minden zónára érvényes, mert a fűnyíró ilyenkor nem használja a teljes térképre vonatkozó beállításokat. Az aktív térképnél ezek a beállítások számként és választóként is elérhetők.",
+      "fields": {
+        "angle": {
+          "name": "Szög",
+          "description": "A nyírás iránya fokban, az alkalmazásban látható módon. Ez egy vonal tájolása, nem haladási irány: a 180°-tól kezdődő szögek ugyanazokat a sávokat jelentik, mint a 180°-kal kisebb érték."
+        },
+        "mode": {
+          "name": "Nyírási mód",
+          "description": "Válaszd ki, hogy minden menet ugyanazt a nyírási irányt használja, vagy váltakozzon az előző menethez képest."
+        },
+        "map_id": {
+          "name": "Térképazonosító",
+          "description": "A módosítandó térkép. Alapértelmezés szerint az aktív térkép."
+        },
+        "zone_id": {
+          "name": "Zónaazonosító",
+          "description": "A teljes térkép helyett módosítandó zóna. Ezzel zónánkénti beállítások lépnek életbe: a többi zóna megtartja saját értékeit, a teljes térképre vonatkozó beállítások pedig nem alkalmazhatók többé."
+        }
+      }
+    },
+    "set_mowing_preference_mode": {
+      "name": "Nyírási beállítási mód megadása",
+      "description": "Válaszd ki, hogy a térkép egyetlen nyírási beállításkészletet használjon, vagy zónánként külön beállításokat. Ezzel például visszaállítható a teljes térképre érvényes vágási magasság, miután egy adott zónához külön magasságot állítottál be. A mód a többi nyírási beállításra is érvényes.",
+      "fields": {
+        "mode": {
+          "name": "Beállítási mód",
+          "description": "Megadja, hogy a térkép az egész térképre vagy külön-külön az egyes zónákra vonatkozó beállításokat használja."
+        },
+        "map_id": {
+          "name": "Térképazonosító",
+          "description": "A módosítandó térkép. Alapértelmezés szerint az aktív térkép."
+        }
+      }
+    }
   }
 }
