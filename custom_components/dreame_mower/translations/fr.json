@@ -221,4 +221,131 @@
       }
     }
   }
-}
+,
+  "selector": {
+    "mowing_direction_mode": {
+      "options": {
+        "fixed": "Toujours dans la même direction",
+        "crisscross": "En croisillon, rotation de 45° à chaque session",
+        "chequerboard": "En damier, rotation de 90° à chaque session"
+      }
+    },
+    "mowing_preference_mode": {
+      "options": {
+        "map_wide": "Un seul réglage pour toute la carte",
+        "per_zone": "Un réglage par zone"
+      }
+    }
+  },
+  "services": {
+    "start_zone_mowing": {
+      "name": "Lancer la tonte de zones",
+      "description": "Lancer la tonte d'une ou plusieurs zones précises.",
+      "fields": {
+        "zone_ids": {
+          "name": "Identifiants des zones",
+          "description": "Liste des identifiants de zones à tondre, par exemple [1, 3]."
+        }
+      }
+    },
+    "start_edge_mowing": {
+      "name": "Lancer la tonte des bordures",
+      "description": "Lancer la tonte d'une ou plusieurs bordures précises.",
+      "fields": {
+        "contour_ids": {
+          "name": "Identifiants des contours",
+          "description": "Liste des paires d'identifiants de contours à tondre, par exemple [[1, 0], [2, 0]]. Les identifiants disponibles apparaissent dans l'attribut contours de l'entité du robot une fois la carte récupérée."
+        }
+      }
+    },
+    "start_spot_mowing": {
+      "name": "Lancer la tonte de zones localisées",
+      "description": "Lancer la tonte d'une ou plusieurs zones ponctuelles précises.",
+      "fields": {
+        "spot_area_ids": {
+          "name": "Identifiants des zones ponctuelles",
+          "description": "Liste des identifiants de zones ponctuelles à tondre, par exemple [2, 4]."
+        }
+      }
+    },
+    "set_cutting_height": {
+      "name": "Définir la hauteur de coupe",
+      "description": "Définir la hauteur de coupe pour toute une carte ou pour une seule de ses zones. Tous les modèles ne permettent pas de régler la hauteur de coupe ; la plage disponible dépend du modèle.",
+      "fields": {
+        "height": {
+          "name": "Hauteur de coupe",
+          "description": "Hauteur de coupe en centimètres, par pas de 0,5 cm."
+        },
+        "map_id": {
+          "name": "Identifiant de la carte",
+          "description": "Carte à modifier. Par défaut, la carte active. Les identifiants disponibles apparaissent dans l'attribut maps de l'entité du robot une fois les cartes récupérées."
+        },
+        "zone_id": {
+          "name": "Identifiant de la zone",
+          "description": "Zone à modifier au lieu de toute la carte. Le réglage par zone sera alors activé : les autres zones conserveront leur propre hauteur et le réglage général de la carte ne s'appliquera plus. Les identifiants disponibles apparaissent dans l'attribut zones de l'entité du robot."
+        }
+      }
+    },
+    "set_edge_mowing_settings": {
+      "name": "Régler la tonte des bordures",
+      "description": "Modifier les réglages de tonte des bordures pour toute une carte ou pour une seule de ses zones. Tout réglage omis conserve sa valeur actuelle. Si la carte utilise des réglages par zone, la modification est appliquée à chaque zone, car le robot n'utilise alors plus les réglages généraux de la carte. Ces réglages sont également disponibles sous forme d'interrupteurs pour la carte active.",
+      "fields": {
+        "automatic_edge_mowing": {
+          "name": "Tonte automatique des bordures",
+          "description": "Indique si le robot tond automatiquement les bordures après avoir terminé la tonte de toute la carte ou d'une zone."
+        },
+        "safe_edge_mowing": {
+          "name": "Tonte sécurisée des bordures",
+          "description": "Indique si le robot garde une petite marge par rapport à la limite de la pelouse pendant la tonte des bordures. Ce réglage n'est pas disponible sur tous les modèles."
+        },
+        "edge_blade_offset": {
+          "name": "Décalage latéral de la lame",
+          "description": "Indique si le disque de coupe se décale latéralement pendant les passages le long des bordures pour couper plus près de la limite. Cette option augmente aussi le nombre de passages de bordure de un à deux, afin que le disque décalé puisse couvrir toute la bordure."
+        },
+        "map_id": {
+          "name": "Identifiant de la carte",
+          "description": "Carte à modifier. Par défaut, la carte active. Les identifiants disponibles apparaissent dans l'attribut maps de l'entité du robot une fois les cartes récupérées."
+        },
+        "zone_id": {
+          "name": "Identifiant de la zone",
+          "description": "Zone à modifier au lieu de toute la carte. Le réglage par zone sera alors activé : les autres zones conserveront leurs propres réglages et les réglages généraux de la carte ne s'appliqueront plus. Les identifiants disponibles apparaissent dans l'attribut zones de l'entité du robot."
+        }
+      }
+    },
+    "set_mowing_direction": {
+      "name": "Régler le sens de tonte",
+      "description": "Définir le sens des lignes de tonte pour toute une carte ou pour une seule de ses zones, ainsi que la façon dont ce sens évolue d'une session à l'autre. Si la carte utilise des réglages par zone, la modification est appliquée à chaque zone, car le robot n'utilise alors plus les réglages généraux de la carte. Ces réglages sont également disponibles sous forme de nombre et de liste de choix pour la carte active.",
+      "fields": {
+        "angle": {
+          "name": "Angle",
+          "description": "Sens de tonte en degrés, tel qu'affiché dans l'application. Il s'agit d'une orientation de ligne, et non d'une direction de déplacement : un angle à partir de 180° correspond aux mêmes lignes que l'angle situé 180° plus tôt."
+        },
+        "mode": {
+          "name": "Mode de tonte",
+          "description": "Choisir si chaque session utilise le même sens de tonte ou si le robot alterne le sens par rapport à la session précédente."
+        },
+        "map_id": {
+          "name": "Identifiant de la carte",
+          "description": "Carte à modifier. Par défaut, la carte active."
+        },
+        "zone_id": {
+          "name": "Identifiant de la zone",
+          "description": "Zone à modifier au lieu de toute la carte. Le réglage par zone sera alors activé : les autres zones conserveront leurs propres réglages et les réglages généraux de la carte ne s'appliqueront plus."
+        }
+      }
+    },
+    "set_mowing_preference_mode": {
+      "name": "Choisir le mode de réglage de la tonte",
+      "description": "Choisir si la carte utilise un réglage unique pour toute sa surface ou des réglages distincts par zone. Cette action permet notamment de rétablir une hauteur de coupe générale après avoir défini une hauteur pour une zone. Ce mode concerne aussi les autres réglages de tonte.",
+      "fields": {
+        "mode": {
+          "name": "Mode de réglage",
+          "description": "Indiquer si la carte utilise des réglages généraux ou des réglages propres à chaque zone."
+        },
+        "map_id": {
+          "name": "Identifiant de la carte",
+          "description": "Carte à modifier. Par défaut, la carte active."
+        }
+      }
+    }
+  }}
