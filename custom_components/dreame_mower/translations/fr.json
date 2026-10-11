@@ -220,8 +220,7 @@
         "name": "Délai après la pluie"
       }
     }
-  }
-,
+  },
   "selector": {
     "mowing_direction_mode": {
       "options": {
@@ -348,4 +347,5 @@
         }
       }
     }
-  }}
+  }
+}

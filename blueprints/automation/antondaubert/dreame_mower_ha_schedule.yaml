@@ -6,7 +6,12 @@ blueprint:
     schedules stored on the mower. The mower must be docked when the block
     starts. Optionally select the mower's native schedule switches as a
     safeguard; the run is skipped while any selected switch is on.
+    Zone, contour and spot-area IDs belong to a map, so they refer to the
+    map the mower is on when the block starts.
   domain: automation
+  source_url: https://github.com/antondaubert/dreame-mower/blob/main/blueprints/automation/antondaubert/dreame_mower_ha_schedule.yaml
+  homeassistant:
+    min_version: 2026.7.0
   input:
     schedule_entity:
       name: Weekly schedule
@@ -25,8 +30,10 @@ blueprint:
     native_schedule_switches:
       name: Native Dreame schedule switches (optional)
       description: >-
-        Select the mower's schedule switches to prevent overlapping runs.
-        This automation only reads these switches; it never changes them.
+        Select the mower's schedule switches to keep this schedule from
+        running alongside them. Every run is skipped while any selected switch
+        is on, whatever times its schedule covers. This automation only reads
+        these switches; it never changes them.
       default: []
       selector:
         entity:
@@ -50,21 +57,28 @@ blueprint:
               value: spots
     zone_ids:
       name: Zone IDs
-      description: Used only in Zones mode. Find IDs in the map's zone entities.
-      default: [1]
+      description: >-
+        Used only in Zones mode, for example [1, 3]. The Zone select entity
+        shows each zone's ID after its name, and the mower entity lists them in
+        its zones attribute.
+      default: []
       selector:
         object:
     contour_ids:
       name: Contour IDs
-      description: Used only in Edges mode; each contour is a pair such as [1, 0].
-      default:
-        - [1, 0]
+      description: >-
+        Used only in Edges mode; each contour is a pair, for example
+        [[1, 0], [2, 0]]. The mower entity lists them in its contours
+        attribute.
+      default: []
       selector:
         object:
     spot_area_ids:
       name: Spot-area IDs
-      description: Used only in Spot areas mode.
-      default: [1]
+      description: >-
+        Used only in Spot areas mode, for example [2, 4]. The Spot select
+        entity shows each spot area's ID after its name.
+      default: []
       selector:
         object:
 
