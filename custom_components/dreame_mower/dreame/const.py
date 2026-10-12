@@ -117,6 +117,9 @@ ACTION_PAUSE = ActionIdentifier(siid=5, aiid=4, name="pause")
 # Embedded protocol task payloads (sent via SCHEDULING_TASK_PROPERTY 2:50)
 # Format: {m: 'a', p: <priority>, o: <opcode>, d?: <data>}
 TASK_PAYLOAD_RESUME = {"m": "a", "p": 0, "o": 5}  # continueControl
+# Opcode of a switch of the active map. The mower may echo it on 2:50 after a
+# switch, the app's included, but without saying which map is now active.
+TASK_OPCODE_MAP_SWITCH = 200
 
 # Mowing preference ("PRE") records
 #
@@ -549,6 +552,7 @@ PROPERTY_TEMPERATURE = "temperature"
 
 # Derived state names reported through the device property callbacks
 CURRENT_MAP_ID_PROPERTY_NAME = "current_map_id"
+MAP_SWITCH_ANNOUNCED_PROPERTY_NAME = "map_switch_announced"
 CUTTING_HEIGHT_PROPERTY_NAME = "cutting_height"
 ZONE_CUTTING_HEIGHTS_PROPERTY_NAME = "zone_cutting_heights"
 MOWING_PREFERENCE_MODE_PROPERTY_NAME = "mowing_preference_mode"
