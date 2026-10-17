@@ -4,7 +4,7 @@
   "description": "Tests of the map card that ships with the integration",
   "type": "module",
   "scripts": {
-    "test": "node --test \"tests/frontend/*.test.mjs\""
+    "test": "node --test --test-timeout=20000 \"tests/frontend/*.test.mjs\""
   },
   "devDependencies": {
     "jsdom": "30.1.1"

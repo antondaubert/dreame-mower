@@ -3,6 +3,7 @@
 # Pinned to a release that ships a stable Home Assistant (0.13.367 -> HA 2026.9.4);
 # the main branch tracks HA betas
 pytest-homeassistant-custom-component==0.13.367
+pytest-timeout
 mypy
 paho-mqtt==2.1.0
 types-requests
