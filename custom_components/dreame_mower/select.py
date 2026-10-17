@@ -2,39 +2,21 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DATA_COORDINATOR, DOMAIN
 from .coordinator import DreameMowerCoordinator
 from .dreame.const import (
-    MowingDirectionMode,
+    DEVICE_SETTINGS_NAVIGATION_PATH_KEY,
     RAIN_DELAY_MAX_HOURS,
     RAIN_DELAY_MIN_HOURS,
 )
-from .dreame.device import MowingMode
 from .entity import DreameMowerEntity, device_errors_as_ha_errors
-
-_MOWING_MODE_LABELS: dict[MowingMode, str] = {
-    MowingMode.ALL_AREA: "All area",
-    MowingMode.EDGE: "Edge",
-    MowingMode.ZONE: "Zone",
-    MowingMode.SPOT: "Spot",
-}
-
-# How a mowing direction carries from one session to the next, as the mower's
-# own settings put it.
-_MOWING_DIRECTION_MODE_LABELS: dict[MowingDirectionMode, str] = {
-    MowingDirectionMode.FIXED: "Always the same",
-    MowingDirectionMode.CRISSCROSS: "Crisscross (45°)",
-    MowingDirectionMode.CHEQUERBOARD: "Chequerboard (90°)",
-}
 
 # The after-rain delay is offered as whole hours, led by the option to stay
 # docked, which is a behaviour rather than a duration.
@@ -55,385 +37,18 @@ async def async_setup_entry(
 ) -> None:
     """Set up Dreame Mower selects from a config entry."""
     coordinator: DreameMowerCoordinator = hass.data[DOMAIN][entry.entry_id][DATA_COORDINATOR]
-    selects: list[SelectEntity] = [
-        DreameMowerMapSelect(coordinator),
-        DreameMowerMowingActionSelect(coordinator),
-        DreameMowerEdgeSelect(coordinator),
-        DreameMowerZoneSelect(coordinator),
-        DreameMowerSpotSelect(coordinator),
-        DreameMowerMaintenancePointSelect(coordinator),
-    ]
 
-    if coordinator.supports_mowing_direction:
-        selects.append(DreameMowerMowingDirectionModeSelect(coordinator))
-
-    if coordinator.supports_rain_protection:
-        selects.append(DreameMowerRainDelaySelect(coordinator))
-
-    async_add_entities(selects)
-
-
-class DreameMowerMapSelect(DreameMowerEntity, SelectEntity):
-    """Select entity for the active map."""
-
-    def __init__(self, coordinator: DreameMowerCoordinator) -> None:
-        """Initialize the map select entity."""
-        super().__init__(coordinator, "map_select")
-        self._attr_name = "Map"
-        self._attr_icon = "mdi:map-marker-path"
-
-    @property
-    def options(self) -> list[str]:
-        """Return the available map options."""
-        return [self._option_label(map_entry) for map_entry in self.coordinator.available_maps]
-
-    @property
-    def current_option(self) -> str | None:
-        """Return the currently selected map option."""
-        current_map_id = self.coordinator.current_map_id
-        if current_map_id is None:
-            return None
-
-        for map_entry in self.coordinator.available_maps:
-            if map_entry["id"] == current_map_id:
-                return self._option_label(map_entry)
-
-        return None
-
-    async def async_select_option(self, option: str) -> None:
-        """Select the active map on the mower."""
-        map_id = self._map_id_from_option(option)
-        if map_id is None:
-            raise HomeAssistantError(f"Unknown map option: {option}")
-
-        with device_errors_as_ha_errors():
-            switched = await self.coordinator.device.set_current_map(map_id)
-
-        if switched:
-            return
-
-        if self.coordinator.device.mowing_session_active:
-            raise HomeAssistantError(
-                f"Cannot switch to {option} while a mowing task is in progress. "
-                "Finish or cancel the task, then try again."
-            )
-
-        raise HomeAssistantError(f"Failed to select map option: {option}")
-
-    def _option_label(self, map_entry: dict[str, Any]) -> str:
-        """Return the label shown for a map option."""
-        name = map_entry.get("name") or f"Map {map_entry['id']}"
-        return f"{name} (#{map_entry['id']})"
-
-    def _map_id_from_option(self, option: str) -> int | None:
-        """Resolve a select option back to its map ID."""
-        for map_entry in self.coordinator.available_maps:
-            if self._option_label(map_entry) == option:
-                return int(map_entry["id"])
-        return None
-
-
-class DreameMowerMowingActionSelect(DreameMowerEntity, SelectEntity):
-    """Select entity for the default start-mowing action."""
-
-    def __init__(self, coordinator: DreameMowerCoordinator) -> None:
-        """Initialize the mowing action select entity."""
-        super().__init__(coordinator, "mowing_action")
-        self._attr_name = "Mowing Action"
-        self._attr_icon = "mdi:play-box-multiple"
-
-    @property
-    def options(self) -> list[str]:
-        """Return selectable default mowing actions."""
-        return [_MOWING_MODE_LABELS[mode] for mode in self.coordinator.selectable_mowing_modes]
-
-    @property
-    def current_option(self) -> str:
-        """Return the selected default mowing action."""
-        return _MOWING_MODE_LABELS[self.coordinator.selected_mowing_mode]
-
-    async def async_select_option(self, option: str) -> None:
-        """Update the default mowing action used by the start button."""
-        for mode, label in _MOWING_MODE_LABELS.items():
-            if label == option:
-                await self.coordinator.async_set_selected_mowing_mode(mode)
-                return
-
-        raise ValueError(f"Unknown mowing action option: {option}")
-
-
-class DreameMowerEdgeSelect(DreameMowerEntity, SelectEntity):
-    """Select entity for a single target edge contour.
-
-    A zone can own more than one contour: its own boundary, plus one for every
-    shape cut into the lawn inside it. They all carry the zone's name, so the
-    boundary keeps the plain name and the extras are numbered after it.
-    """
-
-    def __init__(self, coordinator: DreameMowerCoordinator) -> None:
-        """Initialize the edge select entity."""
-        super().__init__(coordinator, "edge_select")
-        self._attr_name = "Edge"
-        self._attr_icon = "mdi:vector-polyline"
-
-    @property
-    def options(self) -> list[str]:
-        """Return the available edge-contour options."""
-        return list(self._contours_by_label())
-
-    @property
-    def current_option(self) -> str | None:
-        """Return the selected edge-contour option."""
-        selected_contour_id = self.coordinator.selected_contour_id
-        if selected_contour_id is None:
-            return None
-
-        for label, contour in self._contours_by_label().items():
-            if contour == list(selected_contour_id):
-                return label
-
-        return None
-
-    async def async_select_option(self, option: str) -> None:
-        """Select a single target edge contour for edge mowing."""
-        contour_id = self._contours_by_label().get(option)
-        if contour_id is None:
-            raise ValueError(f"Unknown edge option: {option}")
-
-        await self.coordinator.async_set_selected_contour_id(contour_id)
-
-    def _contours_by_label(self) -> dict[str, list[int]]:
-        """Return every contour, keyed by the label it is offered as.
-
-        Resolving an option goes through this mapping rather than by comparing
-        labels, so a contour stays reachable even where two of them would
-        otherwise read alike.
-        """
-        contours = [list(contour) for contour in self.coordinator.contours]
-
-        # A contour is identified by its zone and an index that is neither
-        # dense nor ordered, so the position within the zone decides the label.
-        positions: dict[tuple[int, int], int] = {}
-        for zone_id in {contour[0] for contour in contours}:
-            ordered = sorted(
-                (contour for contour in contours if contour[0] == zone_id),
-                key=lambda contour: contour[1],
-            )
-            for position, contour in enumerate(ordered):
-                positions[(contour[0], contour[1])] = position
-
-        labels = [
-            self._option_label(contour, positions[(contour[0], contour[1])])
-            for contour in contours
-        ]
-        ambiguous = {label for label in labels if labels.count(label) > 1}
-
-        contours_by_label: dict[str, list[int]] = {}
-        for contour, label in zip(contours, labels):
-            if label in ambiguous:
-                label = f"{label} (#{contour[0]})"
-            contours_by_label[label] = contour
-        return contours_by_label
-
-    def _option_label(self, contour: list[int], position: int) -> str:
-        """Return the label shown for an edge-contour option."""
-        zone_id = contour[0]
-        for zone in self.coordinator.zones:
-            if int(zone["id"]) == zone_id:
-                name = zone.get("name") or f"Zone {zone_id}"
-                label = f"{name} edge"
-                return label if position == 0 else f"{label} {position + 1}"
-        return f"Edge ({contour[0]}, {contour[1]})"
-
-
-class DreameMowerZoneSelect(DreameMowerEntity, SelectEntity):
-    """Select entity for a single target zone."""
-
-    def __init__(self, coordinator: DreameMowerCoordinator) -> None:
-        """Initialize the zone select entity."""
-        super().__init__(coordinator, "zone_select")
-        self._attr_name = "Zone"
-        self._attr_icon = "mdi:texture-box"
-
-    @property
-    def options(self) -> list[str]:
-        """Return the available zone options."""
-        return [self._option_label(zone) for zone in self.coordinator.zones]
-
-    @property
-    def current_option(self) -> str | None:
-        """Return the selected zone option."""
-        selected_zone_id = self.coordinator.selected_zone_id
-        if selected_zone_id is None:
-            return None
-
-        for zone in self.coordinator.zones:
-            if int(zone["id"]) == selected_zone_id:
-                return self._option_label(zone)
-
-        return None
-
-    async def async_select_option(self, option: str) -> None:
-        """Select a single target zone for zone mowing."""
-        zone_id = self._id_from_option(option)
-        if zone_id is None:
-            raise ValueError(f"Unknown zone option: {option}")
-
-        await self.coordinator.async_set_selected_zone_id(zone_id)
-
-    def _option_label(self, zone: dict[str, Any]) -> str:
-        """Return the label shown for a zone option."""
-        name = zone.get("name") or f"Zone {zone['id']}"
-        return f"{name} (#{zone['id']})"
-
-    def _id_from_option(self, option: str) -> int | None:
-        """Resolve a select option back to its zone ID."""
-        for zone in self.coordinator.zones:
-            if self._option_label(zone) == option:
-                return int(zone["id"])
-        return None
-
-
-class DreameMowerSpotSelect(DreameMowerEntity, SelectEntity):
-    """Select entity for a single target spot area."""
-
-    def __init__(self, coordinator: DreameMowerCoordinator) -> None:
-        """Initialize the spot select entity."""
-        super().__init__(coordinator, "spot_select")
-        self._attr_name = "Spot"
-        self._attr_icon = "mdi:map-marker-radius"
-
-    @property
-    def options(self) -> list[str]:
-        """Return the available spot-area options."""
-        return [self._option_label(spot_area) for spot_area in self.coordinator.spot_areas]
-
-    @property
-    def current_option(self) -> str | None:
-        """Return the selected spot-area option."""
-        selected_spot_area_id = self.coordinator.selected_spot_area_id
-        if selected_spot_area_id is None:
-            return None
-
-        for spot_area in self.coordinator.spot_areas:
-            if int(spot_area["id"]) == selected_spot_area_id:
-                return self._option_label(spot_area)
-
-        return None
-
-    async def async_select_option(self, option: str) -> None:
-        """Select a single target spot area for spot mowing."""
-        spot_area_id = self._id_from_option(option)
-        if spot_area_id is None:
-            raise ValueError(f"Unknown spot option: {option}")
-
-        await self.coordinator.async_set_selected_spot_area_id(spot_area_id)
-
-    def _option_label(self, spot_area: dict[str, Any]) -> str:
-        """Return the label shown for a spot-area option."""
-        name = spot_area.get("name") or f"Spot {spot_area['id']}"
-        return f"{name} (#{spot_area['id']})"
-
-    def _id_from_option(self, option: str) -> int | None:
-        """Resolve a select option back to its spot-area ID."""
-        for spot_area in self.coordinator.spot_areas:
-            if self._option_label(spot_area) == option:
-                return int(spot_area["id"])
-        return None
-
-
-class DreameMowerMaintenancePointSelect(DreameMowerEntity, SelectEntity):
-    """Select entity for the maintenance point the mower is sent to.
-
-    The points belong to the active map and are defined on the device itself, so
-    a map without one leaves this without options.
-    """
-
-    def __init__(self, coordinator: DreameMowerCoordinator) -> None:
-        """Initialize the maintenance point select entity."""
-        super().__init__(coordinator, "maintenance_point_select")
-        self._attr_name = "Maintenance point"
-        self._attr_icon = "mdi:map-marker-check"
-
-    @property
-    def options(self) -> list[str]:
-        """Return the maintenance points the active map carries."""
-        return [self._option_label(point) for point in self.coordinator.maintenance_points]
-
-    @property
-    def current_option(self) -> str | None:
-        """Return the selected maintenance point."""
-        selected_point_id = self.coordinator.selected_maintenance_point_id
-        if selected_point_id is None:
-            return None
-
-        for point in self.coordinator.maintenance_points:
-            if int(point["id"]) == selected_point_id:
-                return self._option_label(point)
-
-        return None
-
-    async def async_select_option(self, option: str) -> None:
-        """Select the maintenance point the mower is sent to."""
-        point_id = self._id_from_option(option)
-        if point_id is None:
-            raise ValueError(f"Unknown maintenance point option: {option}")
-
-        await self.coordinator.async_set_selected_maintenance_point_id(point_id)
-
-    @staticmethod
-    def _option_label(point: dict[str, Any]) -> str:
-        """Return the label shown for a maintenance point option."""
-        return f"Point {point['id']}"
-
-    def _id_from_option(self, option: str) -> int | None:
-        """Resolve a select option back to its maintenance point ID."""
-        for point in self.coordinator.maintenance_points:
-            if self._option_label(point) == option:
-                return int(point["id"])
-        return None
-
-
-class DreameMowerMowingDirectionModeSelect(DreameMowerEntity, SelectEntity):
-    """Select entity for how the mowing direction carries between sessions.
-
-    Left on the set direction the mower keeps mowing the same lanes; the other
-    modes turn the direction against the last session, which spares the lawn and
-    leaves the striped pattern the modes are named after.
-    """
-
-    _attr_entity_category = EntityCategory.CONFIG
-
-    def __init__(self, coordinator: DreameMowerCoordinator) -> None:
-        """Initialize the mowing direction mode entity."""
-        super().__init__(coordinator, "mowing_direction_mode")
-        self._attr_name = "Mowing direction mode"
-        self._attr_icon = "mdi:rotate-3d-variant"
-
-    @property
-    def options(self) -> list[str]:
-        """Return the ways a direction can carry between sessions."""
-        return list(_MOWING_DIRECTION_MODE_LABELS.values())
-
-    @property
-    def current_option(self) -> str | None:
-        """Return how the direction currently carries, if it is known."""
-        mode = self.coordinator.mowing_direction_mode
-        return None if mode is None else _MOWING_DIRECTION_MODE_LABELS[mode]
-
-    async def async_select_option(self, option: str) -> None:
-        """Set how the direction carries from one session to the next."""
-        for mode, label in _MOWING_DIRECTION_MODE_LABELS.items():
-            if label == option:
-                break
-        else:
-            raise ValueError(f"Unknown mowing direction mode: {option}")
-
-        with device_errors_as_ha_errors():
-            updated = await self.coordinator.async_set_mowing_direction(mode=mode)
-
-        if not updated:
-            raise HomeAssistantError(f"The mower did not take the mowing direction mode {option}")
+    # These exist only on mowers that turn out to offer the setting.
+    @callback
+    def add_probed() -> None:
+        probed: list[SelectEntity] = []
+        if coordinator.supports_rain_protection:
+            probed.append(DreameMowerRainDelaySelect(coordinator))
+        if coordinator.supports_device_setting(DEVICE_SETTINGS_NAVIGATION_PATH_KEY):
+            probed.append(DreameMowerNavigationPathSelect(coordinator))
+        async_add_entities(probed)
+
+    coordinator.async_when_probed(add_probed)
 
 
 class DreameMowerRainDelaySelect(DreameMowerEntity, SelectEntity):
@@ -490,3 +105,40 @@ class DreameMowerRainDelaySelect(DreameMowerEntity, SelectEntity):
                 f"{_rain_delay_label(self.coordinator.rain_delay_hours or 0)} instead of "
                 f"{option}; it only takes a new delay while rain protection is on"
             )
+
+
+# How the mower drives between the station and the zones.
+_NAVIGATION_PATH_LABELS = {0: "Direct path", 1: "Smart path"}
+
+
+class DreameMowerNavigationPathSelect(DreameMowerEntity, SelectEntity):
+    """Select for the way the mower drives between its station and the zones.
+
+    The direct path is the shortest; the smart path varies the route so the
+    lawn does not wear ruts.
+    """
+
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator: DreameMowerCoordinator) -> None:
+        super().__init__(coordinator, "navigation_path")
+        self._attr_translation_key = "navigation_path"
+        self._attr_icon = "mdi:map-marker-path"
+
+    @property
+    def options(self) -> list[str]:
+        return list(_NAVIGATION_PATH_LABELS.values())
+
+    @property
+    def current_option(self) -> str | None:
+        value = self.coordinator.device_setting(DEVICE_SETTINGS_NAVIGATION_PATH_KEY)
+        return _NAVIGATION_PATH_LABELS.get(int(value)) if isinstance(value, (bool, int)) else None
+
+    async def async_select_option(self, option: str) -> None:
+        value = next((value for value, label in _NAVIGATION_PATH_LABELS.items() if label == option), None)
+        if value is None:
+            raise ValueError(f"Unknown navigation path: {option}")
+        with device_errors_as_ha_errors():
+            updated = await self.coordinator.async_set_device_setting(DEVICE_SETTINGS_NAVIGATION_PATH_KEY, {"value": value})
+        if not updated:
+            raise HomeAssistantError(f"The mower did not take the navigation path {option}")

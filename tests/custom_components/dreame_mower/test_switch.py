@@ -10,14 +10,11 @@ from custom_components.dreame_mower.const import DATA_COORDINATOR, DOMAIN
 from custom_components.dreame_mower.dreame.device import DreameCommandError
 from custom_components.dreame_mower.switch import (
     DreameMowerAntiTheftPinCheckSwitch,
-    DreameMowerAutomaticEdgeMowingSwitch,
     DreameMowerChargingPeriodSwitch,
-    DreameMowerEdgeBladeOffsetSwitch,
     DreameMowerLiftAlarmSwitch,
     DreameMowerLocationReportingSwitch,
     DreameMowerOffMapAlarmSwitch,
     DreameMowerRainProtectionSwitch,
-    DreameMowerSafeEdgeMowingSwitch,
     DreameMowerScheduleSwitch,
     async_setup_entry,
 )
@@ -25,6 +22,7 @@ from custom_components.dreame_mower.switch import (
 
 def _make_coordinator(supported=True, enabled=True):
     coordinator = MagicMock()
+    coordinator.supports_device_setting = lambda key: False
     coordinator.device_mac = "AA:BB:CC:DD:EE:FF"
     coordinator.device_name = "Test Mower"
     coordinator.device_model = "dreame.mower.g2408"
@@ -39,12 +37,11 @@ def _make_coordinator(supported=True, enabled=True):
     coordinator.supports_rain_protection = False
     coordinator.supports_anti_theft = False
     coordinator.supports_anti_theft_pin_check = False
-    coordinator.supports_edge_mowing_settings = False
-    coordinator.supports_safe_edge_mowing = False
-    coordinator.supports_schedules = False
     coordinator.schedule_slots = []
     coordinator.schedule = lambda slot: None
     coordinator.schedule_enabled = lambda slot: None
+    # The reads that decide what the mower offers are already done.
+    coordinator.async_when_probed = lambda add: add()
     return coordinator
 
 
@@ -135,6 +132,8 @@ def _make_rain_coordinator(supported=True, enabled=True):
     coordinator.supports_rain_protection = supported
     coordinator.rain_protection_enabled = enabled
     coordinator.async_set_rain_protection = AsyncMock(return_value=True)
+    # The reads that decide what the mower offers are already done.
+    coordinator.async_when_probed = lambda add: add()
     return coordinator
 
 
@@ -191,108 +190,6 @@ async def test_switching_rain_protection_raises_when_the_device_rejects_it():
         await entity.async_turn_on()
 
 
-def _make_edge_coordinator(supported=True, safe_supported=True, settings=None):
-    coordinator = _make_coordinator()
-    coordinator.supports_charging_period = False
-    coordinator.supports_edge_mowing_settings = supported
-    coordinator.supports_safe_edge_mowing = supported and safe_supported
-    settings = {
-        "edge_mowing_auto": True,
-        "edge_blade_offset": False,
-        "edge_mowing_safe": True,
-    } if settings is None else settings
-    coordinator.edge_mowing_auto = settings.get("edge_mowing_auto")
-    coordinator.edge_blade_offset = settings.get("edge_blade_offset")
-    coordinator.edge_mowing_safe = settings.get("edge_mowing_safe")
-    coordinator.async_set_edge_mowing_settings = AsyncMock(return_value=True)
-    return coordinator
-
-
-@pytest.mark.asyncio
-async def test_setup_adds_the_edge_mowing_switches():
-    """A device that reports its mowing settings gets all three switches."""
-    entities = await _setup_entry_without_schedules(_make_edge_coordinator())
-
-    assert [type(entity) for entity in entities] == [
-        DreameMowerAutomaticEdgeMowingSwitch,
-        DreameMowerEdgeBladeOffsetSwitch,
-        DreameMowerSafeEdgeMowingSwitch,
-    ]
-
-
-@pytest.mark.asyncio
-async def test_setup_skips_safe_edge_mowing_when_the_device_has_no_such_setting():
-    """Firmware without safe edge mowing must not get a switch that cannot write."""
-    entities = await _setup_entry_without_schedules(_make_edge_coordinator(safe_supported=False))
-
-    assert [type(entity) for entity in entities] == [
-        DreameMowerAutomaticEdgeMowingSwitch,
-        DreameMowerEdgeBladeOffsetSwitch,
-    ]
-
-
-@pytest.mark.asyncio
-async def test_setup_skips_the_edge_switches_without_mowing_settings():
-    """Devices whose mowing settings were never read must not get the switches."""
-    assert await _setup_entry_without_schedules(_make_edge_coordinator(supported=False)) == []
-
-
-def test_the_edge_switches_report_what_the_coordinator_holds():
-    """Each switch state should mirror its own setting."""
-    coordinator = _make_edge_coordinator()
-
-    assert DreameMowerAutomaticEdgeMowingSwitch(coordinator).is_on is True
-    assert DreameMowerEdgeBladeOffsetSwitch(coordinator).is_on is False
-    assert DreameMowerSafeEdgeMowingSwitch(coordinator).is_on is True
-
-
-def test_the_edge_switches_are_unknown_until_the_settings_have_been_read():
-    """Unread settings leave the switches without a state."""
-    coordinator = _make_edge_coordinator(settings={})
-
-    assert DreameMowerAutomaticEdgeMowingSwitch(coordinator).is_on is None
-    assert DreameMowerSafeEdgeMowingSwitch(coordinator).is_on is None
-
-
-@pytest.mark.asyncio
-async def test_each_edge_switch_only_states_its_own_setting():
-    """Toggling one setting must leave the other two as the device holds them."""
-    coordinator = _make_edge_coordinator()
-
-    await DreameMowerSafeEdgeMowingSwitch(coordinator).async_turn_off()
-    coordinator.async_set_edge_mowing_settings.assert_awaited_once_with(safe=False)
-
-    coordinator.async_set_edge_mowing_settings.reset_mock()
-    await DreameMowerAutomaticEdgeMowingSwitch(coordinator).async_turn_on()
-    coordinator.async_set_edge_mowing_settings.assert_awaited_once_with(auto=True)
-
-    coordinator.async_set_edge_mowing_settings.reset_mock()
-    await DreameMowerEdgeBladeOffsetSwitch(coordinator).async_turn_on()
-    coordinator.async_set_edge_mowing_settings.assert_awaited_once_with(blade_offset=True)
-
-
-@pytest.mark.asyncio
-async def test_switching_an_edge_setting_raises_when_the_device_rejects_it():
-    """A rejected write should surface as an error instead of passing silently."""
-    coordinator = _make_edge_coordinator()
-    coordinator.async_set_edge_mowing_settings = AsyncMock(return_value=False)
-
-    with pytest.raises(HomeAssistantError):
-        await DreameMowerAutomaticEdgeMowingSwitch(coordinator).async_turn_on()
-
-
-@pytest.mark.asyncio
-async def test_switching_an_unsupported_edge_setting_raises():
-    """A setting the record cannot carry has to reach the user as an error."""
-    coordinator = _make_edge_coordinator()
-    coordinator.async_set_edge_mowing_settings = AsyncMock(
-        side_effect=ValueError("This mower does not support safe edge mowing")
-    )
-
-    with pytest.raises(HomeAssistantError, match="safe edge mowing"):
-        await DreameMowerSafeEdgeMowingSwitch(coordinator).async_turn_off()
-
-
 def _make_anti_theft_coordinator(supported=True, pin_check_supported=False, settings=None):
     coordinator = _make_coordinator()
     coordinator.supports_charging_period = False
@@ -311,6 +208,8 @@ def _make_anti_theft_coordinator(supported=True, pin_check_supported=False, sett
     coordinator.anti_theft_pin_check_enabled = state["anti_theft_pin_check_enabled"]
     coordinator.async_set_anti_theft_settings = AsyncMock(return_value=True)
     coordinator.link_module_plan_valid = True
+    # The reads that decide what the mower offers are already done.
+    coordinator.async_when_probed = lambda add: add()
     return coordinator
 
 
@@ -476,6 +375,8 @@ def _make_schedule_coordinator(schedules=None):
     )
     coordinator.current_map_id = 1
     coordinator.async_set_schedule_enabled = AsyncMock(return_value=True)
+    # The reads that decide what the mower offers are already done.
+    coordinator.async_when_probed = lambda add: add()
     return coordinator
 
 

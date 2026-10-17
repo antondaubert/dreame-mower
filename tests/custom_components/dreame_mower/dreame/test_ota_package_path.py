@@ -9,8 +9,8 @@ from custom_components.dreame_mower.dreame.device import DreameMowerDevice
 
 @pytest.fixture
 def device():
-    """Create a test device instance."""
-    return DreameMowerDevice(
+    """Create a test device instance that has no download URL to offer."""
+    device = DreameMowerDevice(
         device_id="test_device",
         username="test_user",
         password="test_pass",
@@ -18,6 +18,8 @@ def device():
         country="DE",
         hass_config_dir="/tmp/test_config"
     )
+    device._cloud_device.get_file_download_url = Mock(return_value=None)
+    return device
 
 
 def test_ota_package_path_handling(device):
@@ -40,18 +42,10 @@ def test_ota_package_path_handling(device):
     # Handle the message
     assert device._handle_mqtt_property_update(message) is True
     
-    # Verify the property was stored (both new and backward compatibility alias)
-    assert device.device_file_path == "ali_dreame/2025/10/11/JU954***/-1*******1_210019111.0430.pack.tbz2"
-    assert device.ota_package_path == "ali_dreame/2025/10/11/JU954***/-1*******1_210019111.0430.pack.tbz2"
+    assert device._device_file_path == "ali_dreame/2025/10/11/JU954***/-1*******1_210019111.0430.pack.tbz2"
     
     # Verify notification was sent
     assert ("device_file_path", "ali_dreame/2025/10/11/JU954***/-1*******1_210019111.0430.pack.tbz2") in property_changes
-
-
-def test_ota_package_path_initial_value(device):
-    """Test that device file path is initially None."""
-    assert device.device_file_path is None
-    assert device.ota_package_path is None  # Backward compatibility
 
 
 def test_ota_package_path_update_notification(device):
@@ -253,5 +247,5 @@ def test_device_file_path_piid_20_handled(device):
     }
 
     assert device._handle_mqtt_property_update(message) is True
-    assert device.device_file_path == "ali_dreame/2026/03/03/HT6*****/-1*******3_013****99.0473.bin"
+    assert device._device_file_path == "ali_dreame/2026/03/03/HT6*****/-1*******3_013****99.0473.bin"
     assert ("device_file_path", "ali_dreame/2026/03/03/HT6*****/-1*******3_013****99.0473.bin") in property_changes

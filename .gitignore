@@ -132,5 +132,5 @@ dmypy.json
 .DS_Store
 .vscode/
 
-# Test output
-tests/custom_components/dreame_mower/dreame/test_data/*_actual.svg
+# Node packages for the card tests
+node_modules/

@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Välj kontotyp",
-        "description": "Välj din kontotyp för Dreame Mower -integrationen.",
+        "description": "Välj din kontotyp för Dreame Mower-integrationen.",
         "data": {
           "account_type": "Kontotyp"
         }
@@ -12,30 +12,30 @@
         "data": {
           "username": "Användarnamn",
           "password": "Lösenord",
-          "country": "Servern"
+          "country": "Serverland"
         },
-        "description": "Logga in på Dreamehome -molnet."
+        "description": "Logga in på Dreamehome-molnet."
       },
       "mova": {
         "data": {
           "username": "Användarnamn",
           "password": "Lösenord",
-          "country": "Servern"
+          "country": "Serverland"
         },
-        "description": "Logga in på Movahome -molnet."
+        "description": "Logga in på MOVAhome-molnet."
       },
       "devices": {
         "data": {
           "devices": "Stödda enheter"
         },
-        "description": "Välj den Dreame Mower -enheten du vill ställa in."
+        "description": "Välj den Dreame Mower-enhet du vill ställa in."
       },
       "options": {
         "data": {
           "name": "Enhetsnamn",
           "notify": "Anmälningstyper"
         },
-        "description": "Konfigurera ditt Dreame Mower -enhetsnamn och meddelandepreferenser."
+        "description": "Konfigurera enhetsnamnet och meddelandeinställningarna för din Dreame Mower."
       }
     },
     "error": {
@@ -47,7 +47,6 @@
       "invalid_account_type": "Ogiltigt kontotyp valt."
     },
     "abort": {
-      "cannot_connect": "Misslyckades med att ansluta.",
       "already_configured": "Den här enheten är redan konfigurerad."
     }
   },
@@ -55,13 +54,10 @@
     "step": {
       "init": {
         "title": "Alternativ",
-        "description": "Ansluten med {account} ({account_type}, {country}).\n\nKonfigurera inställningar för meddelanden för Dreame Mower -integrationen.",
+        "description": "Ansluten med {account} ({account_type}, {country}).\n\nVälj vilka meddelanden du vill få från din Dreame Mower.",
         "data": {
-          "notify": "Anmälningstyper",
-          "map_rotation": "Kartrotation",
-          "map_show_title": "Visa karttitel",
-          "map_show_legend": "Visa kartförklaring",
-          "map_padding": "Kartutfyllnad (pixlar)"
+          "notify": "Meddelandetyper",
+          "map_rotation": "Kartrotation"
         }
       }
     }
@@ -86,48 +82,8 @@
           "maintenance_paused": "Pausad vid underhållspunkten"
         }
       },
-      "charging_status": {
-        "name": "Laddningsstatus",
-        "state": {
-          "not_docked": "Inte dockad",
-          "charging": "Laddning",
-          "not_charging": "Laddar inte",
-          "charging_completed": "Laddning avslutad",
-          "return_to_charge": "Återgå till laddning",
-          "charging_paused_high_temperature": "Laddning pausad: batteritemperaturen är för hög",
-          "charging_paused_low_temperature": "Laddning pausad: batteritemperaturen är för låg"
-        }
-      },
       "mowing_progress": {
         "name": "Klippa framsteg"
-      },
-      "bluetooth_connection": {
-        "name": "Bluetooth"
-      },
-      "dnd_status": {
-        "name": "Stör ej"
-      },
-      "charging_schedule": {
-        "name": "Laddningsschema"
-      },
-      "timezone": {
-        "name": "Tidszon"
-      },
-      "device_code": {
-        "name": "Enhetskod"
-      },
-      "current_task": {
-        "name": "Aktuell uppgift",
-        "state": {
-          "idle": "Ingen uppgift",
-          "starting": "Startar",
-          "mowing": "Klipper",
-          "paused": "Pausad",
-          "finished": "Slutförd",
-          "failed": "Misslyckades",
-          "exit": "Stoppad",
-          "returning_to_dock": "Återvänder till stationen"
-        }
       },
       "consumable_blade_health": {
         "name": "Knivskick"
@@ -143,36 +99,6 @@
       },
       "account": {
         "name": "Konto"
-      }
-    },
-    "camera": {
-      "map_camera": {
-        "name": "Karta"
-      }
-    },
-    "button": {
-      "reset_blade": {
-        "name": "Återställ knivräknaren"
-      },
-      "reset_brush": {
-        "name": "Återställ borstenteller"
-      },
-      "reset_robot_maintenance": {
-        "name": "Återställ underhållsräknaren"
-      },
-      "dock_without_stopping": {
-        "name": "Docka utan att stoppa uppgiften"
-      },
-      "go_to_maintenance_point": {
-        "name": "Kör till underhållspunkten"
-      }
-    },
-    "number": {
-      "cutting_height": {
-        "name": "Klipphöjd"
-      },
-      "mowing_direction": {
-        "name": "Klippriktning"
       }
     },
     "switch": {
@@ -197,14 +123,20 @@
       "schedule": {
         "name": "Schema {number}"
       },
-      "edge_mowing_auto": {
-        "name": "Automatisk kantklippning"
+      "frost_protection": {
+        "name": "Frostskydd"
       },
-      "edge_blade_offset": {
-        "name": "EdgeMaster"
+      "path_obstacle_avoidance": {
+        "name": "Undvik hinder på gångar"
       },
-      "edge_mowing_safe": {
-        "name": "Säker kantklippning"
+      "auto_recharge_standby": {
+        "name": "Automatisk laddning efter vänteläge"
+      },
+      "ai_obstacle_photos": {
+        "name": "Fotografera hinder som AI upptäckt"
+      },
+      "child_lock": {
+        "name": "Barnlås"
       }
     },
     "time": {
@@ -218,6 +150,9 @@
     "select": {
       "rain_delay": {
         "name": "Väntetid efter regn"
+      },
+      "navigation_path": {
+        "name": "Navigeringsväg"
       }
     }
   },
@@ -234,9 +169,50 @@
         "map_wide": "En inställning för hela kartan",
         "per_zone": "En inställning per zon"
       }
+    },
+    "mowing_efficiency": {
+      "options": {
+        "standard": "Standard",
+        "efficient": "Effektiv"
+      }
+    },
+    "turning_method": {
+      "options": {
+        "efficient": "Effektiv",
+        "lawn_care": "Gräsvårdande"
+      }
+    },
+    "ai_obstacle_kind": {
+      "options": {
+        "humans": "Människor",
+        "animals": "Djur",
+        "objects": "Föremål"
+      }
     }
   },
   "services": {
+    "start_all_area_mowing": {
+      "name": "Starta klippning av hela ytan",
+      "description": "Klipper hela den aktiva kartan. Ett pågående klippass fortsätter.",
+      "fields": {
+        "from_stop_point": {
+          "name": "Från stoppunkten",
+          "description": "Där en oavslutad uppgift stannade i en zon: på, klipp bara resten; av, klipp den från början. Utelämnat får klipparen inget besked."
+        }
+      }
+    },
+    "end_task": {
+      "name": "Avsluta uppdrag",
+      "description": "Avslutar det pågående klippuppdraget. Gräsklipparen stannar där den är och minns var uppdraget slutade, så att ett senare uppdrag kan fortsätta därifrån."
+    },
+    "stop_returning": {
+      "name": "Avbryt återresa",
+      "description": "Stoppar gräsklipparen på väg till stationen. Den stannar där den är."
+    },
+    "recharge": {
+      "name": "Ladda",
+      "description": "Skickar gräsklipparen till stationen för laddning. Ett pågående klippuppdrag behålls och kan fortsättas efteråt."
+    },
     "start_zone_mowing": {
       "name": "Starta klippning av zoner",
       "description": "Startar klippning av en eller flera valda zoner.",
@@ -244,6 +220,10 @@
         "zone_ids": {
           "name": "Zon-ID:n",
           "description": "Lista över zon-ID:n som ska klippas, till exempel [1, 3]."
+        },
+        "from_stop_point": {
+          "name": "Från stoppunkten",
+          "description": "Där en oavslutad uppgift stannade i en zon: på, klipp bara resten; av, klipp den från början. Utelämnat får klipparen inget besked."
         }
       }
     },
@@ -267,61 +247,71 @@
         }
       }
     },
-    "set_cutting_height": {
-      "name": "Ställ in klipphöjd",
-      "description": "Ställer in klipphöjden för en hel karta eller en av dess zoner. Alla modeller stöder inte höjdjustering; tillgängligt intervall beror på modellen.",
+    "select_map": {
+      "name": "Välj karta",
+      "description": "Gör en annan karta till den som robotgräsklipparen arbetar på. Inte möjligt medan ett klippuppdrag pågår.",
       "fields": {
-        "height": {
-          "name": "Klipphöjd",
-          "description": "Klipphöjd i centimeter, i steg om 0,5 cm."
-        },
         "map_id": {
           "name": "Kart-ID",
-          "description": "Karta som ska ändras. Standard är den aktiva kartan. Tillgängliga ID:n visas i gräsklipparens attribut 'maps' när kartan har hämtats."
-        },
-        "zone_id": {
-          "name": "Zon-ID",
-          "description": "Zon som ska ändras i stället för hela kartan. Aktiverar zoninställningar: övriga zoner behåller sina egna höjder och kartans övergripande höjd gäller inte längre. Tillgängliga ID:n visas i gräsklipparens attribut 'zones'."
+          "description": "Karta att byta till. Tillgängliga kart-ID:n finns i gräsklipparentitetens maps-attribut när kartan har hämtats."
         }
       }
     },
-    "set_edge_mowing_settings": {
-      "name": "Ställ in kantklippning",
-      "description": "Ändrar inställningar för kantklippning för en hel karta eller en av dess zoner. Utelämnade inställningar behåller sina aktuella värden. Om kartan använder zoninställningar tillämpas ändringarna på alla zoner eftersom gräsklipparen då inte längre använder kartans övergripande inställningar. Inställningarna finns även som växlar för den aktiva kartan.",
+    "set_mowing_settings": {
+      "name": "Ändra klippinställningar",
+      "description": "Ändrar valfria klippinställningar för en hel karta eller en av dess zoner på en gång. Utelämnade inställningar behåller sina aktuella värden. Om kartan använder zoninställningar tillämpas ändringarna på alla zoner eftersom gräsklipparen då inte längre använder kartans övergripande inställningar. Inställningar som gräsklipparen inte erbjuder avvisas.",
       "fields": {
+        "efficiency": {
+          "name": "Klippeffektivitet",
+          "description": "Hur snabbt gräsklipparen arbetar. Effektiv klipper mer per dag, med mindre försiktighet runt hinder."
+        },
+        "cutting_height": {
+          "name": "Klipphöjd",
+          "description": "Klipphöjd i centimeter, i steg om 0,5 cm."
+        },
+        "mowing_direction": {
+          "name": "Klippriktning",
+          "description": "Klippstråkens riktning i grader, som den visas i appen. Vinklar från 180° motsvarar samma stråk som vinkeln 180° lägre."
+        },
+        "mowing_direction_mode": {
+          "name": "Klippriktningsläge",
+          "description": "Anger om varje klipptillfälle klipper i samma riktning eller vrider riktningen i förhållande till föregående tillfälle."
+        },
         "automatic_edge_mowing": {
           "name": "Automatisk kantklippning",
           "description": "Anger om gräsklipparen automatiskt klipper kanterna när klippningen av hela kartan eller en zon är klar."
         },
         "safe_edge_mowing": {
           "name": "Säker kantklippning",
-          "description": "Anger om gräsklipparen håller ett litet avstånd till gräsmattans gräns vid kantklippning. Finns inte på alla modeller."
+          "description": "Anger om gräsklipparen håller ett litet avstånd till gräsmattans gräns vid kantklippning."
         },
         "edge_blade_offset": {
           "name": "Sidoförskjutning av klippskivan",
-          "description": "Anger om klippskivan förskjuts i sidled vid kantvarven för att klippa närmare gränsen. När detta aktiveras ökar även antalet kantvarv från ett till två så att den förskjutna skivan täcker hela kanten."
+          "description": "Anger om klippskivan förskjuts i sidled vid kantvarven för att klippa närmare gränsen. När detta aktiveras ökar även antalet kantvarv från ett till två."
         },
-        "map_id": {
-          "name": "Kart-ID",
-          "description": "Karta som ska ändras. Standard är den aktiva kartan."
+        "edge_obstacle_avoidance": {
+          "name": "Hinderundvikning vid kanter",
+          "description": "Anger om gräsklipparen även undviker hinder längs kanterna, vilket kan lämna lite oklippt gräs där. Stängs av automatiskt när varken LiDAR eller kameran känner igen hinder."
         },
-        "zone_id": {
-          "name": "Zon-ID",
-          "description": "Zon som ska ändras i stället för hela kartan. Aktiverar zoninställningar: övriga zoner behåller sina egna inställningar och kartans övergripande inställningar gäller inte längre."
-        }
-      }
-    },
-    "set_mowing_direction": {
-      "name": "Ställ in klippriktning",
-      "description": "Ställer in riktningen för klippstråken för en hel karta eller en av dess zoner, samt hur riktningen ändras mellan klipptillfällen. Om kartan använder zoninställningar tillämpas ändringarna på alla zoner eftersom gräsklipparen då inte längre använder kartans övergripande inställningar. Inställningarna finns även som tal och väljare för den aktiva kartan.",
-      "fields": {
-        "angle": {
-          "name": "Vinkel",
-          "description": "Klippriktning i grader, som den visas i appen. Det här är en linjeorientering, inte en färdriktning: vinklar från 180° motsvarar samma stråk som vinkeln 180° lägre."
+        "lidar_obstacle_recognition": {
+          "name": "LiDAR-hinderigenkänning",
+          "description": "Anger om gräsklipparen känner igen hinder med sin LiDAR och undviker dem utan att röra vid dem. Stäng av för att låta gräsklipparen klippa högt gräs."
         },
-        "mode": {
-          "name": "Klippningsläge",
-          "description": "Välj om varje klipptillfälle använder samma klippriktning eller växlar i förhållande till föregående tillfälle."
+        "obstacle_height": {
+          "name": "Höjd för hinderundvikning",
+          "description": "Det lägsta hinder som gräsklipparen undviker, i centimeter."
+        },
+        "obstacle_distance": {
+          "name": "Avstånd för hinderundvikning",
+          "description": "Hur stort avstånd gräsklipparen håller till hinder, i centimeter. Ett kortare avstånd kan leda till kollisioner eller skrapor."
+        },
+        "ai_obstacle_recognition": {
+          "name": "AI-hinderigenkänning",
+          "description": "De hindertyper som kameran känner igen och gräsklipparen undviker. Med en tom lista lämnas hinderundvikningen åt stötfångaren och LiDAR."
+        },
+        "turning_method": {
+          "name": "Vändningsmetod",
+          "description": "Hur gräsklipparen vänder i slutet av ett stråk. Gräsvårdande vänder i en vidare båge och skonar gräsmattan, men behöver lite utrymme för att vända. Finns endast i nyare firmware."
         },
         "map_id": {
           "name": "Kart-ID",
@@ -344,6 +334,368 @@
         "map_id": {
           "name": "Kart-ID",
           "description": "Karta som ska ändras. Standard är den aktiva kartan."
+        }
+      }
+    },
+    "set_no_go_zone": {
+      "name": "Ange förbjuden zon",
+      "description": "Ritar en förbjuden zon på den aktuella kartan, eller ändrar en, i kartkoordinater (millimeter, så som kartans zoner anges). Returnerar zonens ID. Gräsklipparen rör sig inte för detta, men avvisar det medan den klipper eller återvänder till stationen.",
+      "fields": {
+        "shape": {
+          "name": "Form",
+          "description": "En linje som gräsklipparen inte korsar, en rektangel eller en cirkel."
+        },
+        "points": {
+          "name": "Punkter",
+          "description": "En linjes två ändar, en rektangels två motstående hörn eller en cirkels mittpunkt, var och en som [x, y]."
+        },
+        "radius": {
+          "name": "Radie",
+          "description": "En cirkels radie i millimeter."
+        },
+        "zone_id": {
+          "name": "ID för förbjuden zon",
+          "description": "Den förbjudna zon som ska ändras i stället för att rita en ny."
+        }
+      }
+    },
+    "set_ignore_obstacle_area": {
+      "name": "Ange område där hinder ignoreras",
+      "description": "Ritar ett område på den aktuella kartan där gräsklipparen bara förlitar sig på stötfångaren och kör över låga hinder, eller ändrar ett. Returnerar områdets ID. Gräsklipparen rör sig inte för detta, men avvisar det medan den klipper eller återvänder till stationen.",
+      "fields": {
+        "rect": {
+          "name": "Rektangel",
+          "description": "Två motstående hörn som [x0, y0, x1, y1], i millimeter."
+        },
+        "area_id": {
+          "name": "Områdes-ID",
+          "description": "Det område som ska ändras i stället för att rita ett nytt."
+        }
+      }
+    },
+    "set_spot_area": {
+      "name": "Ange punktområde",
+      "description": "Ritar ett punktområde på den aktuella kartan, eller ändrar ett. Det måste ligga inom en zon. Returnerar punktområdets ID. Gräsklipparen rör sig inte för detta, men avvisar det medan den klipper eller återvänder till stationen.",
+      "fields": {
+        "rect": {
+          "name": "Rektangel",
+          "description": "Två motstående hörn som [x0, y0, x1, y1], i millimeter."
+        },
+        "area_id": {
+          "name": "Punktområdes-ID",
+          "description": "Det punktområde som ska ändras i stället för att rita ett nytt."
+        }
+      }
+    },
+    "set_maintenance_point": {
+      "name": "Ange underhållspunkt",
+      "description": "Placerar en underhållspunkt på den aktuella kartan, eller flyttar en. Returnerar punktens ID. Gräsklipparen rör sig inte för detta, men avvisar det medan den klipper eller återvänder till stationen.",
+      "fields": {
+        "x": {
+          "name": "X",
+          "description": "Var punkten ligger, i millimeter."
+        },
+        "y": {
+          "name": "Y",
+          "description": "Var punkten ligger, i millimeter."
+        },
+        "heading": {
+          "name": "Riktning",
+          "description": "Åt vilket håll klipparen står där, i grader. Utelämnat behåller en flyttad punkt sin riktning och en ny pekar mot 0 grader."
+        },
+        "point_id": {
+          "name": "Punkt-ID",
+          "description": "Den punkt som ska flyttas i stället för att placera en ny."
+        }
+      }
+    },
+    "delete_map_item": {
+      "name": "Ta bort kartobjekt",
+      "description": "Tar bort en zon, en väg, en förbjuden zon, ett punktområde, en underhållspunkt eller ett område där hinder ignoreras från den aktuella kartan. När en zon tas bort försvinner även dess scheman. Gräsklipparen rör sig inte för detta, men avvisar det medan den klipper eller återvänder till stationen.",
+      "fields": {
+        "kind": {
+          "name": "Typ",
+          "description": "Vilken typ av objekt det är."
+        },
+        "item_id": {
+          "name": "Objekt-ID",
+          "description": "Objektets ID."
+        }
+      }
+    },
+    "rename_zone": {
+      "name": "Byt namn på zon",
+      "description": "Ger en zon på den aktuella kartan ett nytt namn på högst 24 tecken. Gräsklipparen rör sig inte för detta, men avvisar det medan den klipper eller återvänder till stationen.",
+      "fields": {
+        "zone_id": {
+          "name": "Zon-ID",
+          "description": "Zonen som ska byta namn."
+        },
+        "name": {
+          "name": "Namn",
+          "description": "Det nya namnet."
+        }
+      }
+    },
+    "split_zone": {
+      "name": "Dela zon",
+      "description": "Delar en zon på den aktuella kartan i två längs en linje tvärs över den. Scheman som innehåller zonen tas bort. Returnerar de två zonernas ID:n. Gräsklipparen rör sig inte för detta, men avvisar det medan den klipper eller återvänder till stationen.",
+      "fields": {
+        "zone_id": {
+          "name": "Zon-ID",
+          "description": "Zonen som ska delas."
+        },
+        "line": {
+          "name": "Linje",
+          "description": "Linjens två ändar som [x0, y0, x1, y1], i millimeter; den ska nå tvärs över zonen."
+        }
+      }
+    },
+    "merge_zones": {
+      "name": "Slå ihop zoner",
+      "description": "Slår ihop två angränsande zoner på den aktuella kartan till en. Returnerar den sammanslagna zonens ID. Gräsklipparen rör sig inte för detta, men avvisar det medan den klipper eller återvänder till stationen.",
+      "fields": {
+        "zone_ids": {
+          "name": "Zon-ID:n",
+          "description": "De två zonerna."
+        }
+      }
+    },
+    "rename_map": {
+      "name": "Byt namn på karta",
+      "description": "Ger en karta ett nytt namn på högst 24 tecken. Gräsklipparen rör sig inte för detta, men avvisar det medan den klipper eller återvänder till stationen.",
+      "fields": {
+        "map_id": {
+          "name": "Kart-ID",
+          "description": "Kartan som ska byta namn."
+        },
+        "name": {
+          "name": "Namn",
+          "description": "Det nya namnet."
+        }
+      }
+    },
+    "clear_rain_protection": {
+      "name": "Häv regnskyddet",
+      "description": "Häver det regn som robotgräsklipparen rapporterar, så att en klippning som startas direkt efteråt körs trots att sensorn upptäckt vatten. Starta uppgiften direkt efteråt; inget annat händer."
+    },
+    "find_robot": {
+      "name": "Hitta roboten",
+      "description": "Låter klipparen ropa så att den kan hittas på ljudet. Den rör sig inte."
+    },
+    "clear_error": {
+      "name": "Rensa fel",
+      "description": "Rensar fel och varningar som klipparen rapporterar och låter den fortsätta: en pausad uppgift återupptas och en klippare utanför stationen utan uppgift kör hem. Klipparen kan röra sig.",
+      "fields": {
+        "continue_task": {
+          "name": "Fortsätt",
+          "description": "Återuppta uppgiften, eller kör hem, när felen är rensade. Av rensar dem bara."
+        }
+      }
+    },
+    "set_do_not_disturb": {
+      "name": "Ställ in Stör ej",
+      "description": "Slår på eller av Stör ej, eller ändrar dess tidsfönster. I fönstret startar ingen uppgift; en pågående uppgift pausas vid början och klipparen återvänder till stationen.",
+      "fields": {
+        "enabled": {
+          "name": "Aktiverad",
+          "description": "Slå på eller av; utelämnat förblir det som det är."
+        },
+        "start": {
+          "name": "Start",
+          "description": "När fönstret börjar; utelämnat förblir det som det är."
+        },
+        "end": {
+          "name": "Slut",
+          "description": "När fönstret slutar, nästa dag om det är före starten; utelämnat förblir det som det är. Tiderna ligger mellan 00:01 och 23:59."
+        }
+      }
+    },
+    "set_low_speed_at_night": {
+      "name": "Ställ in låg hastighet på natten",
+      "description": "Slår på eller av låg hastighet på natten, eller ändrar dess tidsfönster, då klipparen kör långsamt.",
+      "fields": {
+        "enabled": {
+          "name": "Aktiverad",
+          "description": "Slå på eller av; utelämnat förblir det som det är."
+        },
+        "start": {
+          "name": "Start",
+          "description": "När fönstret börjar; utelämnat förblir det som det är."
+        },
+        "end": {
+          "name": "Slut",
+          "description": "När fönstret slutar, nästa dag om det är före starten; utelämnat förblir det som det är. Tiderna ligger mellan 00:01 och 23:59."
+        }
+      }
+    },
+    "set_start_from_stop_point": {
+      "name": "Ställ in start från stoppunkt",
+      "description": "Väljer om en ny uppgift kan fortsätta där en oavslutad stannade, och hur många dagar en stoppunkt sparas. Att slå av den rensar klipparens stoppunkter.",
+      "fields": {
+        "enabled": {
+          "name": "Aktiverad",
+          "description": "Slå på eller av; utelämnat förblir det som det är."
+        },
+        "days": {
+          "name": "Dagar",
+          "description": "Hur många dagar en stoppunkt sparas, 1 till 7; utelämnat förblir det som det är."
+        }
+      }
+    },
+    "set_light": {
+      "name": "Ställ in ljus",
+      "description": "Ändrar när klipparens lampor lyser: bara under en egen period eller hela dagen, och i vilka lägen. Det som utelämnas förblir som det är.",
+      "fields": {
+        "custom_period": {
+          "name": "Egen period",
+          "description": "Begränsa lamporna till perioden från start till slut."
+        },
+        "start": {
+          "name": "Start",
+          "description": "När perioden börjar."
+        },
+        "end": {
+          "name": "Slut",
+          "description": "När perioden slutar."
+        },
+        "standby": {
+          "name": "I vänteläge",
+          "description": "Ljus eller vakt i vänteläge."
+        },
+        "working": {
+          "name": "Under arbete",
+          "description": "Ljus under arbete."
+        },
+        "charging": {
+          "name": "Under laddning",
+          "description": "Ljus under laddning."
+        },
+        "error": {
+          "name": "Vid fel",
+          "description": "Ljus medan klipparen rapporterar ett fel."
+        }
+      }
+    },
+    "set_human_presence_alert": {
+      "name": "Ställ in personvarning",
+      "description": "Ändrar varningen när klipparens kamera ser en person: om den är på, hur känslig, när den vaktar, hur den rapporterar och hur ofta. Det som utelämnas förblir som det är.",
+      "fields": {
+        "enabled": {
+          "name": "Aktiverad",
+          "description": "Slå på eller av varningen."
+        },
+        "sensitivity": {
+          "name": "Känslighet",
+          "description": "Hur lätt en person känns igen."
+        },
+        "standby": {
+          "name": "I vänteläge",
+          "description": "Ljus eller vakt i vänteläge."
+        },
+        "mowing": {
+          "name": "Under klippning",
+          "description": "Vakta under klippning."
+        },
+        "returning": {
+          "name": "Vid återresa",
+          "description": "Vakta när den återvänder till stationen."
+        },
+        "patrolling": {
+          "name": "Under patrull",
+          "description": "Vakta under patrull."
+        },
+        "voice": {
+          "name": "Tala och meddela",
+          "description": "Klipparen talar och ett meddelande skickas."
+        },
+        "photo": {
+          "name": "Ta ett foto",
+          "description": "Ett foto av personen tas och hamnar i appens album."
+        },
+        "interval": {
+          "name": "Intervall",
+          "description": "Högst en varning per så många minuter, på klippare som sprider sina varningar."
+        }
+      }
+    },
+    "set_robot_voice": {
+      "name": "Ställ in röst",
+      "description": "Ändrar volymen på klipparens röst och vilka meddelanden den säger. Det som utelämnas förblir som det är.",
+      "fields": {
+        "volume": {
+          "name": "Volym",
+          "description": "Från 0 till 100."
+        },
+        "regular": {
+          "name": "Vanliga meddelanden",
+          "description": "Säga vanliga meddelanden."
+        },
+        "work_status": {
+          "name": "Arbetsstatus",
+          "description": "Säga arbetsstatus."
+        },
+        "special_status": {
+          "name": "Särskilda lägen",
+          "description": "Säga särskilda lägen."
+        },
+        "error_status": {
+          "name": "Fel",
+          "description": "Säga fel."
+        }
+      }
+    },
+    "reset_consumable": {
+      "name": "Återställ förbrukningsdel",
+      "description": "Börjar om räkningen för en förbrukningsdel, t.ex. efter byte av knivarna eller stationens rengöringsborste, eller efter service av klipparen.",
+      "fields": {
+        "item": {
+          "name": "Förbrukningsdel",
+          "description": "Knivarna, stationens rengöringsborste eller klipparens underhåll."
+        }
+      }
+    },
+    "go_to_maintenance_point": {
+      "name": "Kör till underhållspunkt",
+      "description": "Skickar klipparen till en underhållspunkt på den aktuella kartan, där den väntar på rengöring eller service. Klipparen kör dit.",
+      "fields": {
+        "point_id": {
+          "name": "Underhållspunkt",
+          "description": "Id för en underhållspunkt på den aktiva kartan."
+        }
+      }
+    },
+    "ignore_obstacle": {
+      "name": "Ignorera hinder",
+      "description": "Låter klipparen glömma ett hinder som kameran kände igen, så att det inte längre visas på kartan. Kan inte ångras. Klipparen rör sig inte för det, men vägrar medan den klipper.",
+      "fields": {
+        "obstacle_id": {
+          "name": "Hinder",
+          "description": "Hindrets id hos klipparen; kartkortet fyller i det när ett hinder ignoreras där."
+        }
+      }
+    },
+    "backup_map": {
+      "name": "Säkerhetskopiera karta",
+      "description": "Säkerhetskopierar den aktuella kartan och ersätter dess tidigare säkerhetskopia. Gräsklipparen rör sig inte för detta, men avvisar det medan den klipper eller återvänder till stationen."
+    },
+    "restore_map": {
+      "name": "Återställ karta",
+      "description": "Återställer den aktuella kartan som säkerhetskopian har den, eller hämtar med en plats tillbaka en raderad karta från säkerhetskopian som finns kvar på dess tomma plats. Kartans scheman och klippinställningar kan återställas. Klipparen rör sig inte för det, men vägrar medan den klipper eller återvänder till stationen.",
+      "fields": {
+        "slot": {
+          "name": "Plats",
+          "description": "Den tomma kartplatsen, räknad från 1, vars säkerhetskopia hämtar tillbaka en raderad karta. Utelämna för att återställa den aktuella kartan."
+        }
+      }
+    },
+    "delete_map": {
+      "name": "Ta bort karta",
+      "description": "Raderar en karta med allt på den. Kartans säkerhetskopia finns kvar på dess tomma plats, varifrån restore_map hämtar tillbaka den; utan säkerhetskopia måste en ny karta köras in i appen med klipparen. Klipparen rör sig inte för det, men vägrar medan den klipper eller återvänder till stationen.",
+      "fields": {
+        "map_id": {
+          "name": "Kart-ID",
+          "description": "Kartan som ska tas bort."
         }
       }
     }

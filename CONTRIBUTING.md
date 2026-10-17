@@ -21,14 +21,16 @@ Open an issue with:
 
 ## Changing the code
 
-You need Python 3.14 and Git. Earlier Python versions cannot install the Home
-Assistant release the tests run against.
+You need Python 3.14, Node.js 22 or newer, and Git. Earlier Python versions
+cannot install the Home Assistant release the tests run against; Node.js runs
+the map card's tests.
 
 ```bash
 git clone https://github.com/antondaubert/dreame-mower.git
 cd dreame-mower
 python3 -m venv .venv
 .venv/bin/pip install -r tests/requirements.txt
+npm ci
 ```
 
 Run all checks before you open a pull request:
@@ -37,7 +39,8 @@ Run all checks before you open a pull request:
 ./run_test.sh
 ```
 
-It runs the tests with pytest and type checks the integration with mypy. Add
+It runs the tests with pytest, type checks the integration with mypy, and
+runs the map card's tests. Add
 tests for what you change: a test should fail without your change and pass
 with it.
 

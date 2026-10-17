@@ -4,201 +4,65 @@
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg?style=flat-square)](https://hacs.xyz/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 
-A Home Assistant integration for **Dreame** and **MOVA** robotic lawn mowers. Control your mower, view maps, track mowing sessions, and monitor battery status directly from Home Assistant.
+A Home Assistant integration for **Dreame** and **MOVA** robotic lawn mowers, with a live map card to mow, follow and set up the mower from a dashboard.
 
 *If this integration saves you time, consider to [buy me a ☕](https://buymeacoffee.com/antondaubert).*
 
 ### Disclaimer
-This is an **community-developed integration** for interoperability with Home Assistant. It is not affiliated with or supported by Dreame Technology or MOVA.
+This is a **community-developed integration** for interoperability with Home Assistant. It is not affiliated with or supported by Dreame Technology or MOVA.
 
 Provided "as-is" under the MIT License for personal, non-commercial use with devices you own. Use at your own risk.
 
-## Current Features
-- **Live Maps** - See your mower's location and coverage in real-time
-- **Session Tracking** - Current and previous mowing sessions  
-- **Session History** - Keep track of past mowing activities
-- **Remote Control** - Start, pause, stop, and dock your mower
-- **Map Awareness** - Inspect known maps, zones, contours, and active task metadata
-- **Cutting Height** - Read and set the cutting height of the active map
-- **Edge Mowing** - Read and set how the mower treats the edges, per map or per zone
-- **Charging Period** - Read and set the time window the mower is allowed to fully charge in
-- **Rain Protection** - See when rain keeps the mower docked, and set how long it waits afterwards
-- **Anti-Theft Alarm** - Read and set the lift alarm, the off-map alarm and the mower's position reports
-- **Schedules** - See the mowing schedules of the active map and switch them on and off
-- **Mowing Direction** - Read and set the direction the mower drives its lanes in, per map or per zone
-- **Maintenance Point** - Send the mower to the spot it is cleaned at
-- **Battery Status** - Current battery level and charging info
-- **Mowing Progress** - Coverage percentage and session duration
-- **Do Not Disturb** - View quiet hours settings
-- **Account** - See which Dreamehome or MOVAhome account a device is reached through
-- **Notifications** - Status updates and error alerts
+## Features
 
-*Have suggestions? Check out [Discussions](https://github.com/antondaubert/dreame-mower/discussions)*
+- **Map card** - the active map drawn live: striped lawns, no-go areas, obstacles with their photos, and the mower with the lanes it has cut. Tap edges, zones or spot areas to mow just those.
+- **Control** - start, pause, end and dock; mow the whole map, zones, edges or spot areas; go on from where an unfinished task stopped.
+- **Work log** - past tasks with the area, the time and a map of the lanes each one mowed.
+- **Mowing settings** - cutting height, mowing direction, edges and obstacle avoidance, per map or per zone.
+- **Map editor** - no-go zones, ignore-obstacle and spot areas, maintenance points; rename, split and merge zones; rename, back up, restore and switch maps.
+- **Mower settings** - rain protection, charging period, frost protection, Do Not Disturb, lights, anti-theft alarms, child lock, robot voice and more, each where the mower offers it.
+- **Schedules** - the mower's own schedules of the active map, switched on and off.
+- **Maintenance** - wear of the blades, the station brush and the mower, with resets; send the mower to a maintenance point.
+- **Entities** - battery, state, progress, errors and every setting above as sensors, switches, selects and times, for automations.
 
-## UI Elements
+## Installation
 
-The current release exposes map, zone, and edge selection as select entities in Home Assistant. Selecting **multiple zones or areas** at once is not yet available in the UI — use the service actions below for that.
+1. Ensure [HACS](https://hacs.xyz/) is installed.
+2. In HACS, open ⋮ → **Custom repositories** and add `https://github.com/antondaubert/dreame-mower` as an **Integration**.
+3. Install **Dreame Mower** and restart Home Assistant.
+4. **Settings → Devices & Services → Add Integration → Dreame Mower**, and sign in with your Dreamehome or MOVAhome account.
 
-### Switching Maps
+## Map card
 
-The mower only switches its active map while **no mowing task is in progress**. A task that is running, paused, or interrupted on the way back to the dock all block the switch — the mower accepts the command and then ignores it. Finish or cancel the task first, then switch the map. The **Map** select reports an error instead of silently leaving the mower on the old map.
+The card is registered as a dashboard resource automatically. Add it from the dashboard editor (**Add card → Dreame Mower Card**) or in YAML:
 
-In automations that switch the map and then start mowing, give the mower a moment between the two steps so the new map is active before the run starts.
+```yaml
+type: custom:dreame-mower-card
+entity: lawn_mower.your_mower
+# optional
+title: Garden        # a small caption above the state
+theme: auto          # the map's colours: auto, light or dark
+show_header: true    # the status row with the state and the battery
+show_controls: true  # what to mow and the start button
+show_trail: true     # the lanes cut during a session
+```
 
-### Cutting Height
+Its tabs are **Mow** (the map and what to mow), **History** (the work log), **Schedules** and **Settings** (the mower's settings, the map editor and the maps). It fits a phone screen, so it works well on its own in a **panel** view. Dashboards whose resources are managed in YAML need it added by hand, as a JavaScript module at `/dreame_mower/dreame-mower-card.js`. The map's rotation is set in the integration's options.
 
-The **Cutting height** number entity sets the cutting height of the **active map**, in 0.5 cm steps. The entity is only created for models whose cutting height is adjustable from software; on models with a manual height dial (for example the MOVA 600 and MOVA 1000) it is omitted.
+## Actions
 
-The selectable range depends on the model: most mowers go from 3 cm to 7 cm, while models with an extended range go up to 10 cm.
+Besides the standard `lawn_mower` actions, the integration offers these, each targeting the mower entity. Their fields are described in **Developer tools → Actions**.
 
-The entity always sets the height for the whole map. To set a height for a single zone, use the `dreame_mower.set_cutting_height` service action with a `zone_id`.
-
-The mower entity exposes `cutting_height`, `zone_cutting_heights` and `mowing_preference_mode` as attributes, so automations can read back the current values and see which of the two is in effect. The mower announces a changed height, whoever changed it, so one set in the Dreame or MOVA app shows up within seconds.
-
-### Edge Mowing
-
-Three switches cover how the mower treats the edges of the **active map**:
-
-- **Automatic Edge Mowing** - the mower mows the edges on its own once all-area or zone mowing has finished
-- **Safe Edge Mowing** - the mower keeps a small buffer from the lawn boundary while mowing the edges, which spares the boundary but leaves a strip of uncut grass along it
-- **EdgeMaster** - the blade disc shifts to the side for the edge laps so the mower cuts closer to the boundary than the centred disc reaches
-
-Switching **EdgeMaster** on also raises a single edge lap to two, which the offset disc needs to cover the edge.
-
-**Safe Edge Mowing** is the setting that keeps a mower away from the boundary even with obstacle avoidance turned off. Firmware that predates it keeps no such setting, and the switch is then omitted rather than offered as a control that cannot write.
-
-The switches always change the active map as a whole. To change a single zone, or a map that is not active, use the `dreame_mower.set_edge_mowing_settings` service action.
-
-The switches are created only for devices that reported their mowing settings, which are read when the integration starts and whenever the active map changes. The mower announces every change to them, whoever made it, so changes from the Dreame or MOVA app show up within seconds without reloading the integration.
-
-### Charging Period
-
-The mower can restrict full charging to a time window of your choosing. Three entities control it:
-
-- **Charging Period** (switch) - turns the custom period on and off
-- **Charging Period Start** (time) - when the window opens
-- **Charging Period End** (time) - when the window closes
-
-While the period is on, the mower only keeps a safe battery level when it sits idle at the station and fully charges inside the window. Turning the switch off returns it to charging whenever it is docked. Both times keep their value while the period is off, so an automation can switch it on and off without restating the window.
-
-An end time earlier than the start time means the window runs past midnight into the next day, for example 22:00 to 06:00. Start and end must differ — the mower rejects a window of zero length. The times follow the clock of the mower itself, so they match Home Assistant only while both use the same time zone.
-
-The entities are created only for devices that report their charging settings. The mower announces every settings change it makes, whoever made it, so changes from the Dreame or MOVA app show up within seconds without reloading the integration.
-
-### Rain Protection
-
-With rain protection on, the mower returns to its station when it detects rain and waits out a delay before it picks the interrupted task back up. Three entities cover it:
-
-- **Rain Protection** (switch) - turns rain protection on and off
-- **After-Rain Delay** (select) - how long the mower waits after rain
-- **Mowing Resumes After Rain Protection** (sensor) - the timestamp the mower may work again, unknown at any other time
-
-The delay is chosen from the same list the app offers: **Don't mow after rain** first, then **1 h** through **24 h**.
-
-**Don't mow after rain** leaves the mower docked until it is started again. That is also the one setting where the mower names no time to resume at, so **Mowing Resumes After Rain Protection** stays unknown even while rain is keeping the mower docked; use the mower's own state for that case rather than this sensor.
-
-A changed delay applies the next time rain protection triggers, and the mower only takes a new delay while rain protection is on — with it off it keeps the delay it holds and the entity reports an error.
-
-The entities are created only for devices that report rain settings. The mower announces every settings change it makes, whoever made it, so changes from the Dreame or MOVA app show up within seconds without reloading the integration.
-
-### Anti-Theft Alarm
-
-The mower's anti-theft settings are exposed as switches:
-
-- **Lift Alarm** - the mower locks itself and sounds an alarm as soon as it is lifted off the ground
-- **Off-Map Alarm** - the mower locks itself and sounds an alarm as soon as it is carried away from its map
-- **Real-Time Location** - the mower reports where it is, which is what makes a stolen mower traceable
-- **PIN Check Before Power-Off** - the mower only switches off once its PIN code has been entered on it
-
-Locking the mower and sounding the alarm is all the mower does on its own. **Off-Map Alarm** and **Real-Time Location** need the mower's cellular module to work away from home, and stay without effect on a mower that has none. **PIN Check Before Power-Off** exists only on models that keep such a switch, and is omitted elsewhere rather than offered as a control that cannot write.
-
-The switches are created only for devices that report anti-theft settings. The mower announces every settings change it makes, whoever made it, so changes from the Dreame or MOVA app show up within seconds without reloading the integration.
-
-### Mowing Direction
-
-Two entities cover the direction the mower drives its lanes in on the **active map**:
-
-- **Mowing Direction** - a number entity for the direction in degrees
-- **Mowing direction mode** - a select for how that direction carries from one session to the next: always the same, crisscross turning 45° each session, or chequerboard turning 90°
-
-A direction is a line rather than a heading, so the number entity runs from 0° to 179° — 200° names the same lanes as 20°. The app shows the full circle and folds the value the same way.
-
-The entities always set the direction for the whole map. To set one for a single zone, or for a map that is not currently active, use the `dreame_mower.set_mowing_direction` service action.
-
-The entities are created only for devices that report a mowing direction. The mower entity exposes `mowing_direction` and `zone_mowing_directions` as attributes, so automations can read the current values back.
-
-### Maintenance Point
-
-A maintenance point is the spot on a map where the mower is cleaned. Two entities drive it:
-
-- **Go To Maintenance Point** - a button that sends the mower there
-- **Maintenance point** - a select for which point to use, on maps that carry more than one
-
-The points belong to the active map and are defined on the mower itself, so a map without one leaves the select without options and the button without a destination.
-
-### Schedules
-
-Each map holds two mowing schedules, meant as one plan per season, and each of
-them is exposed as a switch. A switch carries the name its schedule was given,
-so it reads the same as in the Dreame or MOVA app — *Spr & Sum Schedule* and
-*Aut & Win Schedule* by default, in the language the app used when the schedule
-was first saved. A map the mower holds no saved schedule for has no name to go
-by, and the switch is called **Schedule 1** or **Schedule 2** until it does.
-
-The mower runs a single schedule at a time, so switching one on switches the
-other off. A schedule that holds no mowing tasks has nothing to run, and the
-switch reports an error rather than enabling an empty plan — the tasks
-themselves are created in the app.
-
-Both switches carry what the schedule holds as attributes: `schedule_name` is
-the name the schedule was given in the app, `map_id` the map it belongs to, and
-`tasks` the weekly mowing tasks with their day, kind and start time in minutes
-since midnight.
-
-Schedules are stored per map, so the switches always stand for the schedules of
-the map the mower currently works on, and follow along when the active map
-changes — including their names. A changed schedule is the one thing the mower
-does not announce, so edits made in the app are picked up by a check every 15
-minutes rather than within seconds. A mower that was unreachable when the
-integration started leaves its switches unavailable until that check first
-reaches it, rather than losing them until a reload.
-
-### Account
-
-A mower is reached through either a Dreamehome or a MOVAhome account, and a
-household often has more than one to choose from. Two places name the one a
-device was set up with:
-
-- The **Account** sensor, a diagnostic entity on the device page, whose state is
-  the account name and whose attributes carry the account type and the country
-  it is registered in
-- The integration's **Options** dialog, which opens with a line naming the same
-  account
-
-The account is part of the configuration rather than something the mower
-reports, so the sensor keeps its value while the mower is offline — which is
-when knowing which account to look in is worth the most. Changing the account
-means setting the device up again; neither place is a control.
-
-### TODO: Hierarchical Mowing UI
-
-The intended UI flow is:
-
-1. Select the active map.
-2. Pick a mowing scenario: all-area, edge, zone, spot, or manual.
-3. If edge or zone is selected, choose one or more contours or zones.
-4. If spot is selected, define the target rectangle.
-5. Manual control is expected to depend on Bluetooth and remains further out in the roadmap.
-
-The device layer already tracks map metadata and verified mowing modes so this UI can be added later without reworking the protocol layer again.
-
-## Service Actions
-
-Zone and area selection is available via the select entities in the UI. For mowing **multiple zones or areas** in a single run without returning to the station between them, use the service calls below.
-
-### `dreame_mower.start_zone_mowing`
-
-Start mowing one or more zones without the mower returning to the station between them.
+| Action | What it does |
+|---|---|
+| `start_all_area_mowing`, `start_zone_mowing`, `start_edge_mowing`, `start_spot_mowing` | Mow the whole map, or several zones, edges or spot areas in one run |
+| `end_task`, `recharge`, `stop_returning` | End a task where the mower is, send it to charge keeping the task, or stop it on its way home |
+| `select_map` | Make another map the active one (only while no task runs) |
+| `set_mowing_settings`, `set_mowing_preference_mode` | Change the mowing settings of a map or a zone, or switch between map-wide and per-zone settings |
+| `set_no_go_zone`, `set_ignore_obstacle_area`, `set_spot_area`, `set_maintenance_point`, `delete_map_item` | Draw, change or delete what lies on the map |
+| `rename_zone`, `split_zone`, `merge_zones`, `rename_map`, `backup_map`, `restore_map`, `delete_map` | Change zones and maps |
+| `go_to_maintenance_point`, `reset_consumable`, `find_robot`, `clear_error`, `ignore_obstacle`, `clear_rain_protection` | Drive to a maintenance point, start a consumable's count over, have the mower call out, clear an error and go on, forget an obstacle, clear reported rain |
+| `set_do_not_disturb`, `set_low_speed_at_night`, `set_start_from_stop_point`, `set_light`, `set_human_presence_alert`, `set_robot_voice` | Change the mower settings that take more than a switch |
 
 ```yaml
 action: dreame_mower.start_zone_mowing
@@ -208,229 +72,26 @@ data:
   zone_ids: [1, 3]
 ```
 
-Zone IDs correspond to the zones defined on your map. You can find them via the zone select entities exposed by the integration.
+Zone, contour and map IDs are in the mower entity's attributes once the map has been read; a spot area's ID is what `set_spot_area` answers with.
 
-### `dreame_mower.start_edge_mowing`
-
-Start mowing the edges of one or more contours without the mower returning to the station between them.
-
-```yaml
-action: dreame_mower.start_edge_mowing
-target:
-  entity_id: lawn_mower.your_mower
-data:
-  contour_ids:
-    - [1, 0]
-    - [2, 0]
-```
-
-Contour IDs are two-integer pairs. The available pairs are exposed in the mower entity's `contours` attribute once the map has been fetched, and in the **Edge** select entity.
-
-### `dreame_mower.start_spot_mowing`
-
-Start mowing one or more spot areas by their IDs.
-
-```yaml
-action: dreame_mower.start_spot_mowing
-target:
-  entity_id: lawn_mower.your_mower
-data:
-  spot_area_ids: [2, 4]
-```
-
-### `dreame_mower.set_cutting_height`
-
-Set the cutting height for a whole map. Use this instead of the **Cutting height** number entity when you want to change a map that is not currently active.
-
-```yaml
-action: dreame_mower.set_cutting_height
-target:
-  entity_id: lawn_mower.your_mower
-data:
-  height: 5.5
-  map_id: 2
-```
-
-`height` is in centimeters and is rounded to the nearest 0.5 cm. `map_id` is optional and defaults to the active map; available map IDs are exposed in the mower entity's `maps` attribute.
-
-To set the height for a single zone, add `zone_id`:
-
-```yaml
-action: dreame_mower.set_cutting_height
-target:
-  entity_id: lawn_mower.your_mower
-data:
-  height: 5
-  zone_id: 3
-```
-
-Setting a zone height also switches that map to **per-zone** mowing settings, because a zone height has no effect while the map is applying one setting to everything. Every other zone keeps whatever it already had, and the map-wide height stops applying until you switch back.
-
-### `dreame_mower.set_edge_mowing_settings`
-
-Switch the edge mowing settings for a whole map, or for a single zone of it. Use this instead of the switch entities when you want to change a map that is not currently active, several settings at once, or a single zone.
-
-```yaml
-action: dreame_mower.set_edge_mowing_settings
-target:
-  entity_id: lawn_mower.your_mower
-data:
-  automatic_edge_mowing: true
-  safe_edge_mowing: false
-```
-
-Every setting left out keeps the value it has. `map_id` is optional and defaults to the active map; `zone_id` changes a single zone instead of the whole map, which switches that map to **per-zone** mowing settings the same way `set_cutting_height` does.
-
-The mower entity exposes `edge_mowing_settings` and `zone_edge_mowing_settings` as attributes so automations can read the settings back.
-
-### `dreame_mower.set_mowing_direction`
-
-Set the direction the mower drives its lanes in for a whole map, or for a single zone of it, and how that direction carries from one session to the next. Use this instead of the entities when you want to change a map that is not currently active, or a single zone.
-
-```yaml
-action: dreame_mower.set_mowing_direction
-target:
-  entity_id: lawn_mower.your_mower
-data:
-  angle: 45
-  mode: crisscross
-```
-
-Both `angle` and `mode` are optional, and the one left out keeps the value it has. `angle` takes the full 0-359 as the app shows it; a direction is a line, so 200 sets the same lanes as 20. `mode` is `fixed`, `crisscross` or `chequerboard`.
-
-`map_id` is optional and defaults to the active map; `zone_id` changes a single zone instead of the whole map, which switches that map to **per-zone** mowing settings the same way `set_cutting_height` does. A map that already follows its per-zone settings gets the change written into every zone, since the mower no longer reads the map-wide ones.
-
-### `dreame_mower.set_mowing_preference_mode`
-
-Switch a map between one map-wide setting and per-zone settings. Use this to go back to a single cutting height after setting one for an individual zone.
-
-```yaml
-action: dreame_mower.set_mowing_preference_mode
-target:
-  entity_id: lawn_mower.your_mower
-data:
-  mode: map_wide
-```
-
-`mode` is `map_wide` or `per_zone`, and `map_id` is optional. The mode governs the other mowing settings as well, not only the cutting height. The mower entity's `mowing_preference_mode` attribute shows the current value.
-
-## Installation
-
-1. Ensure [HACS](https://hacs.xyz/) is installed
-2. Navigate to HACS → Integrations
-3. Click ⋮ → Custom repositories  
-4. Add: `https://github.com/antondaubert/dreame-mower`
-5. Category: Integration
-6. Settings → Devices & Services → Add Integration → "Dreame Mower"
-
-## Example Automations
-
-The following is a real-world example showing how to integrate the mower with a motorized gate/cover and a rain sensor (via the [Netatmo integration](https://www.home-assistant.io/integrations/netatmo/)). Adjust entity IDs to match your setup.
-
-### Overview
-
-The setup consists of three parts:
-
-1. **Mowing script** — opens the gate, waits until it is fully open, then starts the mower and sends a notification.
-2. **Close-gate automation** — closes the gate automatically once the mower has docked.
-3. **Daily trigger automation** — fires at noon, skips mowing if it rained today (via Netatmo), otherwise runs the mowing script.
-
-### 1. Script: Start Mowing
-
-This script is called by the daily trigger automation. It opens the cover/gate first and only starts the mower once the gate is confirmed open.
-
-```yaml
-alias: "[Dreame] Start Mowing"
-sequence:
-  - action: cover.open_cover
-    target:
-      entity_id: cover.dreame_gate  # replace with your cover entity
-  - wait_for_trigger:
-      - trigger: state
-        entity_id: cover.dreame_gate
-        to: "open"
-    timeout: "00:01:00"
-  - if:
-      - condition: state
-        entity_id: cover.dreame_gate
-        state: "open"
-    then:
-      - action: lawn_mower.start_mowing
-        target:
-          entity_id: lawn_mower.a2  # replace with your mower entity
-      - action: notify.notify
-        data:
-          message: "Mower started"
-          title: "Dreame Mower"
-```
-
-### 2. Automation: Close Gate When Docked
-
-Closes the gate as soon as the mower transitions from *Mowing* or *Returning* to *Docked*.
-
-```yaml
-alias: "[Dreame] Close Gate"
-triggers:
-  - trigger: state
-    entity_id: lawn_mower.a2
-    from: mowing
-    to: docked
-  - trigger: state
-    entity_id: lawn_mower.a2
-    from: returning
-    to: docked
-actions:
-  - action: cover.close_cover
-    target:
-      entity_id: cover.dreame_gate
-```
-
-### 3. Automation: Daily Mowing Trigger (Rain Check)
-
-Fires every day at noon. Uses the Netatmo integration to check whether it has rained today. If no rain is detected, the mowing script is started. Otherwise a persistent notification is sent.
-
-```yaml
-alias: "[Dreame] Daily Mowing Trigger"
-triggers:
-  - trigger: time
-    at: "12:00:00"
-actions:
-  - if:
-      - condition: numeric_state
-        entity_id: sensor.netatmo_rainfall_today  # replace with your Netatmo rain sensor
-        below: 1
-    then:
-      - action: script.dreame_start_mowing
-    else:
-      - action: notify.persistent_notification
-        data:
-          title: "Dreame Mower"
-          message: "Mowing skipped — rain detected today."
-```
-
-> **Tip:** The daily trigger automation can be kept disabled and run on-demand via another automation or a dashboard button. The rain check prevents unnecessary mowing after wet weather.
+To mow on a schedule kept in Home Assistant rather than on the mower, import the [schedule blueprint](blueprints/automation/antondaubert/dreame_mower_ha_schedule.yaml).
 
 ## Community & Support
 
 - **Discussions**: Questions and ideas → [GitHub Discussions](https://github.com/antondaubert/dreame-mower/discussions)
 - **Issues**: Bug reports and feature requests → [GitHub Issues](https://github.com/antondaubert/dreame-mower/issues)
+- **Contributing**: see [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## License
 
 This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
 
----
+## Acknowledgments
 
-## Acknowledgments & Development
-
-This integration was developed through community collaboration for the purpose of achieving interoperability with Home Assistant. It builds upon:
+This integration builds upon:
 
 - [Benedikt Hübschen's](https://github.com/bhuebschen/dreame-mower) original mower integration
 - Insights from [Tasshack's](https://github.com/Tasshack/dreame-vacuum) vacuum integration
-- Protocol analysis and testing by the Home Assistant community
-
-Special thanks to the entire Home Assistant community for continuous support and feedback!
-
----
+- Testing and feedback by the Home Assistant community
 
 *Happy mowing! 🌱*

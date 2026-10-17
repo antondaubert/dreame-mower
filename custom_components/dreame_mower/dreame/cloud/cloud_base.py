@@ -4,13 +4,10 @@ import base64
 import logging
 import hashlib
 import json
-import queue
 import random
 import requests
 import time
 import zlib
-from threading import Thread
-from time import sleep
 from typing import Any, Dict, Final, List, Optional
 
 _LOGGER = logging.getLogger(__name__)
@@ -95,10 +92,6 @@ class DreameMowerCloudBase:
         self._key_expire: Optional[float] = None
         self._key: Optional[str] = None
         self._uuid: Optional[str] = None
-        
-        # Async API infrastructure
-        self._queue: queue.Queue = queue.Queue()
-        self._thread: Optional[Thread] = None
         self._id = random.randint(1, 100)
 
     def get_api_url(self) -> str:
@@ -213,31 +206,51 @@ class DreameMowerCloudBase:
         
         return self.request(full_url, data_payload, retry_count, raise_on_error)
 
-    def _api_task(self):
-        """Background task worker for async API calls."""
-        while True:
-            item = self._queue.get()
-            if len(item) == 0:
-                self._queue.task_done()
-                return
-            item[0](self._api_call(item[1], item[2], item[3]))
-            sleep(0.1)
-            self._queue.task_done()
+    def _request_headers(self) -> Dict[str, Any]:
+        """Headers of an authenticated JSON request."""
+        headers = {
+            "Accept": "*/*",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept-Language": "en-US;q=0.8",
+            "Accept-Encoding": "gzip, deflate",
+            self._api_strings[47]: self._api_strings[3],
+            self._api_strings[49]: self._api_strings[5],
+            self._api_strings[50]: self._ti if self._ti else self._api_strings[6],
+            self._api_strings[51]: self._api_strings[52],
+            self._api_strings[46]: self._key,
+        }
+        if self._country == "cn":
+            headers[self._api_strings[48]] = self._api_strings[4]
+        return headers
 
-    def _api_call_async(self, callback, url, params=None, retry_count=2):
-        """Make an asynchronous authenticated API call.
-        
-        Args:
-            callback: Function to call with the API response
-            url: API endpoint URL
-            params: Request parameters
-            retry_count: Number of retry attempts
+    def post_json(self, url: str, body: Dict[str, Any], timeout: float) -> tuple[Optional[int], Any]:
+        """POST a JSON body to an API path once, returning the status and the
+        answer: parsed when it is JSON, the raw bytes otherwise.
+
+        Unlike request() an error status is no reason to log or retry: it is
+        handed back for the caller to judge. A failed exchange gives (None, None).
         """
-        if self._thread is None:
-            self._thread = Thread(target=self._api_task, daemon=True)
-            self._thread.start()
-
-        self._queue.put((callback, url, params, retry_count))
+        if self._key_expire and time.time() > self._key_expire:
+            self.connect()
+        for attempt in range(2):
+            try:
+                response = self._session.post(
+                    f"{self.get_api_url()}/{url}",
+                    headers=self._request_headers(),
+                    data=json.dumps(body, separators=(",", ":")),
+                    timeout=timeout,
+                )
+            except requests.exceptions.RequestException as ex:
+                _LOGGER.debug("Request to %s failed: %s", url, ex)
+                return None, None
+            # A token the cloud no longer accepts is renewed once.
+            if response.status_code != 401 or attempt or not self._secondary_key:
+                break
+            self.connect()
+        try:
+            return response.status_code, response.json()
+        except ValueError:
+            return response.status_code, response.content
 
     def request(self, url: str, data, retry_count=2, raise_on_error=False) -> Any:
         """Execute HTTP request with authentication.
@@ -260,19 +273,7 @@ class DreameMowerCloudBase:
                 if self._key_expire and time.time() > self._key_expire:
                     self.connect()
 
-                headers = {
-                    "Accept": "*/*",
-                    "Content-Type": "application/x-www-form-urlencoded",
-                    "Accept-Language": "en-US;q=0.8",
-                    "Accept-Encoding": "gzip, deflate",
-                    self._api_strings[47]: self._api_strings[3],
-                    self._api_strings[49]: self._api_strings[5],
-                    self._api_strings[50]: self._ti if self._ti else self._api_strings[6],
-                    self._api_strings[51]: self._api_strings[52],
-                    self._api_strings[46]: self._key,
-                }
-                if self._country == "cn":
-                    headers[self._api_strings[48]] = self._api_strings[4]
+                headers = self._request_headers()
 
                 response = self._session.post(
                     url,
@@ -329,10 +330,6 @@ class DreameMowerCloudBase:
 
     def disconnect(self):
         """Disconnect from cloud services and cleanup resources."""
-        # Cleanup async task infrastructure
-        if self._thread:
-            self._queue.put([])
-            
         if self._session:
             self._session.close()
         self.__http_api_connected = False

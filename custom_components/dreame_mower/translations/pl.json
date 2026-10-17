@@ -47,7 +47,6 @@
       "invalid_account_type": "Wybrano nieprawidłowy typ konta."
     },
     "abort": {
-      "cannot_connect": "Nie udało się połączyć.",
       "already_configured": "To urządzenie jest już skonfigurowane."
     }
   },
@@ -58,10 +57,7 @@
         "description": "Połączono z kontem {account} ({account_type}, {country}).\n\nSkonfiguruj ustawienia powiadomień integracji kosiarki Dreame.",
         "data": {
           "notify": "Typy powiadomień",
-          "map_rotation": "Obrót mapy",
-          "map_show_title": "Pokaż tytuł mapy",
-          "map_show_legend": "Pokaż legendę mapy",
-          "map_padding": "Margines mapy (piksele)"
+          "map_rotation": "Obrót mapy"
         }
       }
     }
@@ -86,48 +82,8 @@
           "maintenance_paused": "Wstrzymano w punkcie konserwacji"
         }
       },
-      "charging_status": {
-        "name": "Status ładowania",
-        "state": {
-          "not_docked": "Nie zadokowany",
-          "charging": "Ładowanie",
-          "not_charging": "Brak ładowania",
-          "charging_completed": "Ładowanie zakończone",
-          "return_to_charge": "Powrót do ładowania",
-          "charging_paused_high_temperature": "Ładowanie wstrzymane: temperatura baterii zbyt wysoka",
-          "charging_paused_low_temperature": "Ładowanie wstrzymane: temperatura baterii zbyt niska"
-        }
-      },
       "mowing_progress": {
         "name": "Postęp koszenia"
-      },
-      "bluetooth_connection": {
-        "name": "Bluetooth"
-      },
-      "dnd_status": {
-        "name": "Nie przeszkadzać"
-      },
-      "charging_schedule": {
-        "name": "Harmonogram ładowania"
-      },
-      "timezone": {
-        "name": "Strefa czasowa"
-      },
-      "device_code": {
-        "name": "Kod urządzenia"
-      },
-      "current_task": {
-        "name": "Obecne zadanie",
-        "state": {
-          "idle": "Brak zadania",
-          "starting": "Uruchamianie",
-          "mowing": "Koszenie",
-          "paused": "Wstrzymane",
-          "finished": "Zakończone",
-          "failed": "Niepowodzenie",
-          "exit": "Zatrzymane",
-          "returning_to_dock": "Powrót do stacji"
-        }
       },
       "consumable_blade_health": {
         "name": "Stan ostrzy"
@@ -143,36 +99,6 @@
       },
       "account": {
         "name": "Konto"
-      }
-    },
-    "camera": {
-      "map_camera": {
-        "name": "Mapa"
-      }
-    },
-    "button": {
-      "reset_blade": {
-        "name": "Zresetuj licznik ostrzy"
-      },
-      "reset_brush": {
-        "name": "Zresetuj licznik szczotki"
-      },
-      "reset_robot_maintenance": {
-        "name": "Zresetuj licznik konserwacji"
-      },
-      "dock_without_stopping": {
-        "name": "Dokowanie bez zatrzymywania zadania"
-      },
-      "go_to_maintenance_point": {
-        "name": "Jedź do punktu konserwacji"
-      }
-    },
-    "number": {
-      "cutting_height": {
-        "name": "Wysokość koszenia"
-      },
-      "mowing_direction": {
-        "name": "Kierunek koszenia"
       }
     },
     "switch": {
@@ -197,14 +123,20 @@
       "schedule": {
         "name": "Harmonogram {number}"
       },
-      "edge_mowing_auto": {
-        "name": "Automatyczne koszenie krawędzi"
+      "frost_protection": {
+        "name": "Ochrona przed mrozem"
       },
-      "edge_blade_offset": {
-        "name": "EdgeMaster"
+      "path_obstacle_avoidance": {
+        "name": "Omijanie przeszkód na ścieżkach"
       },
-      "edge_mowing_safe": {
-        "name": "Bezpieczne koszenie krawędzi"
+      "auto_recharge_standby": {
+        "name": "Automatyczne ładowanie po czuwaniu"
+      },
+      "ai_obstacle_photos": {
+        "name": "Zdjęcia przeszkód wykrytych przez AI"
+      },
+      "child_lock": {
+        "name": "Blokada rodzicielska"
       }
     },
     "time": {
@@ -218,6 +150,9 @@
     "select": {
       "rain_delay": {
         "name": "Opóźnienie po deszczu"
+      },
+      "navigation_path": {
+        "name": "Trasa nawigacji"
       }
     }
   },
@@ -234,9 +169,50 @@
         "map_wide": "Jedno ustawienie dla całej mapy",
         "per_zone": "Ustawienie dla każdej strefy"
       }
+    },
+    "mowing_efficiency": {
+      "options": {
+        "standard": "Standardowy",
+        "efficient": "Wydajny"
+      }
+    },
+    "turning_method": {
+      "options": {
+        "efficient": "Wydajny",
+        "lawn_care": "Ochrona trawnika"
+      }
+    },
+    "ai_obstacle_kind": {
+      "options": {
+        "humans": "Ludzie",
+        "animals": "Zwierzęta",
+        "objects": "Przedmioty"
+      }
     }
   },
   "services": {
+    "start_all_area_mowing": {
+      "name": "Rozpocznij koszenie całego obszaru",
+      "description": "Kosi całą aktywną mapę. Trwająca sesja koszenia jest kontynuowana.",
+      "fields": {
+        "from_stop_point": {
+          "name": "Od punktu zatrzymania",
+          "description": "Gdzie niedokończone zadanie zatrzymało się w strefie: włączone, kosi tylko resztę; wyłączone, kosi od początku. Pominięte: kosiarka nie dostaje informacji."
+        }
+      }
+    },
+    "end_task": {
+      "name": "Zakończ zadanie",
+      "description": "Kończy trwające zadanie koszenia. Kosiarka zostaje tam, gdzie jest, i zapamiętuje miejsce przerwania, aby kolejne zadanie mogło stamtąd kontynuować."
+    },
+    "stop_returning": {
+      "name": "Zatrzymaj powrót",
+      "description": "Zatrzymuje kosiarkę w drodze do stacji. Zostaje tam, gdzie jest."
+    },
+    "recharge": {
+      "name": "Ładowanie",
+      "description": "Wysyła kosiarkę do stacji w celu naładowania. Trwające zadanie koszenia zostaje zachowane i można je potem kontynuować."
+    },
     "start_zone_mowing": {
       "name": "Rozpocznij koszenie stref",
       "description": "Rozpoczyna koszenie jednej lub kilku wybranych stref.",
@@ -244,6 +220,10 @@
         "zone_ids": {
           "name": "Identyfikatory stref",
           "description": "Lista identyfikatorów koszonych stref, na przykład [1, 3]."
+        },
+        "from_stop_point": {
+          "name": "Od punktu zatrzymania",
+          "description": "Gdzie niedokończone zadanie zatrzymało się w strefie: włączone, kosi tylko resztę; wyłączone, kosi od początku. Pominięte: kosiarka nie dostaje informacji."
         }
       }
     },
@@ -267,61 +247,71 @@
         }
       }
     },
-    "set_cutting_height": {
-      "name": "Ustaw wysokość koszenia",
-      "description": "Ustawia wysokość koszenia dla całej mapy lub jednej ze stref. Nie każdy model obsługuje regulację wysokości; dostępny zakres zależy od modelu.",
+    "select_map": {
+      "name": "Wybierz mapę",
+      "description": "Ustawia inną mapę jako tę, na której pracuje kosiarka. Niemożliwe podczas trwającego zadania koszenia.",
       "fields": {
-        "height": {
-          "name": "Wysokość koszenia",
-          "description": "Wysokość koszenia w centymetrach, co 0,5 cm."
-        },
         "map_id": {
-          "name": "Identyfikator mapy",
-          "description": "Mapa do zmiany. Domyślnie aktywna mapa. Dostępne identyfikatory są widoczne w atrybucie „maps” encji kosiarki po pobraniu mapy."
-        },
-        "zone_id": {
-          "name": "Identyfikator strefy",
-          "description": "Strefa do zmiany zamiast całej mapy. Włącza ustawienia dla stref: pozostałe strefy zachowują własną wysokość, a wysokość dla całej mapy przestaje obowiązywać. Dostępne identyfikatory są widoczne w atrybucie „zones” encji kosiarki."
+          "name": "ID mapy",
+          "description": "Mapa, na którą nastąpi przełączenie. Dostępne ID map są widoczne w atrybucie maps encji kosiarki po pobraniu mapy."
         }
       }
     },
-    "set_edge_mowing_settings": {
-      "name": "Ustaw koszenie krawędzi",
-      "description": "Zmienia ustawienia koszenia krawędzi dla całej mapy lub jednej ze stref. Pominięte ustawienia zachowują bieżące wartości. Jeśli mapa korzysta z ustawień dla stref, zmiany są stosowane do wszystkich stref, ponieważ kosiarka nie używa wtedy ustawień dla całej mapy. Te ustawienia są również dostępne jako przełączniki dla aktywnej mapy.",
+    "set_mowing_settings": {
+      "name": "Ustaw parametry koszenia",
+      "description": "Zmienia jednocześnie dowolne ustawienia koszenia dla całej mapy lub jednej ze stref. Pominięte ustawienia zachowują bieżące wartości. Jeśli mapa korzysta z ustawień dla stref, zmiany są stosowane do wszystkich stref, ponieważ kosiarka nie używa wtedy ustawień dla całej mapy. Ustawienia, których kosiarka nie oferuje, są odrzucane.",
       "fields": {
+        "efficiency": {
+          "name": "Wydajność koszenia",
+          "description": "Jak szybko pracuje kosiarka. Tryb „Wydajny” kosi więcej dziennie, ale z mniejszą ostrożnością wokół przeszkód."
+        },
+        "cutting_height": {
+          "name": "Wysokość koszenia",
+          "description": "Wysokość koszenia w centymetrach, co 0,5 cm."
+        },
+        "mowing_direction": {
+          "name": "Kierunek koszenia",
+          "description": "Kierunek pasów koszenia w stopniach, zgodnie z aplikacją. Kąty od 180° opisują te same pasy co kąt mniejszy o 180°."
+        },
+        "mowing_direction_mode": {
+          "name": "Tryb kierunku koszenia",
+          "description": "Określa, czy każda sesja kosi w tym samym kierunku, czy obraca go względem poprzedniej sesji."
+        },
         "automatic_edge_mowing": {
           "name": "Automatyczne koszenie krawędzi",
           "description": "Określa, czy kosiarka automatycznie kosi krawędzie po zakończeniu koszenia całej mapy lub strefy."
         },
         "safe_edge_mowing": {
           "name": "Bezpieczne koszenie krawędzi",
-          "description": "Określa, czy podczas koszenia krawędzi kosiarka zachowuje niewielki odstęp od granicy trawnika. Funkcja nie jest dostępna we wszystkich modelach."
+          "description": "Określa, czy podczas koszenia krawędzi kosiarka zachowuje niewielki odstęp od granicy trawnika."
         },
         "edge_blade_offset": {
           "name": "Boczne przesunięcie tarczy",
-          "description": "Określa, czy tarcza tnąca przesuwa się na bok podczas przejazdów przy krawędzi, aby kosić bliżej granicy. Włączenie tej opcji zwiększa też liczbę przejazdów przy krawędzi z jednego do dwóch, by przesunięta tarcza skosiła całą krawędź."
+          "description": "Określa, czy tarcza tnąca przesuwa się na bok podczas przejazdów przy krawędzi, aby kosić bliżej granicy. Włączenie tej opcji zwiększa też liczbę przejazdów przy krawędzi z jednego do dwóch."
         },
-        "map_id": {
-          "name": "Identyfikator mapy",
-          "description": "Mapa do zmiany. Domyślnie aktywna mapa. Dostępne identyfikatory są widoczne w atrybucie „maps” encji kosiarki po pobraniu mapy."
+        "edge_obstacle_avoidance": {
+          "name": "Omijanie przeszkód przy krawędziach",
+          "description": "Określa, czy kosiarka omija przeszkody również wzdłuż krawędzi, co może pozostawić tam trochę nieskoszonej trawy. Wyłącza się samoczynnie, gdy ani LiDAR, ani kamera nie rozpoznają przeszkód."
         },
-        "zone_id": {
-          "name": "Identyfikator strefy",
-          "description": "Strefa do zmiany zamiast całej mapy. Włącza ustawienia dla stref: pozostałe strefy zachowują własne ustawienia, a ustawienia dla całej mapy przestają obowiązywać. Dostępne identyfikatory są widoczne w atrybucie „zones” encji kosiarki."
-        }
-      }
-    },
-    "set_mowing_direction": {
-      "name": "Ustaw kierunek koszenia",
-      "description": "Ustawia kierunek pasów koszenia dla całej mapy lub jednej ze stref oraz sposób jego zmiany między sesjami. Jeśli mapa korzysta z ustawień dla stref, zmiany są stosowane do wszystkich stref, ponieważ kosiarka nie używa wtedy ustawień dla całej mapy. Dla aktywnej mapy ustawienia te są również dostępne jako liczba i lista wyboru.",
-      "fields": {
-        "angle": {
-          "name": "Kąt",
-          "description": "Kierunek koszenia w stopniach, zgodnie z aplikacją. Określa orientację linii, a nie kierunek jazdy: kąty od 180° opisują te same pasy co kąt mniejszy o 180°."
+        "lidar_obstacle_recognition": {
+          "name": "Rozpoznawanie przeszkód przez LiDAR",
+          "description": "Określa, czy kosiarka rozpoznaje przeszkody za pomocą LiDAR-u i omija je bez dotykania. Wyłącz, aby kosiarka mogła kosić wysoką trawę."
         },
-        "mode": {
-          "name": "Tryb koszenia",
-          "description": "Wybierz, czy każda sesja używa tego samego kierunku koszenia, czy zmienia go względem poprzedniej sesji."
+        "obstacle_height": {
+          "name": "Wysokość omijania przeszkód",
+          "description": "Najniższa przeszkoda, którą kosiarka omija, w centymetrach."
+        },
+        "obstacle_distance": {
+          "name": "Odległość omijania przeszkód",
+          "description": "Odległość, jaką kosiarka zachowuje od przeszkód, w centymetrach. Mniejsza odległość może prowadzić do kolizji lub zarysowań."
+        },
+        "ai_obstacle_recognition": {
+          "name": "Rozpoznawanie przeszkód przez AI",
+          "description": "Rodzaje przeszkód, które rozpoznaje kamera i które omija kosiarka. Przy pustej liście omijanie przeszkód pozostaje zadaniem zderzaka i LiDAR-u."
+        },
+        "turning_method": {
+          "name": "Sposób zawracania",
+          "description": "Jak kosiarka zawraca na końcu pasa. Tryb „Ochrona trawnika” zawraca szerszym łukiem i oszczędza trawnik, ale wymaga nieco miejsca. Dostępny tylko w nowszym oprogramowaniu."
         },
         "map_id": {
           "name": "Identyfikator mapy",
@@ -344,6 +334,368 @@
         "map_id": {
           "name": "Identyfikator mapy",
           "description": "Mapa do zmiany. Domyślnie aktywna mapa."
+        }
+      }
+    },
+    "set_no_go_zone": {
+      "name": "Ustaw strefę zakazaną",
+      "description": "Rysuje strefę zakazaną na bieżącej mapie lub zmienia istniejącą, we współrzędnych mapy (w milimetrach, tak jak podawane są strefy mapy). Zwraca identyfikator strefy. Kosiarka nie rusza się przy tym, ale odrzuca polecenie podczas koszenia lub powrotu do stacji.",
+      "fields": {
+        "shape": {
+          "name": "Kształt",
+          "description": "Linia, której kosiarka nie przekracza, prostokąt lub okrąg."
+        },
+        "points": {
+          "name": "Punkty",
+          "description": "Dwa końce linii, dwa przeciwległe rogi prostokąta lub środek okręgu, każdy jako [x, y]."
+        },
+        "radius": {
+          "name": "Promień",
+          "description": "Promień okręgu w milimetrach."
+        },
+        "zone_id": {
+          "name": "Identyfikator strefy zakazanej",
+          "description": "Strefa zakazana do zmiany zamiast rysowania nowej."
+        }
+      }
+    },
+    "set_ignore_obstacle_area": {
+      "name": "Ustaw obszar ignorowania przeszkód",
+      "description": "Rysuje na bieżącej mapie obszar, w którym kosiarka polega tylko na zderzaku i przejeżdża przez niskie przeszkody, lub zmienia istniejący. Zwraca identyfikator obszaru. Kosiarka nie rusza się przy tym, ale odrzuca polecenie podczas koszenia lub powrotu do stacji.",
+      "fields": {
+        "rect": {
+          "name": "Prostokąt",
+          "description": "Dwa przeciwległe rogi jako [x0, y0, x1, y1], w milimetrach."
+        },
+        "area_id": {
+          "name": "Identyfikator obszaru",
+          "description": "Obszar do zmiany zamiast rysowania nowego."
+        }
+      }
+    },
+    "set_spot_area": {
+      "name": "Ustaw obszar punktowy",
+      "description": "Rysuje obszar punktowy na bieżącej mapie lub zmienia istniejący. Musi leżeć w obrębie jednej strefy. Zwraca identyfikator obszaru punktowego. Kosiarka nie rusza się przy tym, ale odrzuca polecenie podczas koszenia lub powrotu do stacji.",
+      "fields": {
+        "rect": {
+          "name": "Prostokąt",
+          "description": "Dwa przeciwległe rogi jako [x0, y0, x1, y1], w milimetrach."
+        },
+        "area_id": {
+          "name": "Identyfikator obszaru punktowego",
+          "description": "Obszar punktowy do zmiany zamiast rysowania nowego."
+        }
+      }
+    },
+    "set_maintenance_point": {
+      "name": "Ustaw punkt konserwacji",
+      "description": "Umieszcza punkt konserwacji na bieżącej mapie lub przesuwa istniejący. Zwraca identyfikator punktu. Kosiarka nie rusza się przy tym, ale odrzuca polecenie podczas koszenia lub powrotu do stacji.",
+      "fields": {
+        "x": {
+          "name": "X",
+          "description": "Położenie punktu w milimetrach."
+        },
+        "y": {
+          "name": "Y",
+          "description": "Położenie punktu w milimetrach."
+        },
+        "heading": {
+          "name": "Kierunek",
+          "description": "W którą stronę kosiarka jest tam zwrócona, w stopniach. Pominięte: przeniesiony punkt zachowuje kierunek, a nowy jest zwrócony na 0 stopni."
+        },
+        "point_id": {
+          "name": "Identyfikator punktu",
+          "description": "Punkt do przesunięcia zamiast umieszczania nowego."
+        }
+      }
+    },
+    "delete_map_item": {
+      "name": "Usuń element mapy",
+      "description": "Usuwa strefę, ścieżkę, strefę zakazaną, obszar punktowy, punkt konserwacji lub obszar ignorowania przeszkód z bieżącej mapy. Usunięcie strefy usuwa też jej harmonogramy. Kosiarka nie rusza się przy tym, ale odrzuca polecenie podczas koszenia lub powrotu do stacji.",
+      "fields": {
+        "kind": {
+          "name": "Rodzaj",
+          "description": "Rodzaj elementu."
+        },
+        "item_id": {
+          "name": "Identyfikator elementu",
+          "description": "Identyfikator elementu."
+        }
+      }
+    },
+    "rename_zone": {
+      "name": "Zmień nazwę strefy",
+      "description": "Nadaje strefie bieżącej mapy nową nazwę o długości do 24 znaków. Kosiarka nie rusza się przy tym, ale odrzuca polecenie podczas koszenia lub powrotu do stacji.",
+      "fields": {
+        "zone_id": {
+          "name": "Identyfikator strefy",
+          "description": "Strefa, której nazwa ma zostać zmieniona."
+        },
+        "name": {
+          "name": "Nazwa",
+          "description": "Nowa nazwa."
+        }
+      }
+    },
+    "split_zone": {
+      "name": "Podziel strefę",
+      "description": "Dzieli strefę bieżącej mapy na dwie wzdłuż przecinającej ją linii. Harmonogramy obejmujące tę strefę są usuwane. Zwraca identyfikatory obu stref. Kosiarka nie rusza się przy tym, ale odrzuca polecenie podczas koszenia lub powrotu do stacji.",
+      "fields": {
+        "zone_id": {
+          "name": "Identyfikator strefy",
+          "description": "Strefa do podziału."
+        },
+        "line": {
+          "name": "Linia",
+          "description": "Dwa końce linii jako [x0, y0, x1, y1], w milimetrach; linia powinna przecinać całą strefę."
+        }
+      }
+    },
+    "merge_zones": {
+      "name": "Połącz strefy",
+      "description": "Łączy dwie sąsiednie strefy bieżącej mapy w jedną. Zwraca identyfikator połączonej strefy. Kosiarka nie rusza się przy tym, ale odrzuca polecenie podczas koszenia lub powrotu do stacji.",
+      "fields": {
+        "zone_ids": {
+          "name": "Identyfikatory stref",
+          "description": "Dwie strefy."
+        }
+      }
+    },
+    "rename_map": {
+      "name": "Zmień nazwę mapy",
+      "description": "Nadaje mapie nową nazwę o długości do 24 znaków. Kosiarka nie rusza się przy tym, ale odrzuca polecenie podczas koszenia lub powrotu do stacji.",
+      "fields": {
+        "map_id": {
+          "name": "Identyfikator mapy",
+          "description": "Mapa, której nazwa ma zostać zmieniona."
+        },
+        "name": {
+          "name": "Nazwa",
+          "description": "Nowa nazwa."
+        }
+      }
+    },
+    "clear_rain_protection": {
+      "name": "Wyłącz ochronę przed deszczem",
+      "description": "Kasuje deszcz zgłoszony przez kosiarkę, aby uruchomione następnie koszenie zostało wykonane, mimo że czujnik wykrył wodę. Uruchom zadanie zaraz potem; nie wywołuje to żadnej innej akcji."
+    },
+    "find_robot": {
+      "name": "Znajdź robota",
+      "description": "Kosiarka wydaje dźwięk, by można ją było znaleźć po odgłosie. Nie porusza się."
+    },
+    "clear_error": {
+      "name": "Wyczyść błąd",
+      "description": "Czyści błędy i ostrzeżenia zgłaszane przez kosiarkę i pozwala jej kontynuować: wstrzymane zadanie zostaje wznowione, a kosiarka stojąca poza stacją bez zadania wraca do domu. Kosiarka może się poruszyć.",
+      "fields": {
+        "continue_task": {
+          "name": "Kontynuuj",
+          "description": "Wznów zadanie lub wróć do stacji po wyczyszczeniu błędów. Wyłączone tylko je czyści."
+        }
+      }
+    },
+    "set_do_not_disturb": {
+      "name": "Ustaw Nie przeszkadzać",
+      "description": "Włącza lub wyłącza tryb Nie przeszkadzać albo zmienia jego okno. W oknie nie zaczyna się żadne zadanie; trwające zadanie jest wstrzymywane na jego początku, a kosiarka wraca do stacji.",
+      "fields": {
+        "enabled": {
+          "name": "Włączone",
+          "description": "Włącz lub wyłącz; pominięte pozostaje bez zmian."
+        },
+        "start": {
+          "name": "Początek",
+          "description": "Kiedy zaczyna się okno; pominięte pozostaje bez zmian."
+        },
+        "end": {
+          "name": "Koniec",
+          "description": "Kiedy kończy się okno, następnego dnia, jeśli jest przed początkiem; pominięte pozostaje bez zmian. Godziny mieszczą się między 00:01 a 23:59."
+        }
+      }
+    },
+    "set_low_speed_at_night": {
+      "name": "Ustaw wolną jazdę w nocy",
+      "description": "Włącza lub wyłącza wolną jazdę w nocy albo zmienia jej okno, w którym kosiarka jeździ wolno.",
+      "fields": {
+        "enabled": {
+          "name": "Włączone",
+          "description": "Włącz lub wyłącz; pominięte pozostaje bez zmian."
+        },
+        "start": {
+          "name": "Początek",
+          "description": "Kiedy zaczyna się okno; pominięte pozostaje bez zmian."
+        },
+        "end": {
+          "name": "Koniec",
+          "description": "Kiedy kończy się okno, następnego dnia, jeśli jest przed początkiem; pominięte pozostaje bez zmian. Godziny mieszczą się między 00:01 a 23:59."
+        }
+      }
+    },
+    "set_start_from_stop_point": {
+      "name": "Ustaw start od punktu zatrzymania",
+      "description": "Określa, czy nowe zadanie może kontynuować tam, gdzie zatrzymało się niedokończone, i ile dni przechowywany jest punkt zatrzymania. Wyłączenie usuwa punkty zatrzymania kosiarki.",
+      "fields": {
+        "enabled": {
+          "name": "Włączone",
+          "description": "Włącz lub wyłącz; pominięte pozostaje bez zmian."
+        },
+        "days": {
+          "name": "Dni",
+          "description": "Ile dni przechowywany jest punkt zatrzymania, od 1 do 7; pominięte pozostaje bez zmian."
+        }
+      }
+    },
+    "set_light": {
+      "name": "Ustaw światło",
+      "description": "Zmienia, kiedy świecą światła kosiarki: tylko we własnym okresie lub cały dzień, i w jakich stanach. Pominięte pozostaje bez zmian.",
+      "fields": {
+        "custom_period": {
+          "name": "Własny okres",
+          "description": "Ograniczyć światła do okresu od początku do końca."
+        },
+        "start": {
+          "name": "Początek",
+          "description": "Kiedy zaczyna się okres."
+        },
+        "end": {
+          "name": "Koniec",
+          "description": "Kiedy kończy się okres."
+        },
+        "standby": {
+          "name": "W gotowości",
+          "description": "Światło lub pilnowanie w gotowości."
+        },
+        "working": {
+          "name": "Podczas pracy",
+          "description": "Światło podczas pracy."
+        },
+        "charging": {
+          "name": "Podczas ładowania",
+          "description": "Światło podczas ładowania."
+        },
+        "error": {
+          "name": "Przy błędach",
+          "description": "Światło, gdy kosiarka zgłasza błąd."
+        }
+      }
+    },
+    "set_human_presence_alert": {
+      "name": "Ustaw alert obecności człowieka",
+      "description": "Zmienia alert, gdy kamera kosiarki widzi człowieka: czy jest włączony, jak czuły, kiedy pilnuje, jak zgłasza i jak często. Pominięte pozostaje bez zmian.",
+      "fields": {
+        "enabled": {
+          "name": "Włączone",
+          "description": "Włączyć lub wyłączyć alert."
+        },
+        "sensitivity": {
+          "name": "Czułość",
+          "description": "Jak łatwo rozpoznawany jest człowiek."
+        },
+        "standby": {
+          "name": "W gotowości",
+          "description": "Światło lub pilnowanie w gotowości."
+        },
+        "mowing": {
+          "name": "Podczas koszenia",
+          "description": "Pilnować podczas koszenia."
+        },
+        "returning": {
+          "name": "Podczas powrotu",
+          "description": "Pilnować podczas powrotu do stacji."
+        },
+        "patrolling": {
+          "name": "Podczas patrolu",
+          "description": "Pilnować podczas patrolu."
+        },
+        "voice": {
+          "name": "Mów i powiadamiaj",
+          "description": "Kosiarka mówi i wysyłane jest powiadomienie."
+        },
+        "photo": {
+          "name": "Zrób zdjęcie",
+          "description": "Robione jest zdjęcie osoby, które trafia do albumu aplikacji."
+        },
+        "interval": {
+          "name": "Odstęp",
+          "description": "Najwyżej jeden alert na tyle minut, w kosiarkach, które rozkładają alerty."
+        }
+      }
+    },
+    "set_robot_voice": {
+      "name": "Ustaw głos",
+      "description": "Zmienia głośność głosu kosiarki i komunikaty, które wypowiada. Pominięte pozostaje bez zmian.",
+      "fields": {
+        "volume": {
+          "name": "Głośność",
+          "description": "Od 0 do 100."
+        },
+        "regular": {
+          "name": "Zwykłe komunikaty",
+          "description": "Wypowiadać zwykłe komunikaty."
+        },
+        "work_status": {
+          "name": "Stan pracy",
+          "description": "Mówić o stanie pracy."
+        },
+        "special_status": {
+          "name": "Stany szczególne",
+          "description": "Mówić o stanach szczególnych."
+        },
+        "error_status": {
+          "name": "Błędy",
+          "description": "Mówić o błędach."
+        }
+      }
+    },
+    "reset_consumable": {
+      "name": "Zresetuj materiał eksploatacyjny",
+      "description": "Zaczyna od nowa licznik materiału eksploatacyjnego, np. po wymianie noży lub szczotki czyszczącej stacji albo po serwisie kosiarki.",
+      "fields": {
+        "item": {
+          "name": "Materiał eksploatacyjny",
+          "description": "Noże, szczotka czyszcząca stacji lub konserwacja kosiarki."
+        }
+      }
+    },
+    "go_to_maintenance_point": {
+      "name": "Jedź do punktu serwisowego",
+      "description": "Wysyła kosiarkę do punktu serwisowego bieżącej mapy, gdzie czeka na czyszczenie lub serwis. Kosiarka tam jedzie.",
+      "fields": {
+        "point_id": {
+          "name": "Punkt serwisowy",
+          "description": "Identyfikator punktu serwisowego aktywnej mapy."
+        }
+      }
+    },
+    "ignore_obstacle": {
+      "name": "Ignoruj przeszkodę",
+      "description": "Sprawia, że kosiarka zapomina przeszkodę rozpoznaną przez kamerę, więc nie pojawia się już na mapie. Nie można tego cofnąć. Kosiarka się przy tym nie porusza, ale odmawia podczas koszenia.",
+      "fields": {
+        "obstacle_id": {
+          "name": "Przeszkoda",
+          "description": "Identyfikator przeszkody w kosiarce; karta mapy wypełnia go, gdy ignoruje się tam przeszkodę."
+        }
+      }
+    },
+    "backup_map": {
+      "name": "Utwórz kopię zapasową mapy",
+      "description": "Tworzy kopię zapasową bieżącej mapy, zastępując poprzednią. Kosiarka nie rusza się przy tym, ale odrzuca polecenie podczas koszenia lub powrotu do stacji."
+    },
+    "restore_map": {
+      "name": "Przywróć mapę",
+      "description": "Przywraca bieżącą mapę z jej kopii zapasowej lub, z podanym miejscem, odzyskuje usuniętą mapę z kopii pozostałej w jej pustym miejscu. Harmonogramy i ustawienia koszenia mapy mogą zostać zresetowane. Kosiarka się przy tym nie porusza, ale odmawia podczas koszenia lub powrotu do stacji.",
+      "fields": {
+        "slot": {
+          "name": "Miejsce",
+          "description": "Puste miejsce na mapę, liczone od 1, którego kopia przywraca usuniętą mapę. Pomiń, aby przywrócić bieżącą mapę."
+        }
+      }
+    },
+    "delete_map": {
+      "name": "Usuń mapę",
+      "description": "Usuwa mapę ze wszystkim, co na niej jest. Jej kopia zostaje w pustym miejscu, skąd restore_map ją przywraca; bez kopii trzeba w aplikacji utworzyć nową mapę, prowadząc kosiarkę. Kosiarka się przy tym nie porusza, ale odmawia podczas koszenia lub powrotu do stacji.",
+      "fields": {
+        "map_id": {
+          "name": "Identyfikator mapy",
+          "description": "Mapa do usunięcia."
         }
       }
     }

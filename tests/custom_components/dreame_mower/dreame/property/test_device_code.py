@@ -23,29 +23,26 @@ class TestDeviceCodeDefinition:
     def test_init(self):
         """Test device code definition initialization."""
         definition = DeviceCodeDefinition(
-            code=28,
             name="BLADES_SEVERELY_WORN",
             description="Blades are severely worn. Replace them soon.",
             code_type=DeviceCodeType.WARNING
         )
         
-        assert definition.code == 28
         assert definition.name == "BLADES_SEVERELY_WORN"
         assert definition.description == "Blades are severely worn. Replace them soon."
         assert definition.code_type == DeviceCodeType.WARNING
 
-    @pytest.mark.parametrize("code_type,expected_error,expected_warning,expected_info", [
-        (DeviceCodeType.ERROR, True, False, False),
-        (DeviceCodeType.WARNING, False, True, False),
-        (DeviceCodeType.INFO, False, False, True),
+    @pytest.mark.parametrize("code_type,expected_error,expected_warning", [
+        (DeviceCodeType.ERROR, True, False),
+        (DeviceCodeType.WARNING, False, True),
+        (DeviceCodeType.INFO, False, False),
     ])
-    def test_type_checking_methods(self, code_type, expected_error, expected_warning, expected_info):
+    def test_type_checking_methods(self, code_type, expected_error, expected_warning):
         """Test type checking methods for all code types."""
-        definition = DeviceCodeDefinition(1, "TEST", "Test", code_type)
+        definition = DeviceCodeDefinition("TEST", "Test", code_type)
         
         assert definition.is_error() == expected_error
         assert definition.is_warning() == expected_warning
-        assert definition.is_info() == expected_info
 
 
 class TestDeviceCodeRegistry:
@@ -54,12 +51,12 @@ class TestDeviceCodeRegistry:
     def test_init(self):
         """Test registry initialization."""
         test_codes = {
-            0: DeviceCodeDefinition(0, "TEST", "Test", DeviceCodeType.INFO)
+            0: DeviceCodeDefinition("TEST", "Test", DeviceCodeType.INFO)
         }
         registry = DeviceCodeRegistry(test_codes)
         
         assert registry.get_code(0) is not None
-        assert registry.get_name(0) == "TEST"
+        assert registry.get_code(0).name == "TEST"
 
     def test_get_code(self):
         """Test getting device code definition."""
@@ -75,39 +72,33 @@ class TestDeviceCodeRegistry:
         # Test non-existing code
         assert registry.get_code(999) is None
 
-    def test_get_name_and_description(self):
-        """Test getting name and description with fallbacks."""
+    def test_get_description(self):
+        """Test getting a description with its fallback."""
         registry = DeviceCodeRegistry(BASE_DEVICE_CODES)
         
-        # Test existing code
-        assert registry.get_name(28) == "BLADE_WORN"
         assert registry.get_description(28) == "Blades are severely worn. Replace them soon"
-        
-        # Test unknown code fallbacks
-        assert registry.get_name(999) == "Unknown Code 999"
         assert registry.get_description(999) == "Unknown device code: 999"
 
-    @pytest.mark.parametrize("code,expected_error,expected_warning,expected_info", [
-        (2, True, False, False),    # MOWER_GOT_STUCK (error)
-        (28, False, True, False),   # BLADE_WORN (consumable reminder, warning)
-        (48, False, False, True),   # TASK_FINISH (info)
-        (999, False, False, False), # Unknown code
+    @pytest.mark.parametrize("code,expected_error,expected_warning", [
+        (2, True, False),    # MOWER_GOT_STUCK (error)
+        (28, False, True),   # BLADE_WORN (consumable reminder, warning)
+        (48, False, False),  # TASK_FINISH (info)
+        (999, False, False), # Unknown code
     ])
-    def test_type_checking_methods(self, code, expected_error, expected_warning, expected_info):
+    def test_type_checking_methods(self, code, expected_error, expected_warning):
         """Test registry type checking methods."""
         registry = DeviceCodeRegistry(BASE_DEVICE_CODES)
         
         assert registry.is_error(code) == expected_error
         assert registry.is_warning(code) == expected_warning
-        assert registry.is_info(code) == expected_info
 
     def test_extend(self):
         """Test registry extension functionality."""
         base_codes = {
-            1: DeviceCodeDefinition(1, "BASE", "Base", DeviceCodeType.INFO)
+            1: DeviceCodeDefinition("BASE", "Base", DeviceCodeType.INFO)
         }
         additional_codes = {
-            2: DeviceCodeDefinition(2, "ADDITIONAL", "Additional", DeviceCodeType.ERROR)
+            2: DeviceCodeDefinition("ADDITIONAL", "Additional", DeviceCodeType.ERROR)
         }
         
         base_registry = DeviceCodeRegistry(base_codes)
@@ -119,18 +110,7 @@ class TestDeviceCodeRegistry:
         # Extended registry should have both codes
         assert extended_registry.get_code(1) is not None
         assert extended_registry.get_code(2) is not None
-        assert extended_registry.get_name(2) == "ADDITIONAL"
-
-    def test_get_mapping(self):
-        """Test getting code-to-name mapping."""
-        test_codes = {
-            1: DeviceCodeDefinition(1, "CODE_ONE", "First", DeviceCodeType.INFO),
-            2: DeviceCodeDefinition(2, "CODE_TWO", "Second", DeviceCodeType.ERROR)
-        }
-        registry = DeviceCodeRegistry(test_codes)
-        
-        mapping = registry.get_mapping()
-        assert mapping == {1: "CODE_ONE", 2: "CODE_TWO"}
+        assert extended_registry.get_code(2).name == "ADDITIONAL"
 
 
 class TestDeviceCodeHandler:
@@ -229,20 +209,20 @@ class TestDeviceCodeRegistries:
         registry = get_device_code_registry(model)
         
         # Code 28 should be available in all registries
-        assert registry.get_name(28) == expected_code_28_name
+        assert registry.get_code(28).name == expected_code_28_name
         
         # Code 0 varies by model
-        assert registry.get_name(0) == expected_code_0_name
+        assert registry.get_code(0).name == expected_code_0_name
 
     def test_code_19_base_vs_a1_override(self):
         """Code 19 should stay as lost in base and map to emergency stop on A1."""
         base_registry = get_device_code_registry(None)
         a1_registry = get_device_code_registry("dreame.mower.p2255")
 
-        assert base_registry.get_name(19) == "LOCATION_LOST"
+        assert base_registry.get_code(19).name == "LOCATION_LOST"
         assert base_registry.get_description(19) == "Robot is lost"
 
-        assert a1_registry.get_name(19) == "EMERGENCY_STOP_PRESSED"
+        assert a1_registry.get_code(19).name == "EMERGENCY_STOP_PRESSED"
         assert a1_registry.get_description(19) == "Emergency stop pressed"
 
 
@@ -328,7 +308,7 @@ class TestMovaDriveWheelCodes:
     def test_codes_available_for_mova_models(self, model, code, expected_name):
         """Codes 4 and 5 should resolve correctly for all MOVA models."""
         registry = get_device_code_registry(model)
-        assert registry.get_name(code) == expected_name
+        assert registry.get_code(code).name == expected_name
         assert registry.is_error(code) is True
 
     @pytest.mark.parametrize("code,expected_name", [
@@ -337,8 +317,8 @@ class TestMovaDriveWheelCodes:
     ])
     def test_codes_are_now_shared_with_base_registry(self, code, expected_name):
         """Codes 4 and 5 are shared across multiple families and should resolve in the base registry."""
-        assert get_device_code_registry(None).get_name(code) == expected_name
-        assert get_device_code_registry("dreame.mower.p2255").get_name(code) == expected_name
+        assert get_device_code_registry(None).get_code(code).name == expected_name
+        assert get_device_code_registry("dreame.mower.p2255").get_code(code).name == expected_name
 
     @pytest.mark.parametrize("code,expected_name", [
         (4, "LEFT_DRIVE_WHEEL_ERROR"),

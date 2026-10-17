@@ -3,8 +3,6 @@
 import hashlib
 import json
 import logging
-import queue
-from typing import Any
 from unittest.mock import Mock, patch
 import pytest
 import requests
@@ -193,43 +191,6 @@ class TestDreameMowerCloudBase:
         cloud_base.request.assert_called_once()
         assert result == {"code": 0, "data": "test_data"}
 
-    def test_api_call_async(self, cloud_base):
-        """Test _api_call_async method."""
-        callback = Mock()
-        
-        # Mock the queue and thread - let the thread be created naturally
-        cloud_base._queue = Mock()
-        cloud_base._thread = None
-        
-        with patch('custom_components.dreame_mower.dreame.cloud.cloud_base.Thread') as mock_thread:
-            mock_thread_instance = Mock()
-            mock_thread.return_value = mock_thread_instance
-            
-            cloud_base._api_call_async(callback, "test_url", {"param": "value"}, 2)
-            
-            # Should create thread if None
-            mock_thread.assert_called_once()
-            mock_thread_instance.start.assert_called_once()
-            cloud_base._queue.put.assert_called_once()
-
-    def test_api_task(self, cloud_base):
-        """Test _api_task method."""
-        # Create a real queue for testing
-        test_queue: queue.Queue[Any] = queue.Queue()
-        cloud_base._queue = test_queue
-        cloud_base._api_call = Mock(return_value={"result": "success"})
-        
-        # Add a task and empty item to stop the loop
-        callback = Mock()
-        test_queue.put((callback, "url", "params", 2))
-        test_queue.put([])  # Empty item to stop the loop
-        
-        # Run the task
-        cloud_base._api_task()
-        
-        # Verify callback was called with the result
-        callback.assert_called_once_with({"result": "success"})
-
     # Request Method Tests
     @patch('custom_components.dreame_mower.dreame.cloud.cloud_base.time.sleep')
     def test_request_with_key_expiration(self, mock_time, cloud_base):
@@ -310,29 +271,23 @@ class TestDreameMowerCloudBase:
     def test_disconnect(self, cloud_base):
         """Test disconnect method."""
         cloud_base._session = Mock()
-        cloud_base._thread = Mock()
-        cloud_base._queue = Mock()
         cloud_base._DreameMowerCloudBase__http_api_connected = True
         cloud_base._DreameMowerCloudBase__logged_in = True
         
         cloud_base.disconnect()
         
         cloud_base._session.close.assert_called_once()
-        cloud_base._queue.put.assert_called_once_with([])
         assert cloud_base._DreameMowerCloudBase__http_api_connected is False
         assert cloud_base.connected is False
 
     def test_disconnect_no_session(self, cloud_base):
         """Test disconnect method when session is None."""
         cloud_base._session = None
-        cloud_base._thread = Mock()
-        cloud_base._queue = Mock()
         cloud_base._DreameMowerCloudBase__http_api_connected = True
         
         # Should not raise exception
         cloud_base.disconnect()
         
-        cloud_base._queue.put.assert_called_once_with([])
         assert cloud_base._DreameMowerCloudBase__http_api_connected is False
 
     # Integration-style Tests

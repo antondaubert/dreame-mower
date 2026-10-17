@@ -3,7 +3,7 @@
 This file serves as the main entry point for the integration.
 It sets up the coordinator and forwards platform setup to dedicated modules.
 To add new features, simply extend the PLATFORMS tuple - each platform
-will automatically route to its corresponding module (e.g., switch.py, button.py).
+will automatically route to its corresponding module (e.g., switch.py, sensor.py).
 """
 
 from __future__ import annotations
@@ -30,22 +30,57 @@ from .const import (
 )
 from .coordinator import DreameMowerCoordinator
 from .config_flow import DEVICE_TYPE_SWBOT
+from .frontend import async_setup_frontend
 
 _LOGGER = logging.getLogger(__name__)
 
 _MOWER_PLATFORMS = (
     Platform.LAWN_MOWER,
     Platform.SENSOR,
-    Platform.CAMERA,
     Platform.SELECT,
-    Platform.BUTTON,
-    Platform.NUMBER,
     Platform.SWITCH,
     Platform.TIME,
     Platform.UPDATE,
 )
 _SWBOT_PLATFORMS = (
     Platform.SENSOR,
+)
+
+# The keys of entities earlier versions created, removed from the registry.
+_RETIRED_ENTITY_KEYS = (
+    "firmware_update_available",
+    "map_camera",
+    "map_select",
+    "mowing_action",
+    "edge_select",
+    "zone_select",
+    "spot_select",
+    "maintenance_point_select",
+    "mowing_direction_mode",
+    "mowing_efficiency",
+    "turning_method",
+    "cutting_height",
+    "mowing_direction",
+    "obstacle_height",
+    "obstacle_distance",
+    "edge_mowing_auto",
+    "edge_mowing_safe",
+    "edge_blade_offset",
+    "lidar_obstacle_recognition",
+    "edge_obstacle_avoidance",
+    "ai_obstacle_humans",
+    "ai_obstacle_animals",
+    "ai_obstacle_objects",
+    "reset_consumable_blade",
+    "reset_consumable_brush",
+    "reset_consumable_robot",
+    "go_to_maintenance_point",
+    "find_robot",
+    "dock_without_stopping",
+    "charging_status",
+    "bluetooth_connection",
+    "device_code",
+    "current_task",
 )
 
 
@@ -69,55 +104,55 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             f"Unable to connect to Dreame device {coordinator.name}"
         )
 
+    # A mower that is offline, or that the cloud lists as connected but that
+    # does not answer, lets every command sent to it time out after several
+    # seconds. Its setup reads only what
+    # the cloud keeps, and the entry is set up again once the mower is back so
+    # the reads that decide which entities it gets are made then.
+    reachable = coordinator.device_type == DEVICE_TYPE_SWBOT or await coordinator.device.async_check_reachable()
+    if not reachable:
+        _LOGGER.info("%s is offline; reading its device settings once it is back", coordinator.device_name)
+        coordinator.reload_when_online = True
+
     if coordinator.device_type != DEVICE_TYPE_SWBOT:
+        # The cloud's copy of the maps comes in one request; reading them from
+        # the mower takes many, and runs with the other reads after setup.
         try:
-            await hass.async_add_executor_job(coordinator.device.fetch_vector_map)
+            await hass.async_add_executor_job(coordinator.device.load_stored_vector_map)
         except Exception as ex:
-            _LOGGER.warning("Initial vector map fetch failed: %s", ex)
-    
+            _LOGGER.warning("Reading the stored maps failed: %s", ex)
+
+        # The map card and the feed it draws from.
+        await async_setup_frontend(hass)
+
     # Start coordinator updates (minimal - may not do anything initially)
     await coordinator.async_config_entry_first_refresh()
-    
+
     # Trigger initial data update to reflect current device state
     await coordinator.async_request_refresh()
 
-    if coordinator.device_type != DEVICE_TYPE_SWBOT:
-        try:
-            await coordinator.async_fetch_consumable_data()
-        except Exception as ex:
-            _LOGGER.warning("Initial consumable data fetch failed: %s", ex)
-
-    # Read the mowing preferences once: they carry the cutting heights and the
-    # edge mowing settings, and double as the probe that decides which of them
-    # the device offers.
-    if coordinator.device_type != DEVICE_TYPE_SWBOT:
-        try:
-            await coordinator.async_fetch_mowing_preferences()
-        except Exception as ex:
-            _LOGGER.warning("Initial mowing preference fetch failed: %s", ex)
-
-    # Read the settings record once: the charging period, rain protection and
-    # the anti-theft settings all live in it, and it doubles as the probe that
-    # decides which of them the device offers at all.
-    if coordinator.device_type != DEVICE_TYPE_SWBOT:
-        try:
-            await coordinator.async_fetch_device_settings()
-        except Exception as ex:
-            _LOGGER.warning("Initial device settings fetch failed: %s", ex)
-
-    # Read the schedules of the active map once, which also decides whether the
-    # device offers any.
-    if coordinator.device_type != DEVICE_TYPE_SWBOT:
-        try:
-            await coordinator.async_fetch_schedules()
-        except Exception as ex:
-            _LOGGER.warning("Initial schedule fetch failed: %s", ex)
+    # The reads that decide which settings a mower offers take a command each,
+    # and a mower on a slow link answers every one only after seconds. They run
+    # once setup is done, and the entities that depend on them are added as
+    # they finish, so Home Assistant does not wait for them to start.
+    if coordinator.device_type != DEVICE_TYPE_SWBOT and reachable:
+        entry.async_create_background_task(
+            hass, _async_read_device_settings(hass, coordinator), f"{DOMAIN} initial reads"
+        )
+    else:
+        coordinator.async_mark_probed()
 
     # Store coordinator in hass data
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         DATA_COORDINATOR: coordinator,
         DATA_PLATFORMS: platforms,
     }
+
+    # While a mowing session runs, keep the position reports coming; open map
+    # cards hear when the entry goes away.
+    coordinator.async_update_pose_keepalive()
+    entry.async_on_unload(coordinator.async_stop_pose_keepalive)
+    entry.async_on_unload(coordinator.async_shutdown_map_feeds)
 
     # Home Assistant does not unload config entries when it stops, so the MQTT
     # client would keep handing pushes from a working mower to an event loop
@@ -170,8 +205,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Retire a resume time that has passed: the mower reports the time it will
     # work again when rain stops it, but nothing when that time simply runs out.
-    if coordinator.supports_rain_protection:
+    # Whether it offers rain protection is only known once the reads after
+    # setup are done, so the poll asks each time.
+    if coordinator.device_type != DEVICE_TYPE_SWBOT:
         async def _async_poll_rain(now=None) -> None:
+            if not coordinator.supports_rain_protection:
+                return
             try:
                 await coordinator.async_fetch_rain_protection_end()
             except Exception as ex:
@@ -216,6 +255,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 await hass.async_add_executor_job(coordinator.device.refresh_changed_vector_map)
             except Exception as ex:
                 _LOGGER.warning("Map poll failed: %s", ex)
+            await coordinator.async_refresh_map_extras()
 
         entry.async_on_unload(
             async_track_time_interval(
@@ -226,18 +266,54 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
         )
 
-    # Firmware updates used to be reported by a binary sensor, which the update
-    # entity replaces; drop it so it does not linger as an orphan.
+    # Drop the entities earlier versions created and this one no longer does, so
+    # they do not linger as orphans: firmware updates used to be reported by a
+    # binary sensor, which the update entity replaces, and the rest gave way to
+    # the map card.
+    retired_unique_ids = {f"{entry.entry_id}_map_camera"} | {
+        f"{coordinator.device_mac}_{key}" for key in _RETIRED_ENTITY_KEYS
+    }
     entity_registry = er.async_get(hass)
-    if retired_entity_id := entity_registry.async_get_entity_id(
-        Platform.BINARY_SENSOR, DOMAIN, f"{coordinator.device_mac}_firmware_update_available"
-    ):
-        entity_registry.async_remove(retired_entity_id)
+    for entity_entry in er.async_entries_for_config_entry(entity_registry, entry.entry_id):
+        if entity_entry.unique_id in retired_unique_ids:
+            entity_registry.async_remove(entity_entry.entity_id)
 
     # Set up all platforms for this device/entry.
     await hass.config_entries.async_forward_entry_setups(entry, platforms)
 
     return True
+
+
+async def _async_read_device_settings(hass: HomeAssistant, coordinator: DreameMowerCoordinator) -> None:
+    """Read what a mower offers, then let the platforms add what depends on it."""
+    try:
+        # The maps as the mower holds them, which may be newer than the copy.
+        try:
+            if await hass.async_add_executor_job(coordinator.device.fetch_vector_map):
+                coordinator.async_update_listeners()
+        except Exception as ex:
+            _LOGGER.warning("Initial vector map fetch failed: %s", ex)
+
+        # Where the station stands and the obstacles on the active map.
+        await coordinator.async_refresh_map_extras()
+
+        for what, read in (
+            ("consumable data", coordinator.async_fetch_consumable_data),
+            # The mowing preferences carry the cutting heights and the edge
+            # mowing settings, and decide which of them the device offers.
+            ("mowing preference", coordinator.async_fetch_mowing_preferences),
+            # The settings record holds the charging period, rain protection
+            # and the anti-theft settings, and decides which the device offers.
+            ("device settings", coordinator.async_fetch_device_settings),
+            # The schedules of the active map, and whether there are any.
+            ("schedule", coordinator.async_fetch_schedules),
+        ):
+            try:
+                await read()
+            except Exception as ex:
+                _LOGGER.warning("Initial %s fetch failed: %s", what, ex)
+    finally:
+        coordinator.async_mark_probed()
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -246,6 +322,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry_data = hass.data[DOMAIN][entry.entry_id]
     coordinator = entry_data[DATA_COORDINATOR]
     entry_platforms = entry_data[DATA_PLATFORMS]
+    # Reads still running must not add entities to platforms about to go.
+    coordinator.async_cancel_probe()
     await coordinator.async_disconnect_device()
     
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, entry_platforms):

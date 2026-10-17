@@ -10,12 +10,13 @@ from custom_components.dreame_mower.dreame.map_data_parser import (
     convert_device_map,
     has_map,
     parse_batch_map_data,
-    parse_mow_paths,
     parse_mower_map,
     reassemble_map_chunks,
+    parse_ai_obstacles,
+    parse_obstacles,
     resolve_zone_polygon,
-    vector_map_to_map_data,
 )
+from custom_components.dreame_mower.dreame.map_scene import map_geometry
 
 
 # ---------------------------------------------------------------------------
@@ -76,7 +77,6 @@ def test_parse_mower_map_basic_fields():
     assert result.map_index == 0
     assert result.name == "Garden"
     assert result.total_area == 50.0
-    assert result.last_updated is not None
 
 
 def test_parse_mower_map_zone_parsed():
@@ -195,7 +195,7 @@ def test_resolve_zone_polygon_rectangle_no_angle_unchanged():
     assert resolve_zone_polygon(2, 0.0, square) == square
 
 
-def test_vector_map_to_map_data_expands_forbidden_shapes():
+def test_map_geometry_expands_forbidden_shapes():
     map_json = _make_map_json(
         forbiddenAreas={
             "dataType": "Map",
@@ -205,10 +205,81 @@ def test_vector_map_to_map_data_expands_forbidden_shapes():
         }
     )
     vmap = parse_mower_map(map_json)
-    data = vector_map_to_map_data(vmap)
-    assert len(data["obstacle"]) == 1
-    # Circle expanded to a 36-point renderable polygon (svg_polygon needs >= 3).
-    assert len(data["obstacle"][0]["data"]) == 36
+    geometry = map_geometry(vmap)
+    assert geometry is not None
+    assert len(geometry["no_go"]) == 1
+    # Circle expanded to a 36-point polygon, stored as flat x, y pairs.
+    assert len(geometry["no_go"][0]["polygon"]) == 72
+
+
+def test_parse_mower_map_ignore_obstacle_areas():
+    map_json = _make_map_json(
+        notObsAreas={
+            "dataType": "Map",
+            "value": [
+                [101, {"id": 101, "type": 10, "shapeType": 2, "path": [
+                    {"x": 0, "y": 0}, {"x": 100, "y": 0}, {"x": 100, "y": 50}, {"x": 0, "y": 50},
+                ], "angle": 0}],
+            ],
+        }
+    )
+    vmap = parse_mower_map(map_json)
+    assert len(vmap.ignore_obstacle_areas) == 1
+    area = vmap.ignore_obstacle_areas[0]
+    assert area.zone_id == 101
+    assert area.path == [(0, 0), (100, 0), (100, 50), (0, 50)]
+    geometry = map_geometry(vmap)
+    assert geometry["ignore_obstacles"] == [
+        {"id": 101, "polygon": [0, 0, 100, 0, 100, 50, 0, 50], "shape": "rectangle", "rect": [0, 0, 100, 50]}
+    ]
+
+
+def test_device_map_semantic_areas_become_ignore_obstacle_areas():
+    document = {
+        "map": [{"id": 1, "type": 0, "data": [[0, 0], [100, 0], [100, 100]], "name": "Lawn"}],
+        "semantic": [{"id": 101, "type": 10, "data": [[52, -962], [-1212, -962], [-1212, -862], [52, -862]]}],
+    }
+    vmap = parse_mower_map(convert_device_map(document, 0, "hash"))
+    assert [area.zone_id for area in vmap.ignore_obstacle_areas] == [101]
+    polygon = map_geometry(vmap)["ignore_obstacles"][0]["polygon"]
+    corners = sorted(zip(polygon[0::2], polygon[1::2]))
+    assert corners == [(-12120, -9620), (-12120, -8620), (520, -9620), (520, -8620)]
+
+
+def test_parse_obstacles_scales_to_map_units():
+    entries = [
+        {"data": [[0, 0], [10, 0], [10, 10], [0, 10]], "id": 2, "type": 0},
+        {"id": 3},  # no outline
+        "junk",
+    ]
+    assert parse_obstacles(entries) == [
+        {"id": 2, "type": 0, "x": 50, "y": 50, "polygon": [0, 0, 100, 0, 100, 100, 0, 100]}
+    ]
+
+
+def test_parse_ai_obstacles_outline_form():
+    entries = [
+        [[100, 200, 200, 100], [0, 0, 100, 100], 95, 99, "img1", 0, 7],
+        [[0, 10], [0, 10], 80, 2, "img2", 1, 8],  # ignored by the user
+        [[0, 10], [0, 10], 60, 0, "", 0, 9],  # no photo taken
+    ]
+    assert parse_ai_obstacles(entries) == [
+        {"id": 7, "type": 99, "x": 150, "y": 50, "confidence": 95, "image": "img1", "bounds": [100, 0, 200, 100], "ignorable": True},
+        {"id": 9, "type": 0, "x": 5, "y": 5, "confidence": 60, "image": None, "bounds": [0, 0, 10, 10], "ignorable": True},
+    ]
+
+
+def test_parse_ai_obstacles_point_form_and_junk():
+    assert parse_ai_obstacles([[1000, -2000, 0.7, 6], "junk", [1, 2]]) == [
+        {"id": 0, "type": 6, "x": 1000, "y": -2000, "confidence": 70, "image": None, "bounds": None, "ignorable": False}
+    ]
+
+
+@pytest.mark.parametrize("entry", [[[0, 10], [0, 10], 80, 2, "img"], [[0, 10], [0, 10], 80, 2, "img", 0, ""], [[0, 10], [0, 10], 80, 2, "img", 0, True]])
+def test_an_outline_without_the_mowers_id_cannot_be_ignored(entry):
+    (obstacle,) = parse_ai_obstacles([entry])
+    assert obstacle["ignorable"] is False
+    assert obstacle["id"] == 0
 
 
 def test_parse_mower_map_contours():
@@ -258,29 +329,6 @@ def test_parse_mower_map_spot_areas():
 
 
 # ---------------------------------------------------------------------------
-# parse_mow_paths
-# ---------------------------------------------------------------------------
-
-
-def test_parse_mow_paths_segments_split_on_sentinel():
-    raw = "[[10,20],[30,40],[32767,-32768],[50,60]]"
-    result = parse_mow_paths({"M_PATH.0": raw})
-    assert len(result) == 1
-    assert len(result[0].segments) == 2
-    # Coordinates are scaled by 10
-    assert result[0].segments[0][0] == (100, 200)
-    assert result[0].segments[1][0] == (500, 600)
-
-
-def test_parse_mow_paths_empty_input():
-    assert parse_mow_paths({}) == []
-
-
-def test_parse_mow_paths_empty_array():
-    assert parse_mow_paths({"M_PATH.0": "[]"}) == []
-
-
-# ---------------------------------------------------------------------------
 # parse_batch_map_data
 # ---------------------------------------------------------------------------
 
@@ -307,25 +355,6 @@ def test_parse_batch_map_data_happy_path():
     assert result is not None
     assert result.name == "Main"
     assert result.total_area == 100.0
-
-
-def test_parse_batch_map_data_attaches_mow_paths():
-    map_data = {
-        "mapIndex": 0,
-        "name": "Main",
-        "totalArea": 0,
-        "mowingAreas": {"dataType": "Map", "value": []},
-        "forbiddenAreas": {"dataType": "Map", "value": []},
-        "paths": {"dataType": "Map", "value": []},
-    }
-    chunk = json.dumps([json.dumps(map_data)])
-    batch = {
-        "MAP.0": chunk,
-        "M_PATH.0": "[[1,2],[3,4]]",
-    }
-    result = parse_batch_map_data(batch)
-    assert result is not None
-    assert len(result.mow_paths) == 1
 
 
 def test_parse_batch_map_data_tracks_available_maps_and_active_map():
@@ -472,6 +501,9 @@ def _as_comparable(stored_map: dict) -> dict:
                         else item[field]
                     )
                     for field in item
+                    # Only the mower's own map says which way a point faces;
+                    # the times are not read.
+                    if field not in ("heading", "time", "etime")
                 }
                 for item_key, item in value["value"]
             }
@@ -573,7 +605,7 @@ def test_convert_device_map_scales_points_and_sorts_items_by_type():
     assert vmap.total_area == 12.5
     assert vmap.md5sum == "abc"
     assert vmap.zones[0].path == [(0, 0), (200, 0), (200, 100), (0, 100)]
-    assert vmap.zones[0].etime == 30
+    assert vmap.zones[0].area == 12.5
     assert vmap.paths[0].path == [(0, 0), (-40, 30)]
     assert vmap.spot_areas[0].name == "Corner"
     assert vmap.spot_areas[0].path == [(10, 10), (20, 10), (20, 20)]
@@ -620,3 +652,45 @@ def test_convert_device_map_stores_a_tilted_rectangle_the_way_it_renders():
     assert len({round(y, 3) for _, y in area.path}) == 2
     assert sorted(rendered) == sorted((round(x * 10), round(y * 10)) for x, y in corners)
 
+
+
+
+def test_parse_ai_obstacles_without_a_usable_confidence():
+    entries = [[[0, 10], [0, 10], None, 0, "img", 0, 1], [[0, 10], [0, 10], "high", 1, "img2", 0, 2]]
+
+    assert [obstacle["confidence"] for obstacle in parse_ai_obstacles(entries)] == [None, None]
+
+
+def test_areas_come_in_the_form_they_are_edited_in():
+    from custom_components.dreame_mower.dreame.map_scene import _editable_shape
+
+    assert _editable_shape(1, 0, [(0, 0), (100, 50)]) == {"shape": "line", "line": [0, 0, 100, 50]}
+    assert _editable_shape(2, 0, [(100, 0), (0, 0), (0, 50), (100, 50)]) == {"shape": "rectangle", "rect": [0, 0, 100, 50]}
+    assert _editable_shape(3, 0, [(0, 0), (100, 100)]) == {"shape": "circle", "circle": [50, 50, 50]}
+    # A turned rectangle or a decorative shape can only be deleted.
+    assert _editable_shape(2, 30, [(100, 0), (0, 0), (0, 50), (100, 50)]) == {"shape": "polygon"}
+    assert _editable_shape(12, 0, [(0, 0), (100, 0), (50, 80)]) == {"shape": "polygon"}
+
+
+@pytest.mark.parametrize("stored,heading", [(50, 90.0), (150, 270.0), (0, 0.0)])
+def test_a_maintenance_point_keeps_the_way_it_faces(stored, heading):
+    """A point's third value is its heading, in hundredths of a half turn."""
+    document = {
+        "map": [{"id": 1, "type": 0, "data": [[0, 0], [500, 0], [500, 500]]}],
+        "point": [{"id": 1, "point": [-227, 3, stored], "time": 60, "type": 1}],
+    }
+
+    (point,) = parse_mower_map(convert_device_map(document, 0, "abc")).maintenance_points
+
+    assert (point.x, point.y, point.heading) == (-2270, 30, heading)
+
+
+def test_a_maintenance_point_without_a_heading_has_none():
+    document = {
+        "map": [{"id": 1, "type": 0, "data": [[0, 0], [500, 0], [500, 500]]}],
+        "point": [{"id": 1, "point": [-227, 3], "time": 60, "type": 1}],
+    }
+
+    (point,) = parse_mower_map(convert_device_map(document, 0, "abc")).maintenance_points
+
+    assert point.heading is None

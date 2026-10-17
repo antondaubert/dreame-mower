@@ -58,9 +58,8 @@ blueprint:
     zone_ids:
       name: Zone IDs
       description: >-
-        Used only in Zones mode, for example [1, 3]. The Zone select entity
-        shows each zone's ID after its name, and the mower entity lists them in
-        its zones attribute.
+        Used only in Zones mode, for example [1, 3]. The mower entity lists
+        each zone with its ID in its zones attribute.
       default: []
       selector:
         object:
@@ -76,8 +75,9 @@ blueprint:
     spot_area_ids:
       name: Spot-area IDs
       description: >-
-        Used only in Spot areas mode, for example [2, 4]. The Spot select
-        entity shows each spot area's ID after its name.
+        Used only in Spot areas mode, for example [2, 4]. The
+        dreame_mower.set_spot_area action answers with the ID of the spot area
+        it draws.
       default: []
       selector:
         object:

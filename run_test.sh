@@ -5,9 +5,12 @@
 # This script runs comprehensive tests on the codebase:
 # 1. pytest - Runs all unit tests (tests/ directory)
 # 2. mypy (main) - Type checks main codebase (custom_components/)
+# 3. node --check - Syntax check of the map card's modules (skipped without node)
+# 4. node --test - Tests of the map card (tests/frontend/, skipped without node)
 #
 # Usage: ./run_test.sh
-# Requirements: Virtual environment with pytest and mypy installed at .venv/
+# Requirements: Virtual environment with pytest and mypy installed at .venv/;
+# for the card tests, node and its packages (npm ci)
 #
 # Exit codes:
 # 0 - All tests passed
@@ -25,6 +28,9 @@ NC='\033[0m' # No Color
 # Track results and counts
 PYTEST_RESULT=0
 MYPY_MAIN_RESULT=0
+CARD_RESULT=0
+CARD_TEST_RESULT=0
+CARD_DIR="custom_components/dreame_mower/frontend"
 TEST_COUNT=""
 MAIN_FILE_COUNT=""
 
@@ -87,6 +93,37 @@ else
     MYPY_MAIN_RESULT=1
 fi
 
+# 3. Syntax check of the map card
+print_header "Checking the map card"
+if command -v node >/dev/null 2>&1; then
+    for CARD_JS in "$CARD_DIR"/*.js; do
+        if node --check "$CARD_JS"; then
+            print_success "node --check $(basename "$CARD_JS")"
+        else
+            print_error "node --check $(basename "$CARD_JS")"
+            CARD_RESULT=1
+        fi
+    done
+else
+    print_warning "node not found; skipping the syntax check of $CARD_DIR"
+fi
+
+# 4. Tests of the map card
+print_header "Testing the map card"
+if command -v node >/dev/null 2>&1; then
+    if [ ! -d "node_modules/jsdom" ]; then
+        print_error "card tests: their packages are missing; run npm ci"
+        CARD_TEST_RESULT=1
+    elif npm test --silent; then
+        print_success "card tests"
+    else
+        print_error "card tests"
+        CARD_TEST_RESULT=1
+    fi
+else
+    print_warning "node not found; skipping the card tests"
+fi
+
 # Print summary
 echo
 echo "============================================================"
@@ -110,10 +147,22 @@ else
     print_error "mypy (main codebase)"
 fi
 
+if [ $CARD_RESULT -eq 0 ]; then
+    print_success "map card syntax"
+else
+    print_error "map card syntax"
+fi
+
+if [ $CARD_TEST_RESULT -eq 0 ]; then
+    print_success "map card tests"
+else
+    print_error "map card tests"
+fi
+
 echo "============================================================"
 
 # Overall result
-TOTAL_ERRORS=$((PYTEST_RESULT + MYPY_MAIN_RESULT))
+TOTAL_ERRORS=$((PYTEST_RESULT + MYPY_MAIN_RESULT + CARD_RESULT + CARD_TEST_RESULT))
 
 if [ $TOTAL_ERRORS -eq 0 ]; then
     echo -e "${GREEN}🎉 All tests PASSED!${NC}"

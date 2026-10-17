@@ -2,9 +2,7 @@
 
 This module provides parsing and handling for Service 2 scheduling properties:
 - 2:50 - Mission task descriptor (TASK object with mission details)
-- 2:52 - Mission completion summary (currently empty, future use)
-
-These properties manage mission lifecycle and completion tracking.
+- 2:52 - Mission completion summary, usually empty
 
 The device also reports a changed mowing preference on 2:52, without naming the
 map or the setting that changed. The payload is passed on as it arrives, and the
@@ -21,6 +19,9 @@ from ..const import SCHEDULING_TASK_PROPERTY, SCHEDULING_SUMMARY_PROPERTY
 _LOGGER = logging.getLogger(__name__)
 
 # Task data field constants
+# The actions that change the map count from here on.
+_MAP_ACTIONS_FROM = 200
+
 TASK_TYPE_FIELD = "type"
 TASK_AREA_ID_FIELD = "area_id"
 TASK_EXECUTION_FIELD = "execution_active"
@@ -107,34 +108,9 @@ class TaskHandler:
         return self._task_type
     
     @property
-    def area_id(self) -> list[int] | None:
-        """Return selected area IDs."""
-        return self._area_id
-    
-    @property
-    def execution_active(self) -> bool | None:
-        """Return True if task execution is active."""
-        return self._execution_active
-    
-    @property
-    def coverage_target(self) -> int | None:
-        """Return coverage target percentage or mode sentinel."""
-        return self._coverage_target
-    
-    @property
     def region_id(self) -> list[int] | None:
         """Return working region IDs."""
         return self._region_id
-    
-    @property
-    def task_active(self) -> bool | None:
-        """Return True if task is active/accepted."""
-        return self._task_active
-    
-    @property
-    def elapsed_time(self) -> int | None:
-        """Return elapsed time in seconds at snapshot."""
-        return self._elapsed_time
 
 
 class SummaryHandler:
@@ -166,11 +142,6 @@ class SummaryHandler:
     def get_notification_data(self) -> Dict[str, Any]:
         """Get summary notification data for Home Assistant."""
         # Return raw data for now, add specific field extraction when populated
-        return self._summary_data.copy()
-    
-    @property
-    def summary_data(self) -> Dict[str, Any]:
-        """Return raw summary data."""
         return self._summary_data.copy()
     
     @property
@@ -208,6 +179,13 @@ class SchedulingPropertyHandler:
     
     def _handle_task_property(self, value: Any, notify_callback) -> bool:
         """Handle mission task descriptor (2:50)."""
+        # The same report confirms changes to the map, whose actions count from
+        # 200 on; such a confirmation says nothing about the task.
+        data = value.get("d") if isinstance(value, dict) else None
+        target = data.get("o") if isinstance(data, dict) else None
+        if isinstance(target, int) and target >= _MAP_ACTIONS_FROM:
+            _LOGGER.debug("Map action confirmed: %s", data)
+            return True
         if self._task_handler.parse_value(value):
             task_data = self._task_handler.get_notification_data()
             notify_callback(SCHEDULING_TASK_PROPERTY.name, task_data)

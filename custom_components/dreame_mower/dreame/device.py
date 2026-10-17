@@ -2,22 +2,21 @@
 
 This module provides the device abstraction for communicating with the Dreame Mower.
 It handles MQTT/Cloud API connections and device state management.
-
-TODO: Add error handling for network failures
-TODO: Implement connection retry logic
 """
 
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import base64
 import hashlib
 from collections.abc import Iterable, Mapping, Sequence
 from copy import deepcopy
-from enum import Enum
+from enum import Enum, IntEnum
 import json
 import logging
 import os
+import re
 import threading
 import time
 from typing import Any, Callable
@@ -29,69 +28,91 @@ from .map_data_parser import (
     assemble_vector_map,
     convert_device_map,
     has_map,
+    parse_ai_obstacles,
     parse_batch_map_data,
+    parse_obstacles,
     parse_cached_maps,
-    parse_mow_paths,
     parse_mower_map,
 )
 from .utils import download_file
+from . import map_edit
+from .work_log import work_log_details, work_log_entries
+from .obstacle_photo import obstacle_photo_boxes
 from .property import (
     MiscPropertyHandler,
     DeviceCodeHandler,
     SchedulingPropertyHandler,
-    MowerControlPropertyHandler,
-    Service5PropertyHandler,
     MissionCompletionEventHandler,
-    PoseCoveragePropertyHandler,
+    PoseCoverageHandler,
     DEVICE_CODE_ERROR_PROPERTY_NAME,
     DEVICE_CODE_WARNING_PROPERTY_NAME,
     DEVICE_CODE_INFO_PROPERTY_NAME,
     POSE_COVERAGE_PROGRESS_PROPERTY_NAME,
     POSE_COVERAGE_COORDINATES_PROPERTY_NAME,
 )
+from .property.pose_coverage import decode_pose_point
+from .property.property_misc import PROPERTY_1_1_TASK_STATUS_NAME
 from .const import (
+    AI_OBSTACLE_KEY,
+    CUTTING_HEIGHT_KEY,
+    DIRECTION_ANGLE_KEY,
+    DIRECTION_MODE_KEY,
+    EDGE_OBSTACLE_AVOIDANCE_KEY,
+    EFFICIENCY_KEY,
+    LIDAR_OBSTACLE_KEY,
+    MOWING_PREFERENCE_AI_OBSTACLE_INDEX,
+    MOWING_PREFERENCE_EDGE_OBSTACLE_AVOIDANCE_INDEX,
+    MOWING_PREFERENCE_EFFICIENCY_INDEX,
+    MOWING_PREFERENCE_LIDAR_OBSTACLE_INDEX,
+    MOWING_PREFERENCE_OBSTACLE_DISTANCE_INDEX,
+    MOWING_PREFERENCE_OBSTACLE_HEIGHT_INDEX,
+    MOWING_PREFERENCE_TURNING_METHOD_INDEX,
+    OBSTACLE_DISTANCE_KEY,
+    OBSTACLE_DISTANCES_CM,
+    OBSTACLE_HEIGHT_KEY,
+    OBSTACLE_HEIGHTS_CM,
+    TURNING_METHOD_KEY,
+    AiObstacleKind,
+    MowingEfficiency,
+    TurningMethod,
+    AI_OBSTACLES_KEY,
+    DOCK_KEY,
+    POSITION_KEY,
+    STOP_POINTS_KEY,
+    AI_OBSTACLE_PHOTO_DIR,
+    AI_OBSTACLES_SEEN_FILE,
+    AI_OBSTACLES_SEEN_LIMIT,
+    AI_OBSTACLE_PHOTO_KIND,
+    AI_OBSTACLE_PHOTO_TIMEOUT,
+    AI_OBSTACLE_PHOTO_TRIES,
+    WORK_LOG_LIMIT,
+    WORK_TOTALS_KEY,
+    TRAIL_KEY,
+    TRAIL_MAX_PAGES,
+    TRAIL_PAGE_SIZE,
+    DOCK_POSITION_SCALE,
+    DOCK_YAW_SCALE,
+    OBSTACLES_KEY,
     BATTERY_PROPERTY,
     STATUS_PROPERTY,
     BLUETOOTH_PROPERTY,
     SCHEDULING_TASK_PROPERTY,
     SCHEDULING_SUMMARY_PROPERTY,
-    MOWER_CONTROL_STATUS_PROPERTY,
     POWER_STATE_PROPERTY,
-    SERVICE2_PROPERTY_53,
-    SERVICE2_PROPERTY_54,
     SERVICE2_PROPERTY_55,
-    SERVICE2_PROPERTY_60,
-    SERVICE2_PROPERTY_62,
-    SERVICE2_PROPERTY_63,
-    SERVICE2_PROPERTY_64,
-    SERVICE2_PROPERTY_65,
-    SERVICE2_PROPERTY_66,
-    SERVICE2_PROPERTY_67,
+    IGNORED_PROPERTIES,
     FIRMWARE_INSTALL_STATE_PROPERTY,
     FIRMWARE_DOWNLOAD_PROGRESS_PROPERTY,
     POSE_COVERAGE_PROPERTY,
-    SERVICE1_PROPERTY_50,
     SERVICE1_PROPERTY_51,
-    SERVICE1_COMPLETION_FLAG_PROPERTY,
-    SERVICE1_PROPERTY_54,
-    SERVICE1_PROPERTY_55,
     STATUS_MAPPING,
     PROPERTY_FIRMWARE,
     CHARGING_STATUS_PROPERTY,
     CHARGING_STATUS_MAPPING,
-    TASK_STATUS_PROPERTY,
     FIRMWARE_INSTALL_STATE_MAPPING,
     FIRMWARE_UPDATE_ALLOWED_STATUSES,
     FIRMWARE_UPDATE_MIN_BATTERY_PERCENT,
     FirmwareInstallState,
-    SERVICE5_PROPERTY_100,
-    SERVICE5_PROPERTY_101,
-    SERVICE5_PROPERTY_105,
-    SERVICE5_PROPERTY_106,
-    SERVICE5_ENERGY_INDEX_PROPERTY,
-    SERVICE5_PROPERTY_108,
-    SERVICE6_PROPERTY_1,
-    SERVICE6_PROPERTY_3,
     DEVICE_FILE_PATH_PROPERTY,
     DEVICE_FILE_PATH_PROPERTY_20,
     FIRMWARE_VALIDATION_EVENT,
@@ -102,6 +123,7 @@ from .const import (
     ACTION_STOP,
     ACTION_DOCK,
     TASK_PAYLOAD_RESUME,
+    TASK_PAYLOAD_STOP_RETURNING,
     DEVICE_CODE_PROPERTY,
     PROPERTY_1_1,
     ONLINE_OFFLINE_DEBOUNCE_POLLS,
@@ -207,6 +229,82 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+# What the name of an obstacle photo looks like; nothing else is fetched or kept.
+_PHOTO_NAME = re.compile(r"[0-9A-Za-z_-][0-9A-Za-z._-]*")
+
+
+# Whether a task mows only what an unfinished one left in its zones.
+FROM_STOP_POINT_KEY = "need_bp"
+
+# The action that clears a code the mower reports.
+SUPPRESS_CODE_ACTION = 11
+
+# The action that has the mower call out, so it can be found by its sound.
+FIND_ROBOT_ACTION = 9
+
+# Codes that remind of maintenance (a worn blade, a worn station brush, the
+# maintenance time) without holding the mower up.
+MAINTENANCE_REMINDER_CODES = frozenset({28, 29, 30})
+
+# The heartbeat of a mower out mowing: main state 4, task status 2 (33 + 2).
+AI_OBSTACLE_MOWING_MAIN_STATE = 4
+AI_OBSTACLE_MOWING_SUB_STATE = 35
+# The mower's answer to ignoring an obstacle it does not know.
+AI_OBSTACLE_UNKNOWN = 2
+
+# How long the mower may take to confirm a change to its map, in seconds.
+MAP_EDIT_ANSWER_SECONDS = 30
+# A map deleted or brought back shows in the mower's list of maps only a moment
+# after it confirmed the change, so the list is read until it does.
+MAP_SLOTS_SETTLE_ATTEMPTS = 5
+MAP_SLOTS_SETTLE_SECONDS = 2.0
+
+# A task's duration counts whole minutes, so its end may lie this much later.
+_TASK_END_SLACK_SECONDS = 60
+
+
+def _photo_time(image: str) -> float:
+    """When a photo was taken: its name starts with the unix time."""
+    try:
+        return float(image.split("_", 1)[0])
+    except ValueError:
+        return 0.0
+
+
+def _read_bytes(path: str) -> bytes | None:
+    """The content of a file, or None when there is none to read."""
+    try:
+        with open(path, "rb") as handle:
+            return handle.read()
+    except OSError:
+        return None
+
+
+def _write_bytes(path: str, content: bytes) -> None:
+    """Keep content in a file, replacing it whole; a failure is only logged."""
+    temporary = f"{path}.tmp"
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(temporary, "wb") as handle:
+            handle.write(content)
+        os.replace(temporary, path)
+    except OSError as ex:
+        _LOGGER.warning("Could not keep %s: %s", path, ex)
+
+
+def _same_obstacle(one: dict[str, Any], other: dict[str, Any]) -> bool:
+    """Whether two recognised obstacles are the same one: where they are and what."""
+    return (one["x"], one["y"], one["type"]) == (other["x"], other["y"], other["type"])
+
+
+def _enum_name(enum: type[IntEnum], value: int) -> str | int:
+    """The lowercase name of a known enum value; an unknown value stays a number."""
+    try:
+        return enum(value).name.lower()
+    except ValueError:
+        return value
 
 # The mower acknowledges a map switch even when it refuses to act on it, so the
 # switch is confirmed by re-reading the map list. The device needs a moment to
@@ -339,8 +437,6 @@ class DreameMowerDevice:
         # MQTT properties
         self._bluetooth_connected: bool | None = None
         self._charging_status: str | None = None
-        self._ota_state: str | None = None
-        self._ota_progress: int | None = None
         self._device_file_path: str | None = None
         self._firmware_install_state: int | None = None
         self._firmware_download_progress: int | None = None
@@ -350,21 +446,52 @@ class DreameMowerDevice:
         # Whether the cloud OTA service has answered a version check yet; until
         # it has, the latest firmware version is not known either way.
         self._firmware_status_checked: bool = False
-        self._service1_property_50: bool = False
-        self._service1_property_51: bool = False
-        self._service1_completion_flag: bool = False
-        
+
         # Property handlers
         self._misc_handler = MiscPropertyHandler()
         self._device_code_handler = DeviceCodeHandler()
         self._scheduling_handler = SchedulingPropertyHandler()
-        self._mower_control_handler = MowerControlPropertyHandler()
-        self._service5_handler = Service5PropertyHandler()
         self._mission_completion_handler = MissionCompletionEventHandler()
-        self._pose_coverage_handler = PoseCoveragePropertyHandler()
+        self._pose_coverage_handler = PoseCoverageHandler()
         
         # Vector map, read from the mower and the cloud copy of its maps
         self._vector_map: MowerVectorMap | None = None
+        # Where the charging station stands and which way it faces, as the
+        # mower reports it; and the obstacles on the active map.
+        self._dock_position: tuple[int, int] | None = None
+        self._dock_angle: float | None = None
+        self._obstacles: list[dict[str, Any]] = []
+        self._ai_obstacles: list[dict[str, Any]] = []
+        # One obstacle photo is fetched at a time; every photo that came is
+        # kept, so it never has to come over the mower's connection again.
+        self._photo_lock = threading.Lock()
+        # Photos of the obstacles of the tasks the work log was asked about.
+        self._work_log_photos: set[str] = set()
+        # The photos each kept task file lists; such a file never changes.
+        self._task_file_photos: dict[str, frozenset[str]] = {}
+        # Every recognised obstacle with a photo seen while mowing, by photo:
+        # the mower drops one it later finds gone, and the task it was met in
+        # then no longer lists it. Read from where it is kept on first use.
+        self._seen_ai_obstacles: dict[str, dict[str, Any]] | None = None
+        self._seen_lock = threading.Lock()
+        self._stop_points: list[dict[str, Any]] = []
+        # The map slots the mower keeps a backup of, by index.
+        self._map_backups: set[int] = set()
+        # The slots the mower reports as holding a map, by index.
+        self._held_map_slots: set[int] | None = None
+        # Which way each maintenance point faces, by map index, with the hash of
+        # the map they were read from: only the mower's own copy of a map says.
+        self._point_headings: dict[int, tuple[str, dict[int, float | None]]] = {}
+        # Commands waiting for the mower's confirmation, by their "o".
+        self._task_answers: dict[int, concurrent.futures.Future[dict[str, Any]]] = {}
+        self._task_answers_lock = threading.Lock()
+        # One change to the map at a time.
+        self._map_edit_lock = asyncio.Lock()
+        # The task files the work log listed last; only those are read.
+        self._work_log_files: set[str] = set()
+        # Whether a mowing session ran as of the last task status; None until
+        # the first one arrives.
+        self._session_was_active: bool | None = None
         self._current_map_id: int | None = None
         # Hash of every map slot that holds a map, as of the last map read; None
         # while the maps have not been read from the mower itself.
@@ -383,6 +510,8 @@ class DreameMowerDevice:
         self._mowing_direction: dict[str, int] | None = None
         self._zone_mowing_directions: dict[int, dict[str, int]] = {}
         self._mowing_preference_mode: MowingPreferenceMode | None = None
+        # The records themselves, by area id (0 for the map-wide one).
+        self._mowing_records: dict[int, list[int]] = {}
 
         # Schedule slots of the current map, alongside the map they were read
         # from and the version the mower holds them under. Also read on demand;
@@ -452,14 +581,63 @@ class DreameMowerDevice:
         return self._status_code
 
     @property
-    def task_status(self) -> str | None:
-        """Return the current mowing task status decoded from the heartbeat."""
-        return self._misc_handler.task_status
-
-    @property
     def mowing_session_active(self) -> bool:
         """Return True while a mowing session is in progress (used by the live map)."""
         return self._misc_handler.mowing_session_active
+
+    @property
+    def robot_state(self) -> dict[str, Any] | None:
+        """Return where the mower stands and what it does, from its heartbeat."""
+        return self._misc_handler.robot_state
+
+    @property
+    def active_codes(self) -> frozenset[int]:
+        """Return the codes the mower currently reports in its heartbeat."""
+        return self._misc_handler.active_codes or frozenset()
+
+    @property
+    def current_problem(self) -> str | None:
+        """Return what the error or warning the mower reports now says, if any.
+
+        An error comes before a warning, and a maintenance reminder is no
+        problem. Taken from the codes its heartbeat reports as set; before the
+        first heartbeat, from the last code it announced.
+        """
+        if self._misc_handler.active_codes is not None:
+            problems = self._problem_codes(self.active_codes)
+            return self._device_code_handler.describe(problems[0]) if problems else None
+        handler = self._device_code_handler
+        return handler.device_code_description if handler.device_code_is_error else None
+
+    def _problem_codes(self, codes: Iterable[int]) -> list[int]:
+        """The codes that hold the mower up, errors first."""
+        handler = self._device_code_handler
+        problems = [code for code in set(codes) if handler.is_problem(code) and code not in MAINTENANCE_REMINDER_CODES]
+        return sorted(problems, key=lambda code: (not handler.is_error(code), code))
+
+    async def clear_errors(self) -> bool:
+        """Clear the errors and warnings the mower reports.
+
+        Returns whether the mower took every clearing; True when nothing was set.
+        """
+        codes = set(self.active_codes)
+        current = self._device_code_handler.device_code
+        if isinstance(current, int):
+            codes.add(current)
+        cleared = True
+        for code in self._problem_codes(codes):
+            cleared = await self.suppress_code(code) and cleared
+        return cleared
+
+    async def suppress_code(self, code: int) -> bool:
+        """Clear a code the mower reports, as one does to start despite rain protection."""
+        result = await self._send_task_payload("code suppress", {"m": "a", "p": 0, "o": SUPPRESS_CODE_ACTION, "d": {"fault": code}})
+        return bool(result)
+
+    async def find_robot(self) -> bool:
+        """Have the mower call out, so it can be found by its sound. It does not move."""
+        result = await self._send_task_payload("find robot", {"m": "a", "p": 1, "o": FIND_ROBOT_ACTION})
+        return bool(result)
 
     @property
     def link_module_installed(self) -> bool | None:
@@ -476,21 +654,6 @@ class DreameMowerDevice:
         """Return Bluetooth connection status."""
         return self._bluetooth_connected
     
-    @property
-    def firmware_install_state(self) -> int | None:
-        """Return firmware installation state (1:2)."""
-        return self._firmware_install_state
-    
-    @property
-    def firmware_download_progress(self) -> int | None:
-        """Return firmware download progress in percent (1:3)."""
-        return self._firmware_download_progress
-
-    @property
-    def firmware_update_available(self) -> bool:
-        """Return whether the cloud reports a newer firmware than installed."""
-        return self._firmware_new_available
-
     @property
     def firmware_latest_version(self) -> str | None:
         """Return the latest available firmware version, if any."""
@@ -537,41 +700,6 @@ class DreameMowerDevice:
         return self._firmware_download_progress
     
     @property
-    def service1_property_50(self) -> bool:
-        """Return Service 1 property 50 status (1:50) - session start indicator."""
-        return self._service1_property_50
-    
-    @property
-    def service1_property_51(self) -> bool:
-        """Return Service 1 property 51 status (1:51) - session start indicator."""
-        return self._service1_property_51
-    
-    @property
-    def service1_completion_flag(self) -> bool:
-        """Return Service 1 completion flag status (1:52)."""
-        return self._service1_completion_flag
-
-    @property
-    def ota_state(self) -> str | None:
-        """Return Over-The-Air update state."""
-        return self._ota_state
-
-    @property
-    def ota_progress(self) -> int | None:
-        """Return Over-The-Air update progress (0-100)."""
-        return self._ota_progress
-
-    @property
-    def device_file_path(self) -> str | None:
-        """Return device file path (firmware packages or log files)."""
-        return self._device_file_path
-
-    @property
-    def ota_package_path(self) -> str | None:
-        """Return device file path (backward compatibility alias)."""
-        return self._device_file_path
-
-    @property
     def current_task_data(self) -> dict | None:
         """Return current task data from the TaskHandler."""
         task_handler = self._scheduling_handler._task_handler
@@ -584,46 +712,6 @@ class DreameMowerDevice:
         """Return charging status mapped text."""
         return self._charging_status
     
-    @property
-    def service5_property_105(self) -> int | None:
-        """Return Service 5 property 105 value."""
-        return self._service5_handler.property_105_value
-    
-    @property
-    def energy_index(self) -> int | None:
-        """Return energy/discharge index (5:107)."""
-        return self._service5_handler.energy_index
-    
-    @property
-    def service5_property_108(self) -> int | None:
-        """Return Service 5 property 108 value."""
-        return self._service5_handler.property_108_value
-
-    @property
-    def device_code(self) -> int | None:
-        """Return current device code (2:2)."""
-        return self._device_code_handler.device_code
-
-    @property
-    def device_code_name(self) -> str | None:
-        """Return device code name."""
-        return self._device_code_handler.device_code_name
-
-    @property
-    def device_code_description(self) -> str | None:
-        """Return device code description."""
-        return self._device_code_handler.device_code_description
-
-    @property
-    def device_code_is_error(self) -> bool | None:
-        """Return True if device code represents an error."""
-        return self._device_code_handler.device_code_is_error
-
-    @property
-    def device_code_is_warning(self) -> bool | None:
-        """Return True if device code represents a warning."""
-        return self._device_code_handler.device_code_is_warning
-
     @property
     def mowing_progress_percent(self) -> float | None:
         """Return current mowing progress percentage."""
@@ -660,8 +748,762 @@ class DreameMowerDevice:
 
     @property
     def mowing_path_history(self) -> list[list[int]]:
-        """Return path history for visualization (list of [x, y] in map units)."""
+        """Return the trail of the running or last session ([x, y] in map units)."""
         return self._pose_coverage_handler.path_history
+
+    @property
+    def trail_revision(self) -> int:
+        """Return a number that changes whenever the session's trail changed."""
+        return self._pose_coverage_handler.trail_revision
+
+    @property
+    def dock_position(self) -> tuple[int, int] | None:
+        """Return where the charging station stands in map units, if it is known."""
+        return self._dock_position
+
+    @property
+    def dock_angle(self) -> float | None:
+        """Return the direction the charging station faces, in degrees, if it is known."""
+        return self._dock_angle
+
+    @property
+    def docked(self) -> bool:
+        """Return whether the mower stands in its charging station.
+
+        Only a charging state says so for certain. The mower also reports
+        "not charging" away from the station, so that state, like none at all,
+        leaves it to the status: one that only a docked mower has.
+        """
+        status = self.charging_status
+        if status in ("charging", "charging_completed") or (status or "").startswith("charging_paused"):
+            return True
+        if status in ("not_docked", "return_to_charge"):
+            return False
+        return self.status.startswith("charging")
+
+    @property
+    def obstacles(self) -> list[dict[str, Any]]:
+        """Return the obstacles the mower ran into on the active map.
+
+        Each is ``{"id", "type", "x", "y", "polygon"}`` in map units, the
+        position being the centre of the outline.
+        """
+        return list(self._obstacles)
+
+    @property
+    def ai_obstacles(self) -> list[dict[str, Any]]:
+        """Return the obstacles the mower's camera recognised on the active map.
+
+        Each is ``{"id", "type", "x", "y"}`` in map units, ``type`` naming what
+        the mower took it for. Obstacles the user chose to ignore are left out.
+        """
+        return list(self._ai_obstacles)
+
+    def refresh_trail(self) -> bool:
+        """Read the running session's trail back from the mower. Blocking.
+
+        The position reports only carry the newest few points, so a trail that
+        was not followed from the session's start (Home Assistant started in
+        the middle of it) is read back page by page, from the first point it
+        lacks. A trail that lacks none is not read. Returns True when the
+        trail changed.
+        """
+        start = self._pose_coverage_handler.first_missing_trail_index()
+        if start is None:
+            return False
+        changed = False
+        for _page in range(TRAIL_MAX_PAGES):
+            result = self._cloud_device.action(
+                SCHEDULING_TASK_PROPERTY.siid,
+                SCHEDULING_TASK_PROPERTY.piid,
+                [{"m": "g", "t": TRAIL_KEY, "d": {"idx": start, "size": TRAIL_PAGE_SIZE}}],
+            )
+            status, data = self._preference_response(result)
+            track = data.get("track") if status in (None, 0) and isinstance(data, dict) else None
+            if not track:
+                break
+            try:
+                raw = base64.b64decode(track)
+            except ValueError:
+                _LOGGER.debug("Trail page at %s could not be decoded", start)
+                break
+            if len(raw) % 5:
+                _LOGGER.debug("Trail page at %s has a broken length of %s bytes", start, len(raw))
+                break
+            points = [decode_pose_point(raw[i : i + 5]) for i in range(0, len(raw), 5)]
+            if self._pose_coverage_handler.merge_trail(start, points):
+                changed = True
+            if len(points) < TRAIL_PAGE_SIZE:
+                break
+            start += TRAIL_PAGE_SIZE
+        if changed:
+            self._notify_property_change("trail", self._pose_coverage_handler.trail_revision)
+        return changed
+
+    @property
+    def stop_points(self) -> list[dict[str, Any]]:
+        """Return where an unfinished task left off in the zones of the active map.
+
+        Each is ``{"zone_id", "progress", "date"}``: how far the zone got, in
+        percent, and the day the task stopped as the mower words it.
+        """
+        return list(self._stop_points)
+
+    def read_work_totals(self) -> dict[str, int] | None:
+        """Read the totals of the work log. Blocking.
+
+        Returns the area mowed in m², the time in minutes, the number of tasks
+        and since when (unix time) they are counted, or None when the mower
+        does not answer.
+        """
+        result = self._cloud_device.action(
+            SCHEDULING_TASK_PROPERTY.siid,
+            SCHEDULING_TASK_PROPERTY.piid,
+            [{"m": "g", "t": WORK_TOTALS_KEY}],
+        )
+        status, data = self._preference_response(result)
+        if status not in (None, 0) or not isinstance(data, dict):
+            _LOGGER.debug("Work totals read returned nothing usable: %s", result)
+            return None
+        try:
+            return {key: int(data[key]) for key in ("area", "time", "count", "start")}
+        except (KeyError, TypeError, ValueError):
+            return None
+
+    def read_work_log(self, since: int) -> list[dict[str, Any]] | None:
+        """Read the mowing tasks since a unix time, newest first. Blocking.
+
+        Returns None when the cloud does not answer.
+        """
+        records = self._cloud_device.get_event_history(
+            MISSION_COMPLETION_EVENT.siid, MISSION_COMPLETION_EVENT.eiid, since, WORK_LOG_LIMIT
+        )
+        if records is None:
+            return None
+        entries = work_log_entries(records)
+        self._work_log_files = {entry["file"] for entry in entries if entry["file"]}
+        with self._seen_lock:
+            seen = list(self._seen())
+        for entry in entries:
+            entry["photos"] = len(self._task_photos(entry, seen))
+        return entries
+
+    def _task_file_path(self, file: str) -> str | None:
+        """Where a task's file is kept, or None for a name that leads elsewhere."""
+        root = os.path.realpath(os.path.join(self._hass_config_dir, "www", "dreame"))
+        path = os.path.realpath(os.path.join(root, file))
+        return path if path.startswith(root + os.sep) else None
+
+    def _task_photos(self, entry: dict[str, Any], seen: list[str]) -> set[str]:
+        """The photos of recognised obstacles a task met, as far as known.
+
+        The ones seen while it ran, and those its file lists when that file is
+        at hand already; nothing is downloaded for it.
+        """
+        start, duration = entry["start"], entry.get("duration")
+        minutes = duration if isinstance(duration, (int, float)) else 0
+        end = start + minutes * 60 + _TASK_END_SLACK_SECONDS
+        photos = {image for image in seen if start <= _photo_time(image) <= end}
+        file = entry["file"]
+        if file:
+            if file not in self._task_file_photos:
+                path = self._task_file_path(file)
+                content = _read_bytes(path) if path else None
+                if content is None:
+                    return photos
+                try:
+                    document = json.loads(content)
+                    listed = parse_ai_obstacles(document.get("ai_obstacle") or [])
+                except (ValueError, TypeError, AttributeError):
+                    listed = []
+                self._task_file_photos[file] = frozenset(obstacle["image"] for obstacle in listed if obstacle["image"])
+            photos |= self._task_file_photos[file]
+        return photos
+
+    def read_work_log_details(self, file: str) -> dict[str, Any] | None:
+        """Read the details of one task of the work log from its file. Blocking.
+
+        Only a file the last read of the log listed is read. A copy kept from
+        before is used, otherwise the file is downloaded and kept. Returns
+        None when the file cannot be had.
+        """
+        if file not in self._work_log_files:
+            raise ValueError("This task is not in the work log")
+        local = self._task_file_path(file)
+        if local is None:
+            raise ValueError("This task is not in the work log")
+        if not os.path.isfile(local):
+            downloaded = download_file(
+                file_path=file,
+                get_download_url=self._cloud_device.get_file_download_url,
+                hass_config_dir=self._hass_config_dir,
+                timeout=15,
+            )
+            if not downloaded:
+                return None
+            local = downloaded["local_path"]
+        try:
+            with open(local, encoding="utf-8") as handle:
+                document = json.load(handle)
+        except (OSError, ValueError) as ex:
+            _LOGGER.warning("Work log file %s could not be read: %s", file, ex)
+            return None
+        if not isinstance(document, dict):
+            return None
+        try:
+            details = work_log_details(document)
+        except (KeyError, TypeError, ValueError, IndexError) as ex:
+            _LOGGER.warning("Work log file %s could not be parsed: %s", file, ex)
+            return None
+        details["obstacles"] += self._ai_obstacles_seen_during(details, details["obstacles"])
+        self._work_log_photos |= {
+            obstacle["image"] for obstacle in details["obstacles"] if obstacle["kind"] == "ai" and obstacle.get("image")
+        }
+        for fault in details["faults"]:
+            fault["description"] = self._device_code_handler.describe(fault["code"])
+        return details
+
+    def refresh_stop_points(self) -> bool:
+        """Read where an unfinished task left off on the active map. Blocking.
+
+        Returns True when the stop points changed.
+        """
+        vector_map = self.vector_map
+        map_index = vector_map.map_index if vector_map is not None else 0
+        result = self._cloud_device.action(
+            SCHEDULING_TASK_PROPERTY.siid,
+            SCHEDULING_TASK_PROPERTY.piid,
+            [{"m": "g", "t": STOP_POINTS_KEY, "d": {"idx": map_index}}],
+        )
+        status, data = self._preference_response(result)
+        if status not in (None, 0) or not isinstance(data, list):
+            _LOGGER.debug("Stop point read returned nothing usable: %s", result)
+            return False
+        stop_points = []
+        for entry in data:
+            try:
+                day_end = entry.get("bp_ts_utc")
+                stop_points.append(
+                    {
+                        "zone_id": int(entry["rg_id"]),
+                        "progress": int(entry["pro"]) / 100,
+                        "date": str(entry.get("bp_ts", "")),
+                        # When the day the task stopped on ended, in seconds since the epoch.
+                        "day_end": int(day_end) if isinstance(day_end, (int, float)) and not isinstance(day_end, bool) else None,
+                    }
+                )
+            except (KeyError, TypeError, ValueError):
+                continue
+        if stop_points == self._stop_points:
+            return False
+        self._stop_points = stop_points
+        self._notify_property_change("stop_points", stop_points)
+        return True
+
+    def refresh_mower_position(self) -> bool:
+        """Read where the mower stands and which way it faces. Blocking.
+
+        The position reports only come while the mower moves, so one standing
+        on the lawn is placed by asking it. A running session has those reports,
+        so it is not asked then. Returns True when it moved.
+        """
+        if self.mowing_session_active:
+            return False
+        result = self._cloud_device.action(
+            SCHEDULING_TASK_PROPERTY.siid,
+            SCHEDULING_TASK_PROPERTY.piid,
+            [{"m": "g", "t": POSITION_KEY}],
+        )
+        status, data = self._preference_response(result)
+        if status not in (None, 0) or not isinstance(data, dict):
+            _LOGGER.debug("Position read returned nothing usable: %s", result)
+            return False
+        if not data.get("x") and not data.get("y") and not data.get("yaw"):
+            # A mower that does not know where it is answers with nothing but zeros.
+            return False
+        try:
+            x, y, yaw = int(data["x"]), int(data["y"]), int(data.get("yaw", 0))
+        except (KeyError, TypeError, ValueError):
+            return False
+        before = (self.mower_coordinates, self.mower_heading)
+        self._pose_coverage_handler.set_position(x, y, yaw / 255.0 * 360.0)
+        if (self.mower_coordinates, self.mower_heading) == before:
+            return False
+        self._notify_property_change(POSE_COVERAGE_COORDINATES_PROPERTY_NAME, self._pose_coverage_handler.get_coordinates_notification_data())
+        return True
+
+    def refresh_dock_position(self) -> bool:
+        """Read where the charging station stands. Blocking.
+
+        Returns True when the position changed.
+        """
+        result = self._cloud_device.action(
+            SCHEDULING_TASK_PROPERTY.siid,
+            SCHEDULING_TASK_PROPERTY.piid,
+            [{"m": "g", "t": DOCK_KEY}],
+        )
+        status, data = self._preference_response(result)
+        dock = data.get("dock") if status in (None, 0) and isinstance(data, dict) else None
+        if not isinstance(dock, dict):
+            _LOGGER.debug("Station position read returned nothing usable: %s", result)
+            return False
+        try:
+            position = (int(dock["x"]) * DOCK_POSITION_SCALE, int(dock["y"]) * DOCK_POSITION_SCALE)
+            angle = int(dock.get("yaw", 0)) / DOCK_YAW_SCALE
+        except (KeyError, TypeError, ValueError):
+            _LOGGER.debug("Station position could not be read: %s", dock)
+            return False
+        if (position, angle) == (self._dock_position, self._dock_angle):
+            return False
+        self._dock_position = position
+        self._dock_angle = angle
+        self._notify_property_change("dock_position", position)
+        return True
+
+    def refresh_obstacles(self) -> bool:
+        """Read the obstacles of the active map, both kinds. Blocking.
+
+        A read that does not come through keeps what was known. Returns True
+        when either list changed.
+        """
+        vector_map = self.vector_map
+        map_index = vector_map.map_index if vector_map is not None else 0
+        changed = False
+        known_before = list(self._ai_obstacles)
+        for key, field, parse, attribute in (
+            (OBSTACLES_KEY, "obstacle", parse_obstacles, "_obstacles"),
+            (AI_OBSTACLES_KEY, "obs", parse_ai_obstacles, "_ai_obstacles"),
+        ):
+            result = self._cloud_device.action(
+                SCHEDULING_TASK_PROPERTY.siid,
+                SCHEDULING_TASK_PROPERTY.piid,
+                [{"m": "g", "t": key, "d": {"idx": map_index}}],
+            )
+            status, data = self._preference_response(result)
+            if status not in (None, 0) or not isinstance(data, dict) or not isinstance(data.get(field), list):
+                _LOGGER.debug("Obstacle read %s returned nothing usable: %s", key, result)
+                continue
+            obstacles = parse(data[field])
+            if attribute == "_ai_obstacles":
+                # An obstacle pushed while the list was read is not in it yet.
+                obstacles += [
+                    obstacle
+                    for obstacle in self._ai_obstacles
+                    if obstacle not in known_before and not any(_same_obstacle(obstacle, read) for read in obstacles)
+                ]
+            if obstacles != getattr(self, attribute):
+                setattr(self, attribute, obstacles)
+                changed = True
+        if changed:
+            self._remember_ai_obstacles(self._ai_obstacles)
+            self._notify_property_change("obstacles", self._obstacles + self._ai_obstacles)
+        return changed
+
+    def _deliver_task_answer(self, value: Any) -> None:
+        """Hand the mower's confirmation of a command to whoever waits for it."""
+        if not isinstance(value, dict) or value.get("t") != "TASK" or not isinstance(value.get("d"), dict):
+            return
+        answer = value["d"]
+        with self._task_answers_lock:
+            waiting = self._task_answers.pop(answer.get("o"), None)
+        if waiting is not None and not waiting.done():
+            waiting.set_result(answer)
+
+    async def _command(self, name: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Send a 2:50 action and wait for the mower to confirm it.
+
+        Raises DreameCommandError when the command did not go out or the mower
+        did not confirm it in time, and ValueError when it refused it.
+        """
+        operation = payload["o"]
+        waiting: concurrent.futures.Future[dict[str, Any]] = concurrent.futures.Future()
+        with self._task_answers_lock:
+            self._task_answers[operation] = waiting
+        try:
+            if not await self._send_task_payload(name, payload):
+                raise DreameCommandError(f"The mower did not take the {name} command")
+            try:
+                answer = await asyncio.wait_for(asyncio.wrap_future(waiting), MAP_EDIT_ANSWER_SECONDS)
+            except TimeoutError as ex:
+                raise DreameCommandError(f"The mower did not confirm the {name} command") from ex
+        finally:
+            with self._task_answers_lock:
+                if self._task_answers.get(operation) is waiting:
+                    del self._task_answers[operation]
+        reason = map_edit.refusal(operation, answer)
+        if reason is not None:
+            raise ValueError(reason)
+        return answer
+
+    def _check_map_edit_allowed(self) -> None:
+        """Refuse a change to the map while the mower is at work."""
+        status = str(self.status or "")
+        if self.mowing_session_active or "return" in status:
+            raise ValueError("The map can only be changed while the mower is not mowing or returning")
+
+    async def _edit_map(self, name: str, payloads: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Make changes to the current map in the mower's edit mode.
+
+        The mower enters its edit mode, takes each change and leaves the mode
+        again, also when a change is refused. The map is read again after.
+        """
+        self._check_map_edit_allowed()
+        answers: list[dict[str, Any]] = []
+        async with self._map_edit_lock:
+            try:
+                try:
+                    await self._command("map edit start", map_edit.action(map_edit.EDIT_ENTER))
+                except DreameCommandError:
+                    # The mower may have entered its edit mode all the same.
+                    await self._leave_edit_mode(quietly=True)
+                    raise
+                try:
+                    for payload in payloads:
+                        answers.append(await self._command(name, payload))
+                except BaseException:
+                    # Why the change failed matters more than whether the
+                    # mower then left its edit mode.
+                    await self._leave_edit_mode(quietly=True)
+                    raise
+                await self._leave_edit_mode(quietly=False)
+            finally:
+                await asyncio.get_running_loop().run_in_executor(None, self.fetch_vector_map)
+        return answers
+
+    async def _leave_edit_mode(self, *, quietly: bool) -> None:
+        """Have the mower leave its edit mode; quietly only logs a failure."""
+        try:
+            await self._command("map edit end", map_edit.action(map_edit.EDIT_EXIT, p=1))
+        except (DreameCommandError, ValueError) as ex:
+            if not quietly:
+                raise
+            _LOGGER.warning("The mower may still be in its map edit mode: %s", ex)
+
+    async def set_no_go_zone(
+        self,
+        shape: str,
+        points: list[list[float]],
+        radius: float | None = None,
+        zone_id: int | None = None,
+    ) -> int | None:
+        """Draw a no-go zone, or change one; returns its id."""
+        answers = await self._edit_map("no-go zone", [map_edit.no_go_zone(zone_id, shape, points, radius)])
+        return answers[0].get("id", zone_id)
+
+    async def set_ignore_obstacle_area(self, rect: list[float], area_id: int | None = None) -> int | None:
+        """Draw an area where obstacles are driven over, or change one; returns its id."""
+        answers = await self._edit_map("ignore obstacles area", [map_edit.ignore_obstacle_area(area_id, rect)])
+        return answers[0].get("id", area_id)
+
+    async def set_spot_area(self, rect: list[float], area_id: int | None = None) -> int | None:
+        """Draw a spot area, or change one; returns its id."""
+        answers = await self._edit_map("spot area", [map_edit.spot_area(area_id, rect)])
+        return answers[0].get("id", area_id)
+
+    async def set_maintenance_point(
+        self, x: float, y: float, heading: float | None = None, point_id: int | None = None
+    ) -> int | None:
+        """Place a maintenance point, or move one; returns its id.
+
+        Without a heading a moved point keeps the one it had, and a new one
+        faces 0 degrees.
+        """
+        if heading is None:
+            heading = self._maintenance_point_heading(point_id)
+            if heading is None:
+                # Not known yet: read from the mower, rather than turn the point.
+                await asyncio.get_running_loop().run_in_executor(None, self._read_current_point_headings)
+                heading = self._maintenance_point_heading(point_id)
+            if heading is None:
+                raise ValueError("Which way the maintenance point faces is not known yet; give its heading")
+        answers = await self._edit_map("maintenance point", [map_edit.maintenance_point(point_id, x, y, heading)])
+        return answers[0].get("id", point_id)
+
+    def _maintenance_point_heading(self, point_id: int | None) -> float | None:
+        """The heading a maintenance point of the current map has: 0 for a new one, None when not known."""
+        vector_map = self.vector_map
+        if point_id is None or vector_map is None:
+            return 0.0
+        for point in vector_map.maintenance_points:
+            if point.point_id == point_id:
+                return point.heading
+        return 0.0
+
+    def _read_current_point_headings(self) -> None:
+        """Read the current map from the mower for the headings of its maintenance points. Blocking."""
+        vector_map = self.vector_map
+        if vector_map is None:
+            return
+        fresh = self._read_device_map(vector_map.map_index)
+        if fresh is None:
+            return
+        headings = {point.point_id: point.heading for point in fresh.maintenance_points}
+        self._point_headings[vector_map.map_index] = (fresh.md5sum or "", headings)
+        for point in vector_map.maintenance_points:
+            if point.point_id in headings:
+                point.heading = headings[point.point_id]
+
+    async def delete_map_item(self, kind: str, item_id: int) -> None:
+        """Delete a zone, path, no-go zone, spot area, maintenance point or ignore-obstacles area."""
+        await self._edit_map("map item delete", [map_edit.delete_item(kind, item_id)])
+
+    async def rename_zone(self, zone_id: int, name: str) -> None:
+        await self._edit_map("zone rename", [map_edit.rename_zone(zone_id, name)])
+
+    async def split_zone(self, zone_id: int, line: list[float]) -> list[int]:
+        """Split a zone along a line across it; returns the two zones' ids."""
+        answers = await self._edit_map("zone split", [map_edit.split_zone(zone_id, line)])
+        return list(answers[0].get("ids") or [])
+
+    async def merge_zones(self, zone_ids: list[int]) -> int | None:
+        """Merge two neighbouring zones; returns the id of the zone they make."""
+        answers = await self._edit_map("zone merge", [map_edit.merge_zones(zone_ids)])
+        return answers[0].get("id")
+
+    async def rename_map(self, map_id: int, name: str) -> None:
+        if not self._validate_map_id(map_id):
+            raise ValueError(f"There is no map {map_id}")
+        payload = map_edit.action(
+            map_edit.RENAME_MAP, {"idx": self._map_index_from_id(map_id), "name": map_edit.checked_name(name)}
+        )
+        self._check_map_edit_allowed()
+        async with self._map_edit_lock:
+            await self._command("map rename", payload)
+        await asyncio.get_running_loop().run_in_executor(None, self.fetch_vector_map)
+
+    async def backup_map(self) -> None:
+        """Back the current map up, replacing the backup it had."""
+        index = self._current_map_index()
+        await self._edit_map("map backup", [map_edit.action(map_edit.BACKUP_MAP, {"idx": index})])
+        self._map_backups.add(index)
+
+    async def restore_map(self) -> None:
+        """Put the current map back as its backup has it."""
+        await self._edit_map("map restore", [map_edit.action(map_edit.RESTORE_MAP, {"idx": self._current_map_index()})])
+
+    @property
+    def deleted_maps(self) -> list[int]:
+        """Return the map slots, numbered from 1, that hold no map but a backup of a deleted one.
+
+        Taken from the mower's own list of its slots, not from the maps that
+        could be read.
+        """
+        if self._held_map_slots is None:
+            return []
+        return [index + 1 for index in sorted(self._map_backups - self._held_map_slots)]
+
+    async def restore_deleted_map(self, slot: int) -> None:
+        """Bring a deleted map back into its empty slot, numbered from 1, from its backup.
+
+        The mower takes it in its edit mode, which it enters on the current
+        map; the map in use stays the same.
+        """
+        if slot not in self.deleted_maps:
+            raise ValueError(f"Map slot {slot} holds no backup of a deleted map")
+        # The slot is checked once more with the mower: a backup put back
+        # into a slot that holds a map would overwrite that map.
+        if slot not in await asyncio.get_running_loop().run_in_executor(None, self._read_deleted_maps):
+            raise ValueError(f"Map slot {slot} holds no backup of a deleted map")
+        await self._edit_map("deleted map restore", [map_edit.action(map_edit.RESTORE_MAP, {"idx": slot - 1})])
+        await self._read_maps_once_settled(lambda held: slot - 1 in held)
+
+    async def delete_map(self, map_id: int) -> None:
+        """Delete a map with everything on it; it keeps its backup."""
+        if not self._validate_map_id(map_id):
+            raise ValueError(f"There is no map {map_id}")
+        self._check_map_edit_allowed()
+        index = self._map_index_from_id(map_id)
+        async with self._map_edit_lock:
+            await self._command("map delete", map_edit.action(map_edit.DELETE_MAP, {"idx": index}))
+        await self._read_maps_once_settled(lambda held: index not in held)
+
+    async def _read_maps_once_settled(self, settled: Callable[[set[int]], bool]) -> None:
+        """Read the maps back once the mower's list of them shows a change it confirmed.
+
+        `settled` is given the indexes of the slots that hold a map. The maps
+        are read back also when the list never shows the change in time.
+        """
+        loop = asyncio.get_running_loop()
+
+        def held() -> set[int] | None:
+            try:
+                with self._map_read_lock:
+                    slots = self._read_map_slots()
+            except Exception as ex:
+                _LOGGER.debug("Failed to read the map slots: %s", ex)
+                return None
+            return None if slots is None else {slot["index"] for slot in slots}
+
+        try:
+            for attempt in range(MAP_SLOTS_SETTLE_ATTEMPTS if self._online else 0):
+                if attempt:
+                    await asyncio.sleep(MAP_SLOTS_SETTLE_SECONDS)
+                indexes = await loop.run_in_executor(None, held)
+                if indexes is not None and settled(indexes):
+                    break
+        finally:
+            await loop.run_in_executor(None, self.fetch_vector_map)
+
+    def _read_deleted_maps(self) -> list[int]:
+        """Read the mower's slots and return those keeping a deleted map's backup. Blocking."""
+        with self._map_read_lock:
+            self._read_map_slots()
+        return self.deleted_maps
+
+    def _current_map_index(self) -> int:
+        map_id = self.current_map_id
+        if map_id is None:
+            raise ValueError("No map is in use")
+        return self._map_index_from_id(map_id)
+
+    def _add_ai_obstacle(self, value: Any) -> None:
+        """Add an obstacle the camera recognised while mowing to the known ones."""
+        if not isinstance(value, dict) or value.get("type") != "ai" or not isinstance(value.get("obs"), list):
+            return
+        added = [
+            obstacle
+            for obstacle in parse_ai_obstacles([value["obs"]])
+            if not any(_same_obstacle(known, obstacle) for known in self._ai_obstacles)
+        ]
+        if added:
+            self._ai_obstacles = [*self._ai_obstacles, *added]
+            self._remember_ai_obstacles(added)
+            self._notify_property_change("obstacles", self._obstacles + self._ai_obstacles)
+
+    async def ignore_ai_obstacle(self, obstacle_id: int | str) -> None:
+        """Have the mower forget an obstacle its camera recognised.
+
+        The mower drops it from its list for good; there is no taking it back.
+        Refused while the mower mows. Raises ValueError when the mower refuses.
+        """
+        robot = self.robot_state or {}
+        if robot.get("main_state") == AI_OBSTACLE_MOWING_MAIN_STATE and robot.get("sub_state") == AI_OBSTACLE_MOWING_SUB_STATE:
+            raise ValueError("An obstacle can only be ignored while the mower does not mow")
+        # The mower is sent its own id as it gave it, a string or a number.
+        known = next(
+            (obstacle["id"] for obstacle in self._ai_obstacles if obstacle.get("ignorable") and str(obstacle["id"]) == str(obstacle_id)),
+            obstacle_id,
+        )
+        result = await self._send_task_payload(
+            "obstacle ignore", {"m": "s", "t": AI_OBSTACLES_KEY, "d": {"id": known, "type": "ignore"}}
+        )
+        out = result.get("out") if isinstance(result, dict) else None
+        answer = out[0].get("obs") if isinstance(out, list) and out and isinstance(out[0], dict) else None
+        if not isinstance(answer, dict) or answer.get("res") != 1:
+            error = answer.get("error") if isinstance(answer, dict) else None
+            if error == AI_OBSTACLE_UNKNOWN:
+                raise ValueError("The mower does not know this obstacle (any more)")
+            raise ValueError(f"The mower did not ignore the obstacle (error {error})")
+        self._ai_obstacles = [
+            obstacle
+            for obstacle in self._ai_obstacles
+            if not obstacle.get("ignorable") or str(obstacle["id"]) != str(obstacle_id)
+        ]
+        self._notify_property_change("obstacles", self._obstacles + self._ai_obstacles)
+
+    def _photo_dir(self) -> str:
+        """Where this mower's obstacle photos are kept."""
+        return os.path.join(self._hass_config_dir, *AI_OBSTACLE_PHOTO_DIR, str(self._device_id))
+
+    def _seen_path(self) -> str:
+        return os.path.join(self._photo_dir(), AI_OBSTACLES_SEEN_FILE)
+
+    def _seen(self) -> dict[str, dict[str, Any]]:
+        """The recognised obstacles seen before, read from where they are kept."""
+        if self._seen_ai_obstacles is None:
+            content = _read_bytes(self._seen_path())
+            seen: dict[str, dict[str, Any]] = {}
+            try:
+                for obstacle in json.loads(content) if content else []:
+                    if (
+                        isinstance(obstacle, dict)
+                        and isinstance(obstacle.get("image"), str)
+                        and all(isinstance(obstacle.get(key), (int, float)) for key in ("x", "y", "type"))
+                    ):
+                        seen[obstacle["image"]] = obstacle
+            except (ValueError, TypeError) as ex:
+                _LOGGER.warning("The obstacles seen before could not be read and start over: %s", ex)
+            self._seen_ai_obstacles = seen
+        return self._seen_ai_obstacles
+
+    def _remember_ai_obstacles(self, obstacles: list[dict[str, Any]]) -> None:
+        """Keep the recognised obstacles with a photo, the latest ones only."""
+        with self._seen_lock:
+            seen = self._seen()
+            new = [obstacle for obstacle in obstacles if obstacle.get("image") and obstacle["image"] not in seen]
+            if not new:
+                return
+            for obstacle in new:
+                seen[obstacle["image"]] = dict(obstacle)
+            while len(seen) > AI_OBSTACLES_SEEN_LIMIT:
+                seen.pop(min(seen, key=_photo_time))
+            _write_bytes(self._seen_path(), json.dumps(list(seen.values())).encode())
+
+    def _ai_obstacles_seen_during(
+        self, details: dict[str, Any], listed: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """The recognised obstacles seen while a task ran that its file leaves out."""
+        start, end = details.get("start"), details.get("end")
+        if not isinstance(start, int) or not isinstance(end, int):
+            return []
+        images = {obstacle.get("image") for obstacle in listed}
+        with self._seen_lock:
+            seen = list(self._seen().values())
+        return [
+            {"kind": "ai", **obstacle}
+            for obstacle in seen
+            if obstacle["image"] not in images and start <= _photo_time(obstacle["image"]) <= end
+        ]
+
+    def read_obstacle_photo(self, image: str) -> dict[str, Any] | None:
+        """Fetch the photo the mower took of a recognised obstacle. Blocking.
+
+        Only a photo of an obstacle the mower reports now, or of one in a task
+        of the work log read before, is fetched. A photo fetched before is
+        read back from where it was kept. Otherwise the mower sends it through
+        the cloud over its own connection, so a try the cloud gave up on is
+        repeated a few times. Returns the JPEG as base64, with the boxes around
+        what was recognised, or None when the photo could not be had.
+        """
+        known = {obstacle.get("image") for obstacle in self._ai_obstacles} | self._work_log_photos
+        if image not in known or not _PHOTO_NAME.fullmatch(image):
+            raise ValueError("The mower reports no obstacle with this photo")
+        kept = os.path.join(self._photo_dir(), f"{image}.jpg")
+        # A photo kept before needs no wait for another one being fetched.
+        photo = _read_bytes(kept)
+        if photo is not None:
+            return {"image": base64.b64encode(photo).decode("ascii"), **obstacle_photo_boxes(photo)}
+        with self._photo_lock:
+            photo = _read_bytes(kept)
+            for attempt in range(AI_OBSTACLE_PHOTO_TRIES):
+                if photo is not None:
+                    break
+                photo, again = self._cloud_device.get_device_file(
+                    f"{image}.jpg", AI_OBSTACLE_PHOTO_KIND, AI_OBSTACLE_PHOTO_TIMEOUT
+                )
+                if photo is not None:
+                    _write_bytes(kept, photo)
+                elif not again:
+                    return None
+                else:
+                    _LOGGER.debug("Photo %s not sent yet (try %s)", image, attempt + 1)
+            if photo is None:
+                return None
+        return {"image": base64.b64encode(photo).decode("ascii"), **obstacle_photo_boxes(photo)}
+
+    def _note_session_state(self) -> None:
+        """Start a new trail when a mowing session starts.
+
+        The trail's point numbers start over with every session, but a session
+        that ended early leaves points the next one's numbers would only reach
+        later, so the trail is cleared on the start itself. The first task
+        status after a restart says nothing about a start: a session already
+        running keeps the trail it is rebuilding.
+        """
+        active = self.mowing_session_active
+        if active and self._session_was_active is False:
+            self._pose_coverage_handler.clear_path_history()
+        self._session_was_active = active
 
     def _resolved_vector_map(self) -> MowerVectorMap | None:
         """Return the geometry for the active map when multi-map batch data is available."""
@@ -688,6 +1530,15 @@ class DreameMowerDevice:
         return self._resolved_vector_map()
 
     @property
+    def other_vector_maps(self) -> list[MowerVectorMap]:
+        """Return the vector maps of every map but the current one."""
+        current = self._resolved_vector_map()
+        maps = getattr(self._vector_map, "maps", None) if self._vector_map is not None else None
+        if not isinstance(maps, dict):
+            return []
+        return [vector_map for _map_id, vector_map in sorted(maps.items()) if vector_map is not current]
+
+    @property
     def available_maps(self) -> list[dict[str, Any]]:
         """Return a descriptor for every map the mower holds."""
         if self._vector_map is None:
@@ -699,6 +1550,7 @@ class DreameMowerDevice:
                 "index": map_entry.map_index,
                 "name": map_entry.name,
                 "area": map_entry.total_area,
+                "has_backup": map_entry.map_index in self._map_backups,
             }
             for map_entry in self._vector_map.available_maps
         ]
@@ -743,6 +1595,14 @@ class DreameMowerDevice:
     def zone_edge_mowing_settings(self) -> dict[int, dict[str, bool]]:
         """Return the per-zone edge mowing settings known for the current map."""
         return {zone_id: dict(settings) for zone_id, settings in self._zone_edge_mowing_settings.items()}
+
+    @property
+    def mowing_settings(self) -> dict[int, dict[str, Any]]:
+        """Return every setting of the current map's records, by area id.
+
+        Area 0 is the map-wide record; the others are the zones that hold one.
+        """
+        return {area_id: self._record_mowing_settings(record) for area_id, record in self._mowing_records.items()}
 
     @property
     def mowing_direction(self) -> dict[str, int] | None:
@@ -798,7 +1658,9 @@ class DreameMowerDevice:
         if not updated:
             return False
 
-        self.refresh_current_map_id()
+        if self._online:
+            # Only the mower knows which of its maps is current.
+            self.refresh_current_map_id()
         active_vector_map = self._resolved_vector_map() or self._vector_map
         if active_vector_map is not None:
             _LOGGER.debug(
@@ -807,6 +1669,25 @@ class DreameMowerDevice:
                 len(active_vector_map.paths),
                 active_vector_map.boundary,
             )
+        self._notify_property_change("vector_map_updated", True)
+        return True
+
+    def load_stored_vector_map(self) -> bool:
+        """Take the maps from the copy the cloud keeps, without asking the mower. Blocking.
+
+        One request, so a mower on a slow link still shows its maps at once;
+        fetch_vector_map brings them up to date from the mower afterwards.
+        Returns True when maps were taken.
+        """
+        batch_data = self._cloud_device.get_batch_device_datas([]) or {}
+        vector_map = parse_batch_map_data(batch_data)
+        if vector_map is None:
+            return False
+        with self._map_read_lock:
+            if self._vector_map is not None:
+                # A read from the mower got there first; it is the newer one.
+                return False
+            self._vector_map = vector_map
         self._notify_property_change("vector_map_updated", True)
         return True
 
@@ -820,6 +1701,10 @@ class DreameMowerDevice:
         Returns:
             True if map data was read back and updated, False otherwise.
         """
+        if not self._online:
+            # An offline mower cannot be asked; it is checked again next time.
+            return False
+
         with self._map_read_lock:
             try:
                 slots = self._read_map_slots()
@@ -840,11 +1725,15 @@ class DreameMowerDevice:
     def _read_vector_map(self) -> bool:
         """Read the maps, preferring the mower's own over the cloud copy."""
         batch_data = self._cloud_device.get_batch_device_datas([]) or {}
-        try:
-            slots = self._read_map_slots()
-        except Exception as ex:
-            _LOGGER.debug("Failed to read the map slots: %s", ex)
-            slots = None
+        slots = None
+        if self._online:
+            try:
+                slots = self._read_map_slots()
+            except Exception as ex:
+                _LOGGER.debug("Failed to read the map slots: %s", ex)
+        else:
+            # An offline mower cannot be asked; its cloud copy has to do.
+            _LOGGER.debug("Device %s is offline; using the stored copy of its maps", self._device_id)
 
         if slots is None:
             vector_map = parse_batch_map_data(batch_data)
@@ -862,7 +1751,7 @@ class DreameMowerDevice:
             map_index = slot["index"]
             cached = cached_maps.get(map_index)
             vmap: MowerVectorMap
-            if cached is not None and cached.md5sum == slot["hash"]:
+            if cached is not None and cached.md5sum == slot["hash"] and self._apply_point_headings(cached, map_index, slot["hash"]):
                 vmap = cached
                 hashes[map_index] = slot["hash"]
             else:
@@ -870,18 +1759,24 @@ class DreameMowerDevice:
                 if fresh is not None:
                     vmap = fresh
                     hashes[map_index] = fresh.md5sum or slot["hash"]
+                    self._point_headings[map_index] = (
+                        hashes[map_index],
+                        {point.point_id: point.heading for point in fresh.maintenance_points},
+                    )
                 elif cached is not None and has_map(cached):
-                    # A stale map still beats none. Its own hash is kept, so the
-                    # next check reads the map again.
+                    # A stale map still beats none, and so does one lacking the
+                    # headings of its maintenance points. Its own hash is kept,
+                    # or none when only the headings are missing, so the next
+                    # check reads the map again.
                     vmap = cached
-                    hashes[map_index] = cached.md5sum or ""
+                    hashes[map_index] = "" if cached.md5sum == slot["hash"] else cached.md5sum or ""
                 else:
                     continue
 
             if has_map(vmap):
                 maps.append(vmap)
 
-        vector_map = assemble_vector_map(maps, parse_mow_paths(batch_data))
+        vector_map = assemble_vector_map(maps)
         if vector_map is None:
             if slots:
                 _LOGGER.debug("None of the mower's maps could be read")
@@ -893,6 +1788,22 @@ class DreameMowerDevice:
 
         self._vector_map = vector_map
         self._map_hashes = hashes
+        return True
+
+    def _apply_point_headings(self, vmap: MowerVectorMap, map_index: int, md5sum: str) -> bool:
+        """Give a stored copy of a map the headings of its maintenance points.
+
+        The stored copy leaves them out. They are taken from the mower's own
+        copy of the same version of the map; False when none was read yet,
+        so the map is to be read from the mower.
+        """
+        if not vmap.maintenance_points:
+            return True
+        known = self._point_headings.get(map_index)
+        if known is None or known[0] != md5sum:
+            return False
+        for point in vmap.maintenance_points:
+            point.heading = known[1].get(point.point_id)
         return True
 
     def _read_device_map(self, map_index: int) -> MowerVectorMap | None:
@@ -924,6 +1835,7 @@ class DreameMowerDevice:
             return None
 
         slots: list[dict[str, Any]] = []
+        backups: set[int] = set()
         for row in rows:
             # A slot row is [index, is current, holds a map, has a backup, ...].
             if not isinstance(row, (list, tuple)) or len(row) < 3:
@@ -934,6 +1846,9 @@ class DreameMowerDevice:
             except (TypeError, ValueError):
                 continue
 
+            if len(row) > 3 and row[3]:
+                backups.add(map_index)
+
             if not row[2]:
                 continue
 
@@ -943,6 +1858,8 @@ class DreameMowerDevice:
 
             slots.append({"index": map_index, "hash": info[0]})
 
+        self._map_backups = backups
+        self._held_map_slots = {slot["index"] for slot in slots}
         return slots
 
     def _read_map_info(self, map_index: int) -> tuple[str, int] | None:
@@ -1155,6 +2072,34 @@ class DreameMowerDevice:
             return None
         return int(value[17]) != 0 or int(value[18]) >= 128
 
+    async def async_check_reachable(self) -> bool:
+        """Return whether the device answers at all, asking it once.
+
+        The cloud may list a device as connected that still does not answer:
+        every command to it times out. One heartbeat read tells, and a device
+        that does not answer it is taken as offline.
+        """
+        if not self._online:
+            return False
+        loop = asyncio.get_event_loop()
+        try:
+            props = await loop.run_in_executor(
+                None,
+                lambda: self._cloud_device.get_properties(
+                    [{"siid": PROPERTY_1_1.siid, "piid": PROPERTY_1_1.piid}]
+                ),
+            )
+        except (TimeoutError, ConnectionError, RuntimeError) as ex:
+            _LOGGER.debug("Device %s does not answer: %s", self._device_id, ex)
+            self._set_online(False)
+            return False
+        online = self._online_from_heartbeat(props)
+        if online is False:
+            self._set_online(False)
+            return False
+        # A malformed answer still is an answer.
+        return True
+
     async def async_update_online_status(self) -> bool:
         """Poll the cloud connectivity heartbeat and update the online flag.
 
@@ -1167,7 +2112,15 @@ class DreameMowerDevice:
         """
         loop = asyncio.get_event_loop()
         online: bool | None = None
-        for _attempt in range(3):
+        # The cloud's device list says at once when the device is not connected
+        # to it; reading the heartbeat of such a device only times out.
+        try:
+            device_info = await loop.run_in_executor(None, self._cloud_device.get_device_info)
+        except Exception as ex:  # noqa: BLE001 - the heartbeat decides then
+            _LOGGER.debug("Device list read failed: %s", ex)
+            device_info = None
+        listed_offline = isinstance(device_info, dict) and device_info.get("online") is False
+        for _attempt in range(0 if listed_offline else 3):
             try:
                 props = await loop.run_in_executor(
                     None,
@@ -1229,6 +2182,8 @@ class DreameMowerDevice:
 
     def _notify_property_change(self, property_name: str, value: Any) -> None:
         """Notify all registered callbacks of property changes."""
+        if property_name == PROPERTY_1_1_TASK_STATUS_NAME:
+            self._note_session_state()
         for callback in self._property_callbacks:
             try:
                 callback(property_name, value)
@@ -1286,6 +2241,12 @@ class DreameMowerDevice:
                 if old_status_code != status_code:
                     self._notify_property_change(STATUS_PROPERTY.name, status_code)
             
+            # The cloud says whether the device is connected to it. A device
+            # that is not cannot answer commands, and every one sent to it only
+            # times out.
+            if isinstance(device_info.get("online"), bool):
+                self._set_online(device_info["online"])
+
             # Extract and set device model for device code handler
             if "model" in device_info:
                 model = device_info["model"]
@@ -1333,16 +2294,7 @@ class DreameMowerDevice:
                 if self._handle_mqtt_props(params):
                     return  # Props were handled
 
-        # Create notification for unhandled message types with raw message
         _LOGGER.info("📨 Unhandled MQTT message: %s", message)
-        self._notify_property_change(
-            "unhandled_mqtt",
-            {
-                "type": "message",
-                "raw_message": message,
-                "event_time": datetime.now().isoformat()
-            }
-        )
 
     def _handle_mqtt_property_update(self, message: dict[str, Any]) -> bool:
         """Handle MQTT property updates with siid/piid format.
@@ -1380,12 +2332,10 @@ class DreameMowerDevice:
                     self._notify_property_change(BLUETOOTH_PROPERTY.name, bluetooth_value)
             elif (SCHEDULING_TASK_PROPERTY.matches(siid, piid) or 
                   SCHEDULING_SUMMARY_PROPERTY.matches(siid, piid)):
+                if SCHEDULING_TASK_PROPERTY.matches(siid, piid):
+                    self._deliver_task_answer(message["value"])
                 # Handle scheduling properties (2:50, 2:52) in unified handler
                 if not self._scheduling_handler.handle_property_update(siid, piid, message["value"], self._notify_property_change):
-                    return False  # Parsing failed - treat as unhandled property
-            elif MOWER_CONTROL_STATUS_PROPERTY.matches(siid, piid):
-                # Handle mower control status property (2:56)
-                if not self._mower_control_handler.handle_property_update(siid, piid, message["value"], self._notify_property_change):
                     return False  # Parsing failed - treat as unhandled property
             elif POSE_COVERAGE_PROPERTY.matches(siid, piid):
                 # Handle pose and coverage property (1:4) with mowing progress and coordinates
@@ -1429,33 +2379,9 @@ class DreameMowerDevice:
                 if old_progress != firmware_download_progress:
                     self._notify_property_change(FIRMWARE_DOWNLOAD_PROGRESS_PROPERTY.name, firmware_download_progress)
                     _LOGGER.info("Firmware download progress updated: %s%%", firmware_download_progress)
-            elif SERVICE1_PROPERTY_50.matches(siid, piid):
-                # Handle Service 1 property 50 (1:50) - appears at beginning of session
-                # Note: This property typically has no value field, just presence indicates start event
-                self._service1_property_50 = True
-                self._notify_property_change(SERVICE1_PROPERTY_50.name, True)
-                _LOGGER.debug("Service 1 property 50 triggered - session start indicator")
             elif SERVICE1_PROPERTY_51.matches(siid, piid):
-                # Handle Service 1 property 51 (1:51) - appears at beginning of session
-                # Note: This property typically has no value field, just presence indicates start event
-                self._service1_property_51 = True
+                # 1:51 carries no value; the mower sends it as a session starts.
                 self._notify_property_change(SERVICE1_PROPERTY_51.name, True)
-                _LOGGER.debug("Service 1 property 51 triggered - session start indicator")
-            elif SERVICE1_COMPLETION_FLAG_PROPERTY.matches(siid, piid):
-                # Handle Service 1 completion flag (1:52) - appears after mission completion
-                # Note: This property typically has no value field, just presence indicates completion
-                self._service1_completion_flag = True
-                self._notify_property_change(SERVICE1_COMPLETION_FLAG_PROPERTY.name, True)
-            elif SERVICE1_PROPERTY_54.matches(siid, piid):
-                # Handle Service 1 property 54 (1:54) - device metadata payload containing identifiers
-                # Observed fields include active_time, expire_time, num, and sn (issue #64).
-                # Silently acknowledge to suppress unhandled MQTT notifications.
-                _LOGGER.debug("Service 1 property 54 received: %s", message.get("value"))
-            elif SERVICE1_PROPERTY_55.matches(siid, piid):
-                # Handle Service 1 property 55 (1:55) - integer value.
-                # Observed on dreame.mower.g2541e fw 4.3.6_0407 with value 1 (issue #82).
-                # Meaning unknown; silently acknowledge to suppress unhandled MQTT notifications.
-                _LOGGER.debug("Service 1 property 55 received: %s", message.get("value"))
             elif CHARGING_STATUS_PROPERTY.matches(siid, piid):
                 value = message["value"]
                 try:
@@ -1474,16 +2400,6 @@ class DreameMowerDevice:
                 self._charging_status = status_text
                 if old != status_text:
                     self._notify_property_change(CHARGING_STATUS_PROPERTY.name, status_text)
-            elif (TASK_STATUS_PROPERTY.matches(siid, piid) or
-                  SERVICE5_PROPERTY_100.matches(siid, piid) or
-                  SERVICE5_PROPERTY_101.matches(siid, piid) or
-                  SERVICE5_PROPERTY_105.matches(siid, piid) or 
-                  SERVICE5_PROPERTY_106.matches(siid, piid) or 
-                  SERVICE5_ENERGY_INDEX_PROPERTY.matches(siid, piid) or
-                  SERVICE5_PROPERTY_108.matches(siid, piid)):
-                # Handle all Service 5 properties (5:100, 5:101, 5:104, 5:105, 5:106, 5:107, 5:108) in unified handler
-                if not self._service5_handler.handle_property_update(siid, piid, message["value"], self._notify_property_change):
-                    return False  # Parsing failed - treat as unhandled property
             elif DEVICE_CODE_PROPERTY.matches(siid, piid):
                 # Use handler to parse and update device code
                 old_device_code = self._device_code_handler.device_code
@@ -1514,76 +2430,11 @@ class DreameMowerDevice:
                     self._notify_property_change(POWER_STATE_PROPERTY.name, power_state_value)
                 else:
                     return False  # Unexpected value, handle as unhandled property
-            elif SERVICE2_PROPERTY_60.matches(siid, piid):
-                # Handle Service 2 property 60 (2:60) - simple integer value
-                property_value = int(message["value"])
-                self._notify_property_change(SERVICE2_PROPERTY_60.name, property_value)
-                _LOGGER.debug("Service 2 property 60 updated: %s", property_value)
-            elif SERVICE2_PROPERTY_62.matches(siid, piid):
-                # Handle Service 2 property 62 (2:62) - simple integer value
-                property_value = int(message["value"])
-                self._notify_property_change(SERVICE2_PROPERTY_62.name, property_value)
-                _LOGGER.debug("Service 2 property 62 updated: %s", property_value)
-            elif SERVICE2_PROPERTY_63.matches(siid, piid):
-                # Handle Service 2 property 63 (2:63) - negative integer error/status code (see issue #12)
-                # Observed values: -33101 (mova.mower.g2405a fw 4.3.6_0430), -33001 — meaning unknown.
-                # Silently acknowledge to suppress unhandled MQTT notifications.
-                _LOGGER.debug("Service 2 property 63 received: %s", message.get("value"))
-            elif SERVICE2_PROPERTY_53.matches(siid, piid):
-                # Handle Service 2 property 53 (2:53) - meaning unknown, only value seen so far is 100
-                # Silently acknowledge to suppress unhandled MQTT notifications (see issue #52)
-                _LOGGER.debug("Service 2 property 53 received: %s", message.get("value"))
-            elif SERVICE2_PROPERTY_54.matches(siid, piid):
-                # Handle Service 2 property 54 (2:54) - meaning unknown, only value seen so far is 100
-                # Silently acknowledge to suppress unhandled MQTT notifications (see issue #25)
-                _LOGGER.debug("Service 2 property 54 received: %s", message.get("value"))
             elif SERVICE2_PROPERTY_55.matches(siid, piid):
-                # Handle Service 2 property 55 (2:55) - likely AI obstacle detection notification
-                # Value contains {"type": "ai", "obs": [x, y, w, class_id, timestamp]}
-                # Silently acknowledge to suppress unhandled MQTT notifications (see issue #32)
+                # An obstacle the camera recognised just now: {"type": "ai",
+                # "obs": <one entry of the AIOBS list>}.
                 _LOGGER.debug("Service 2 property 55 (AI obstacle detection) received: %s", message.get("value"))
-            elif SERVICE2_PROPERTY_64.matches(siid, piid):
-                # Handle Service 2 property 64 (2:64) - work statistics
-                # Contains complex data about current week (cw), full week (fw), position (p), work range (wr/ws), etc.
-                # For now, just acknowledge receipt to prevent unhandled MQTT notifications
-                property_value = message["value"]
-                self._notify_property_change(SERVICE2_PROPERTY_64.name, property_value)
-                _LOGGER.debug("Service 2 property 64 (work statistics) updated")
-            elif SERVICE2_PROPERTY_65.matches(siid, piid):
-                # Handle Service 2 property 65 (2:65) - task navigation/SLAM status
-                # Known values: dm::TASK_NAV_DOCK (returning to dock), dm::TASK_SLAM_RELOCATE (mower relocating after getting stuck, issue #37)
-                #               dm::TASK_NAV_DIVIDE_REGION (region division navigation)
-                #               dm::TASK_SLAM_RELOCATE_NEARDOCK (mower relocating near dock, issue #54)
-                #               dm::TASK_NAV_CRUISE_POINT (navigation to cruise point, issue #68)
-                #               dm::TASK_SLAM_EXIT_ERASE (SLAM exit erase, issue #60)
-                #               dm::TASK_SLAM_RELOCATE_OFFDOCK (mower relocating off dock, issue #93)
-                #               TASK_NAV_CHECK (navigation check, no dm:: prefix, issue #81)
-                # TODO: Consider doing something useful with this property change later
-                property_value_str = str(message["value"])
-                if property_value_str in ("dm::TASK_NAV_DOCK", "dm::TASK_SLAM_RELOCATE", "dm::TASK_NAV_DIVIDE_REGION", "dm::TASK_SLAM_RELOCATE_NEARDOCK", "dm::TASK_NAV_CRUISE_POINT", "dm::TASK_SLAM_EXIT_ERASE", "dm::TASK_SLAM_RELOCATE_OFFDOCK", "TASK_NAV_CHECK"):
-                    self._notify_property_change(SERVICE2_PROPERTY_65.name, property_value_str)
-                    _LOGGER.debug("2:65 value: %s", property_value_str)
-                else:
-                    _LOGGER.debug("Unrecognized 2:65 value: %s", property_value_str)
-                    return False  # Report false for unrecognized values
-            elif SERVICE2_PROPERTY_66.matches(siid, piid):
-                # Handle Service 2 property 66 (2:66) - 2-integer array, reported on mova.mower.g2529d fw 4.3.6_0169
-                # Meaning unknown; silently acknowledge to suppress unhandled MQTT notifications (issue #48)
-                _LOGGER.debug("Service 2 property 66 received: %s", message.get("value"))
-            elif SERVICE2_PROPERTY_67.matches(siid, piid):
-                # Handle Service 2 property 67 (2:67) - 4-integer array, observed after MOWING_COMPLETED
-                # Meaning unknown; silently acknowledge to suppress unhandled MQTT notifications (issues #34, #35, #36, #38)
-                _LOGGER.debug("Service 2 property 67 received: %s", message.get("value"))
-            elif SERVICE6_PROPERTY_1.matches(siid, piid):
-                # Handle Service 6 property 1 (6:1) - integer value.
-                # Observed on dreame.mower.g2541e fw 4.3.6_0407 with value 200 (issue #71).
-                # Meaning is still unknown; silently acknowledge to suppress repeated issue noise.
-                _LOGGER.debug("Service 6 property 1 received: %s", message.get("value"))
-            elif SERVICE6_PROPERTY_3.matches(siid, piid):
-                # Handle Service 6 property 3 (6:3) - 2-item [bool, int] array.
-                # Observed on dreame.mower.g2541e fw 4.3.6_0407 with value [False, -128] (issue #78).
-                # Meaning is still unknown; silently acknowledge to suppress repeated issue noise.
-                _LOGGER.debug("Service 6 property 3 received: %s", message.get("value"))
+                self._add_ai_obstacle(message.get("value"))
             elif DEVICE_FILE_PATH_PROPERTY.matches(siid, piid) or DEVICE_FILE_PATH_PROPERTY_20.matches(siid, piid):
                 # Handle file path properties (99:10, 99:20) - provide cloud file paths for:
                 # - Firmware/OTA update packages (when firmware updates are available)
@@ -1610,6 +2461,8 @@ class DreameMowerDevice:
                 # Handle miscellaneous properties (1:1, 2:51) in unified misc handler
                 if not self._misc_handler.handle_property_update(siid, piid, message["value"], self._notify_property_change):
                     return False  # Parsing failed - treat as unhandled property
+            elif any(prop.matches(siid, piid) for prop in IGNORED_PROPERTIES):
+                _LOGGER.debug("Property %s:%s ignored: %s", siid, piid, message.get("value"))
             else:
                 return False  # Property not handled
             
@@ -1642,7 +2495,10 @@ class DreameMowerDevice:
             # Handle mission completion event (4:1)
             if MISSION_COMPLETION_EVENT.matches(siid, eiid):
                 handled = self._mission_completion_handler.handle_event(siid, eiid, arguments, self._notify_property_change)
-                if handled:
+                if handled and self._mission_completion_handler.is_patrol:
+                    # A patrol ends no mowing task: its progress stays as it was.
+                    _LOGGER.debug("Patrol finished (status=%s)", self._mission_completion_handler.status)
+                elif handled:
                     # Signal that mission is completed for stop-then-dock sequence
                     self._mission_completed_event.set()
                     
@@ -1659,7 +2515,7 @@ class DreameMowerDevice:
                         )
                     
                     if self._mission_completion_handler.has_data_file:
-                        self._mission_completion_handler.download_and_set_data_file(
+                        self._mission_completion_handler.download_data_file(
                             self._cloud_device.get_file_download_url, self._hass_config_dir
                         )
                 return handled
@@ -1672,37 +2528,20 @@ class DreameMowerDevice:
             return False
 
     def _handle_mqtt_props(self, params: dict[str, Any]) -> bool:
-        """Handle MQTT props messages with direct property updates."""
+        """Handle MQTT props messages with direct property updates.
+
+        The mower reports the state and progress of an over-the-air update here
+        as ota_state and ota_progress. An update is followed on 1:2 and 1:3, so
+        these are only acknowledged.
+        """
         handled_any = False
-        
-        try:
-            # Handle individual properties in the params dict
-            for key, value in params.items():
-                if key == "ota_state":
-                    # Handle OTA state updates
-                    old_ota_state = getattr(self, '_ota_state', None)
-                    self._ota_state = value
-                    if old_ota_state != value:
-                        self._notify_property_change("ota_state", value)
-                        _LOGGER.debug("OTA state updated: %s", value)
-                    handled_any = True
-                elif key == "ota_progress":
-                    # Handle OTA download progress (0-100) - see issue #19
-                    old_progress = self._ota_progress
-                    self._ota_progress = int(value)
-                    if old_progress != self._ota_progress:
-                        self._notify_property_change("ota_progress", self._ota_progress)
-                        _LOGGER.debug("OTA progress updated: %s%%", self._ota_progress)
-                    handled_any = True
-                else:
-                    # Log unhandled properties for future implementation
-                    _LOGGER.debug("Unhandled props parameter: %s = %s", key, value)
-            
-            return handled_any
-            
-        except Exception as ex:
-            _LOGGER.error("Failed to handle MQTT props: %s", ex)
-            return False
+        for key, value in params.items():
+            if key in ("ota_state", "ota_progress"):
+                _LOGGER.debug("%s: %s", key, value)
+                handled_any = True
+            else:
+                _LOGGER.debug("Unhandled props parameter: %s = %s", key, value)
+        return handled_any
 
     def _cancel_transport_grace(self) -> None:
         """Cancel a pending transport grace timer and clear the drop time."""
@@ -1828,7 +2667,7 @@ class DreameMowerDevice:
         zone_ids: list[int] | None = None,
         contour_ids: list[list[int]] | None = None,
         spot_area_ids: list[int] | None = None,
-        spot_rectangle: dict[str, int | float] | None = None,
+        from_stop_point: bool | None = None,
     ) -> bool:
         """Start mowing using the public mode-oriented entrypoint."""
         return await self.start_mowing_mode(
@@ -1837,17 +2676,8 @@ class DreameMowerDevice:
             zone_ids=zone_ids,
             contour_ids=contour_ids,
             spot_area_ids=spot_area_ids,
-            spot_rectangle=spot_rectangle,
+            from_stop_point=from_stop_point,
         )
-
-    def supports_mowing_mode(self, mode: MowingMode) -> bool:
-        """Return whether a mowing mode has a outbound command path."""
-        return mode in {
-            MowingMode.ALL_AREA,
-            MowingMode.EDGE,
-            MowingMode.SPOT,
-            MowingMode.ZONE,
-        }
 
     def _validate_map_id(self, map_id: int) -> bool:
         """Return True when the requested map ID exists in the loaded vector map."""
@@ -2256,6 +3086,25 @@ class DreameMowerDevice:
             return None
 
         return settings
+
+    async def set_device_setting(self, key: str, data: dict[str, Any]) -> dict[str, Any] | None:
+        """Write one setting of the settings record, under its key, and return the
+        mower's answer, or None when it refused the write or answered unreadably."""
+        result = await self._send_task_payload(f"{key} setting write", {"m": "s", "t": key, "d": data})
+        out = result.get("out") if isinstance(result, dict) else None
+        entry = out[0] if isinstance(out, list) and out and isinstance(out[0], dict) else None
+        if entry is None:
+            answer = self._extract_custom_action_data(result)
+        elif entry.get("r") not in (None, 0):
+            answer = None
+        else:
+            # Some settings are confirmed without echoing anything back.
+            answer = self._extract_custom_action_data(result) or {}
+        if answer is None:
+            _LOGGER.error("Failed to write the %s setting %s: %s", key, data, result)
+            return None
+        _LOGGER.info("The %s setting is now %s", key, answer)
+        return answer
 
     async def get_device_information(self) -> dict[str, Any] | None:
         """Read the device's hardware information, or None when unreadable.
@@ -3536,6 +4385,7 @@ class DreameMowerDevice:
         self._mowing_direction = None
         self._zone_mowing_directions = {}
         self._mowing_preference_mode = None
+        self._mowing_records = {}
         # The schedules are stored per map too, so what is cached describes a map
         # that is no longer the current one.
         self._schedules = None
@@ -3698,6 +4548,129 @@ class DreameMowerDevice:
 
         return slots
 
+    @staticmethod
+    def _record_mowing_settings(record: Sequence[int]) -> dict[str, Any]:
+        """Return every setting a record carries, under the setting keys.
+
+        A setting the record is too short to carry is left out.
+        """
+
+        def slot(index: int) -> int | None:
+            return int(record[index]) if len(record) > index else None
+
+        settings: dict[str, Any] = {}
+        if (value := slot(MOWING_PREFERENCE_EFFICIENCY_INDEX)) is not None:
+            settings[EFFICIENCY_KEY] = _enum_name(MowingEfficiency, value)
+        if (value := slot(MOWING_PREFERENCE_CUTTING_HEIGHT_INDEX)) is not None:
+            settings[CUTTING_HEIGHT_KEY] = value / 10.0
+        if (value := slot(MOWING_PREFERENCE_DIRECTION_MODE_INDEX)) is not None:
+            settings[DIRECTION_MODE_KEY] = _enum_name(MowingDirectionMode, value)
+        if (value := slot(MOWING_PREFERENCE_DIRECTION_ANGLE_INDEX)) is not None:
+            settings[DIRECTION_ANGLE_KEY] = value % MOWING_DIRECTION_ANGLE_PERIOD_DEGREES
+        for key, index in (
+            (EDGE_MOWING_AUTO_KEY, MOWING_PREFERENCE_EDGE_MOWING_AUTO_INDEX),
+            (EDGE_OBSTACLE_AVOIDANCE_KEY, MOWING_PREFERENCE_EDGE_OBSTACLE_AVOIDANCE_INDEX),
+            (EDGE_BLADE_OFFSET_KEY, MOWING_PREFERENCE_EDGE_BLADE_OFFSET_INDEX),
+            (LIDAR_OBSTACLE_KEY, MOWING_PREFERENCE_LIDAR_OBSTACLE_INDEX),
+            (EDGE_MOWING_SAFE_KEY, MOWING_PREFERENCE_EDGE_MOWING_SAFE_INDEX),
+        ):
+            if (value := slot(index)) is not None:
+                settings[key] = bool(value)
+        if (value := slot(MOWING_PREFERENCE_OBSTACLE_HEIGHT_INDEX)) is not None:
+            settings[OBSTACLE_HEIGHT_KEY] = value
+        if (value := slot(MOWING_PREFERENCE_OBSTACLE_DISTANCE_INDEX)) is not None:
+            settings[OBSTACLE_DISTANCE_KEY] = value
+        if (value := slot(MOWING_PREFERENCE_AI_OBSTACLE_INDEX)) is not None:
+            settings[AI_OBSTACLE_KEY] = [str(kind.name).lower() for kind in AiObstacleKind if value & kind]
+        if (value := slot(MOWING_PREFERENCE_TURNING_METHOD_INDEX)) is not None:
+            settings[TURNING_METHOD_KEY] = _enum_name(TurningMethod, value)
+        return settings
+
+    @classmethod
+    def _mowing_settings_slots(cls, record: Sequence[int], settings: Mapping[str, Any]) -> dict[int, int]:
+        """Return the record slots that carry the requested settings.
+
+        Raises on a value a setting does not take, and when the record does not
+        reach a slot a request needs, which is how a firmware without that
+        setting reports it.
+        """
+        slots: dict[int, int] = {}
+
+        def put(index: int, value: int, name: str) -> None:
+            if len(record) <= index:
+                raise ValueError(f"This mower does not support {name}")
+            slots[index] = value
+
+        def choice(enum: type[IntEnum], key: str) -> int:
+            try:
+                return int(enum[str(settings[key]).upper()])
+            except KeyError as ex:
+                names = ", ".join(member.name.lower() for member in enum)
+                raise ValueError(f"{key} must be one of {names}; got {settings[key]!r}") from ex
+
+        def one_of(values: Sequence[int], key: str) -> int:
+            value = int(settings[key])
+            if value not in values:
+                raise ValueError(f"{key} must be one of {', '.join(map(str, values))}; got {value}")
+            return value
+
+        if EFFICIENCY_KEY in settings:
+            put(MOWING_PREFERENCE_EFFICIENCY_INDEX, choice(MowingEfficiency, EFFICIENCY_KEY), "the mowing efficiency")
+        if CUTTING_HEIGHT_KEY in settings:
+            height = cls._normalize_cutting_height(settings[CUTTING_HEIGHT_KEY])
+            put(MOWING_PREFERENCE_CUTTING_HEIGHT_INDEX, int(round(height * 10)), "the cutting height")
+        if DIRECTION_MODE_KEY in settings:
+            put(MOWING_PREFERENCE_DIRECTION_MODE_INDEX, choice(MowingDirectionMode, DIRECTION_MODE_KEY), "the mowing direction")
+        if DIRECTION_ANGLE_KEY in settings:
+            angle = cls._normalize_mowing_direction_angle(settings[DIRECTION_ANGLE_KEY])
+            put(MOWING_PREFERENCE_DIRECTION_ANGLE_INDEX, angle, "the mowing direction")
+        if any(key in settings for key in (EDGE_MOWING_AUTO_KEY, EDGE_BLADE_OFFSET_KEY, EDGE_MOWING_SAFE_KEY)):
+            slots.update(
+                cls._edge_mowing_slots(
+                    record,
+                    settings.get(EDGE_MOWING_AUTO_KEY),
+                    settings.get(EDGE_BLADE_OFFSET_KEY),
+                    settings.get(EDGE_MOWING_SAFE_KEY),
+                )
+            )
+        for key, index, name in (
+            (EDGE_OBSTACLE_AVOIDANCE_KEY, MOWING_PREFERENCE_EDGE_OBSTACLE_AVOIDANCE_INDEX, "obstacle avoidance on edges"),
+            (LIDAR_OBSTACLE_KEY, MOWING_PREFERENCE_LIDAR_OBSTACLE_INDEX, "LiDAR obstacle recognition"),
+        ):
+            if key in settings:
+                put(index, int(bool(settings[key])), name)
+        if OBSTACLE_HEIGHT_KEY in settings:
+            put(MOWING_PREFERENCE_OBSTACLE_HEIGHT_INDEX, one_of(OBSTACLE_HEIGHTS_CM, OBSTACLE_HEIGHT_KEY), "the obstacle avoidance height")
+        if OBSTACLE_DISTANCE_KEY in settings:
+            put(MOWING_PREFERENCE_OBSTACLE_DISTANCE_INDEX, one_of(OBSTACLE_DISTANCES_CM, OBSTACLE_DISTANCE_KEY), "the obstacle avoidance distance")
+        if AI_OBSTACLE_KEY in settings:
+            mask = 0
+            for name in settings[AI_OBSTACLE_KEY]:
+                try:
+                    mask |= AiObstacleKind[str(name).upper()]
+                except KeyError as ex:
+                    names = ", ".join(str(kind.name).lower() for kind in AiObstacleKind)
+                    raise ValueError(f"{AI_OBSTACLE_KEY} takes {names}; got {name!r}") from ex
+            put(MOWING_PREFERENCE_AI_OBSTACLE_INDEX, mask, "AI obstacle recognition")
+        if TURNING_METHOD_KEY in settings:
+            put(MOWING_PREFERENCE_TURNING_METHOD_INDEX, choice(TurningMethod, TURNING_METHOD_KEY), "the turning method")
+
+        # Avoiding obstacles along the edges needs something that recognises
+        # them, so it goes off once neither the LiDAR nor the camera does.
+        def after(index: int) -> int | None:
+            if index in slots:
+                return slots[index]
+            return int(record[index]) if len(record) > index else None
+
+        if (
+            after(MOWING_PREFERENCE_EDGE_OBSTACLE_AVOIDANCE_INDEX)
+            and after(MOWING_PREFERENCE_LIDAR_OBSTACLE_INDEX) == 0
+            and after(MOWING_PREFERENCE_AI_OBSTACLE_INDEX) in (0, None)
+        ):
+            slots[MOWING_PREFERENCE_EDGE_OBSTACLE_AVOIDANCE_INDEX] = 0
+
+        return slots
+
     def _record_for_write(
         self,
         record: Sequence[int],
@@ -3784,18 +4757,6 @@ class DreameMowerDevice:
 
         return self._record_cutting_height(record)
 
-    async def refresh_edge_mowing_settings(self, map_id: int | None = None) -> dict[str, bool] | None:
-        """Read the map-wide edge mowing settings, defaulting to the current map."""
-        map_index = self._preference_map_index(map_id)
-        if map_index is None:
-            return None
-
-        record = await self._refresh_map_wide_record(map_index)
-        if record is None:
-            return None
-
-        return self._record_edge_mowing_settings(record)
-
     async def refresh_mowing_direction(self, map_id: int | None = None) -> dict[str, int] | None:
         """Read the map-wide mowing direction, defaulting to the current map."""
         map_index = self._preference_map_index(map_id)
@@ -3872,6 +4833,9 @@ class DreameMowerDevice:
         zone_id: int | None = None,
     ) -> None:
         """Cache every setting a mowing preference record carries."""
+        if self._targets_current_map(map_index):
+            self._mowing_records[MOWING_PREFERENCE_GLOBAL_AREA_ID if zone_id is None else zone_id] = list(record)
+
         height_cm = self._record_cutting_height(record)
         if height_cm is not None:
             self._update_cutting_height_cache(map_index, height_cm, zone_id=zone_id)
@@ -3926,6 +4890,15 @@ class DreameMowerDevice:
         if not self._targets_current_map(map_index):
             return
 
+        self._mowing_records = {
+            **{
+                area_id: record
+                for area_id, record in self._mowing_records.items()
+                if area_id == MOWING_PREFERENCE_GLOBAL_AREA_ID
+            },
+            **{zone_id: list(record) for zone_id, record in zone_records.items()},
+        }
+
         zone_heights: dict[int, float] = {}
         zone_edge_settings: dict[int, dict[str, bool]] = {}
         for zone_id, record in zone_records.items():
@@ -3948,27 +4921,28 @@ class DreameMowerDevice:
                 self.zone_edge_mowing_settings,
             )
 
-    async def refresh_mowing_preference_mode(self, map_id: int | None = None) -> MowingPreferenceMode | None:
-        """Read which preference records a map applies, defaulting to the current map."""
-        map_index = self._preference_map_index(map_id)
-        if map_index is None:
-            return None
-
-        mode, _ = await self._get_preference_info(map_index)
-        if mode is not None:
-            self._update_preference_mode_cache(map_index, mode)
-
-        return mode
-
     async def set_mowing_preference_mode(
         self,
         mode: MowingPreferenceMode,
         map_id: int | None = None,
     ) -> bool:
-        """Choose whether a map follows its map-wide record or its per-zone records."""
+        """Choose whether a map follows its map-wide record or its per-zone records.
+
+        A zone that holds no record of its own is first given a copy of the
+        map-wide record when the map turns to its per-zone records, so it keeps
+        mowing as before instead of falling back to the device defaults.
+        """
         map_index = self._preference_map_index(map_id)
         if map_index is None:
             return False
+
+        if mode == MowingPreferenceMode.PER_ZONE:
+            _, configured_area_ids = await self._get_preference_info(map_index)
+            map_wide_record = await self._get_mowing_preference(map_index)
+            if not await self._enable_per_zone_preferences(map_index, map_id, configured_area_ids, map_wide_record):
+                return False
+            _LOGGER.info("Map index %s now applies its %s mowing preferences", map_index, mode.name)
+            return True
 
         if not await self._set_preference_mode(map_index, mode):
             return False
@@ -4156,6 +5130,36 @@ class DreameMowerDevice:
 
         return await self._carry_map_wide_change_into_zones(map_id, build_slots, description)
 
+    async def set_mowing_settings(
+        self,
+        settings: Mapping[str, Any],
+        map_id: int | None = None,
+        zone_id: int | None = None,
+    ) -> bool:
+        """Change any of the mowing settings at once, keeping the others as they are.
+
+        `settings` holds the new values under the setting keys. Without a zone
+        the settings of the whole map are changed: the map-wide record, and the
+        record of every zone of a map that follows its per-zone records. With a
+        zone only that zone is changed, and the map is switched to its per-zone
+        records so the change actually takes effect.
+        """
+        if not settings:
+            return True
+
+        def build_slots(record: Sequence[int]) -> dict[int, int]:
+            return self._mowing_settings_slots(record, settings)
+
+        description = "Mowing settings set to " + ", ".join(f"{key}={value}" for key, value in settings.items())
+
+        if not await self._change_mowing_preference(map_id, zone_id, build_slots, description):
+            return False
+
+        if zone_id is not None:
+            return True
+
+        return await self._carry_map_wide_change_into_zones(map_id, build_slots, description)
+
     async def _carry_map_wide_change_into_zones(
         self,
         map_id: int | None,
@@ -4198,17 +5202,12 @@ class DreameMowerDevice:
 
         return applied
 
-    def _build_all_area_task_payload(self, map_id: int) -> dict[str, Any]:
+    def _build_all_area_task_payload(self, map_id: int, from_stop_point: bool | None = None) -> dict[str, Any]:
         """Build the 2:50 action payload for map-aware all-area mowing."""
-        return {
-            "m": "a",
-            "p": 0,
-            "o": 100,
-            "d": {
-                "region_id": [map_id],
-                "area_id": [],
-            },
-        }
+        data: dict[str, Any] = {"region_id": [map_id], "area_id": []}
+        if from_stop_point is not None:
+            data[FROM_STOP_POINT_KEY] = from_stop_point
+        return {"m": "a", "p": 0, "o": 100, "d": data}
 
     def _build_set_current_map_payload(self, map_index: int) -> dict[str, Any]:
         """Build the 2:50 action payload for switching the active map."""
@@ -4239,16 +5238,12 @@ class DreameMowerDevice:
 
         return True
 
-    def _build_zone_task_payload(self, zone_ids: list[int]) -> dict[str, Any]:
+    def _build_zone_task_payload(self, zone_ids: list[int], from_stop_point: bool | None = None) -> dict[str, Any]:
         """Build the 2:50 action payload for a zone-selective mowing session."""
-        return {
-            "m": "a",
-            "p": 0,
-            "o": 102,
-            "d": {
-                "region": zone_ids,
-            },
-        }
+        data: dict[str, Any] = {"region": zone_ids}
+        if from_stop_point is not None:
+            data[FROM_STOP_POINT_KEY] = from_stop_point
+        return {"m": "a", "p": 0, "o": 102, "d": data}
 
     def _validate_spot_area_ids(self, spot_area_ids: list[int]) -> bool:
         """Return True when all requested spot area IDs exist in the loaded map."""
@@ -4308,188 +5303,13 @@ class DreameMowerDevice:
             },
         }
 
-    def _build_spot_rectangle_payload(
-        self,
-        x_min: float,
-        y_min: float,
-        x_max: float,
-        y_max: float,
-    ) -> dict[str, Any]:
-        """Build the 2:50 action payload for defining a rectangular spot area."""
-        return {
-            "m": "a",
-            "p": 0,
-            "o": 214,
-            "d": {
-                "id": -1,
-                "points": [
-                    [round(x_max, 2), round(y_min, 2)],
-                    [round(x_min, 2), round(y_min, 2)],
-                    [round(x_min, 2), round(y_max, 2)],
-                    [round(x_max, 2), round(y_max, 2)],
-                ],
-            },
-        }
+    async def start_mowing_all_area(self, map_id: int | None = None, *, from_stop_point: bool | None = None) -> bool:
+        """Start all-area mowing, optionally targeting a specific map identifier.
 
-    def _build_apply_spot_selection_payload(self) -> dict[str, Any]:
-        """Build the 2:50 action payload for applying a prepared spot selection."""
-        return {
-            "m": "a",
-            "p": 1,
-            "o": 201,
-        }
-
-    def _map_bounds_in_meters(self) -> tuple[float, float, float, float] | None:
-        """Return map bounds in meters when vector-map geometry is available."""
-        vector_map = self.vector_map
-        if vector_map is None:
-            return None
-
-        if vector_map.boundary is not None:
-            return (
-                vector_map.boundary.x1 / 100.0,
-                vector_map.boundary.y1 / 100.0,
-                vector_map.boundary.x2 / 100.0,
-                vector_map.boundary.y2 / 100.0,
-            )
-
-        all_paths: Sequence[Iterable[tuple[int, int]]] = [
-            zone.path for zone in vector_map.zones
-        ] + [
-            zone.path for zone in vector_map.forbidden_areas
-        ] + [
-            path.path for path in vector_map.paths
-        ] + [
-            contour.path for contour in vector_map.contours
-        ] + [
-            spot_area.path for spot_area in vector_map.spot_areas
-        ]
-
-        points = [point for path in all_paths for point in path]
-        if not points:
-            return None
-
-        x_values = [point[0] for point in points]
-        y_values = [point[1] for point in points]
-        return (
-            min(x_values) / 100.0,
-            min(y_values) / 100.0,
-            max(x_values) / 100.0,
-            max(y_values) / 100.0,
-        )
-
-    def _normalize_spot_rectangle(
-        self,
-        spot_rectangle: dict[str, int | float],
-    ) -> tuple[float, float, float, float] | None:
-        """Validate and normalize a spot rectangle expressed in meters."""
-        required_keys = ("x1", "y1", "x2", "y2")
-        missing_keys = [key for key in required_keys if key not in spot_rectangle]
-        if missing_keys:
-            _LOGGER.error(
-                "Spot rectangle is missing required keys %s: %s",
-                missing_keys,
-                spot_rectangle,
-            )
-            return None
-
-        try:
-            x1 = float(spot_rectangle["x1"])
-            y1 = float(spot_rectangle["y1"])
-            x2 = float(spot_rectangle["x2"])
-            y2 = float(spot_rectangle["y2"])
-        except (TypeError, ValueError) as ex:
-            _LOGGER.error("Spot rectangle must contain numeric coordinates %s: %s", spot_rectangle, ex)
-            return None
-
-        x_min, x_max = sorted((x1, x2))
-        y_min, y_max = sorted((y1, y2))
-
-        if x_max - x_min < 1.0 or y_max - y_min < 1.0:
-            _LOGGER.error(
-                "Spot rectangle must be at least 1m x 1m; got %.2fm x %.2fm: %s",
-                x_max - x_min,
-                y_max - y_min,
-                spot_rectangle,
-            )
-            return None
-
-        map_bounds = self._map_bounds_in_meters()
-        if map_bounds is not None:
-            map_x_min, map_y_min, map_x_max, map_y_max = map_bounds
-            overlaps_map = (
-                x_max > map_x_min
-                and x_min < map_x_max
-                and y_max > map_y_min
-                and y_min < map_y_max
-            )
-            if not overlaps_map:
-                _LOGGER.error(
-                    "Spot rectangle must overlap the known map extent %s; got: %s",
-                    map_bounds,
-                    spot_rectangle,
-                )
-                return None
-
-        return (x_min, y_min, x_max, y_max)
-
-    def _spot_area_matches_rectangle(
-        self,
-        spot_area: Any,
-        rectangle_bounds: tuple[float, float, float, float],
-        tolerance_m: float = 0.15,
-    ) -> bool:
-        """Return True when a spot area's geometry matches the requested rectangle."""
-        if not getattr(spot_area, "path", None):
-            return False
-
-        x_values = [point[0] / 100.0 for point in spot_area.path]
-        y_values = [point[1] / 100.0 for point in spot_area.path]
-        spot_bounds = (min(x_values), min(y_values), max(x_values), max(y_values))
-
-        return all(
-            abs(actual - expected) <= tolerance_m
-            for actual, expected in zip(spot_bounds, rectangle_bounds)
-        )
-
-    def _resolve_spot_area_id_from_rectangle(
-        self,
-        previous_spot_area_ids: set[int],
-        rectangle_bounds: tuple[float, float, float, float],
-    ) -> int | None:
-        """Resolve the spot-area ID created from a rectangle after a map refresh."""
-        vector_map = self.vector_map
-        if vector_map is None:
-            return None
-
-        new_spot_areas = [
-            spot_area
-            for spot_area in vector_map.spot_areas
-            if spot_area.area_id not in previous_spot_area_ids
-        ]
-        if len(new_spot_areas) == 1:
-            return int(new_spot_areas[0].area_id)
-
-        matching_new_spot_areas = [
-            spot_area
-            for spot_area in new_spot_areas
-            if self._spot_area_matches_rectangle(spot_area, rectangle_bounds)
-        ]
-        if len(matching_new_spot_areas) == 1:
-            return int(matching_new_spot_areas[0].area_id)
-
-        matching_spot_areas = [
-            spot_area
-            for spot_area in vector_map.spot_areas
-            if self._spot_area_matches_rectangle(spot_area, rectangle_bounds)
-        ]
-        if len(matching_spot_areas) == 1:
-            return int(matching_spot_areas[0].area_id)
-
-        return None
-
-    async def start_mowing_all_area(self, map_id: int | None = None) -> bool:
-        """Start all-area mowing, optionally targeting a specific map identifier."""
+        With `from_stop_point` the mower is told whether to mow only what an
+        unfinished task left in its zones (True) or start them over (False);
+        left out, it is not told.
+        """
         if map_id is None:
             map_id = self.current_map_id
 
@@ -4502,6 +5322,9 @@ class DreameMowerDevice:
             map_id = self.current_map_id
 
         if map_id is None:
+            if from_stop_point is not None:
+                _LOGGER.error("All-area mowing needs the current map to say where to start from")
+                return False
             _LOGGER.warning(
                 "All-area mowing fell back to the generic START_MOWING action because no map_id was provided"
             )
@@ -4510,7 +5333,7 @@ class DreameMowerDevice:
         if not self._validate_map_id(map_id):
             return False
 
-        task_payload = self._build_all_area_task_payload(map_id)
+        task_payload = self._build_all_area_task_payload(map_id, from_stop_point)
         result = await self._send_task_payload("all-area mowing", task_payload)
         if not result:
             _LOGGER.error("start_mowing_all_area command returned falsy result: %s", result)
@@ -4536,7 +5359,7 @@ class DreameMowerDevice:
                 "Cannot switch to map ID %s while a mowing task is in progress (task status: %s); "
                 "finish or cancel the task first",
                 map_id,
-                self.task_status,
+                self._misc_handler.task_status,
             )
             return False
 
@@ -4654,13 +5477,6 @@ class DreameMowerDevice:
         command the mower refused from one it never received: the first is a
         falsy return value, the second is this exception.
         """
-        _LOGGER.debug(
-            "Sending %s action %s:%s with payload: %s",
-            task_name,
-            SCHEDULING_TASK_PROPERTY.siid,
-            SCHEDULING_TASK_PROPERTY.piid,
-            task_payload,
-        )
         try:
             return await asyncio.get_event_loop().run_in_executor(
                 None,
@@ -4689,8 +5505,8 @@ class DreameMowerDevice:
         except Exception as ex:
             raise DreameCommandError(f"Failed to send the {action.name} command: {ex}") from ex
 
-    async def start_mowing_zones(self, zone_ids: list[int]) -> bool:
-        """Start mowing specific zones by their IDs."""
+    async def start_mowing_zones(self, zone_ids: list[int], *, from_stop_point: bool | None = None) -> bool:
+        """Start mowing specific zones by their IDs; `from_stop_point` as for start_mowing_all_area."""
         if not zone_ids:
             _LOGGER.error("start_mowing_zones called with empty zone_ids")
             return False
@@ -4698,7 +5514,7 @@ class DreameMowerDevice:
         if not self._validate_zone_ids(zone_ids):
             return False
 
-        task_payload = self._build_zone_task_payload(zone_ids)
+        task_payload = self._build_zone_task_payload(zone_ids, from_stop_point)
         result = await self._send_task_payload("zone mowing", task_payload)
         if not result:
             _LOGGER.error("start_mowing_zones command returned falsy result: %s", result)
@@ -4778,60 +5594,6 @@ class DreameMowerDevice:
         _LOGGER.info("Mower is on its way to maintenance points: %s", point_ids)
         return True
 
-    async def create_spot_area(self, spot_rectangle: dict[str, int | float]) -> int | None:
-        """Create a spot area from a rectangle and return its resolved area id."""
-        normalized_rectangle = self._normalize_spot_rectangle(spot_rectangle)
-        if normalized_rectangle is None:
-            return None
-
-        previous_spot_area_ids = (
-            {spot_area.area_id for spot_area in self.vector_map.spot_areas}
-            if self.vector_map is not None
-            else set()
-        )
-
-        create_payload = self._build_spot_rectangle_payload(*normalized_rectangle)
-        create_result = await self._send_task_payload("spot area create", create_payload)
-        if not create_result:
-            _LOGGER.error("spot area create command returned falsy result: %s", create_result)
-            return None
-
-        apply_payload = self._build_apply_spot_selection_payload()
-        apply_result = await self._send_task_payload("spot area apply", apply_payload)
-        if not apply_result:
-            _LOGGER.error("spot area apply command returned falsy result: %s", apply_result)
-            return None
-
-        created_spot_area_id = None
-        for _ in range(3):
-            await asyncio.get_event_loop().run_in_executor(None, self.fetch_vector_map)
-            created_spot_area_id = self._resolve_spot_area_id_from_rectangle(
-                previous_spot_area_ids,
-                normalized_rectangle,
-            )
-            if created_spot_area_id is not None:
-                _LOGGER.info(
-                    "Spot area created from rectangle %s with resolved area id %s",
-                    spot_rectangle,
-                    created_spot_area_id,
-                )
-                return created_spot_area_id
-            await asyncio.sleep(0.5)
-
-        _LOGGER.error(
-            "Spot rectangle was prepared successfully, but the created spot area ID could not be resolved from refreshed map data: %s",
-            spot_rectangle,
-        )
-        return None
-
-    async def start_mowing_spot(self, spot_area_ids: list[int] | None = None) -> bool:
-        """Start spot mowing for one or more existing spot areas."""
-        if not spot_area_ids:
-            _LOGGER.error("Spot mowing requires at least one existing spot area ID")
-            return False
-
-        return await self.start_mowing_spots(spot_area_ids)
-
     async def start_mowing_mode(
         self,
         mode: MowingMode,
@@ -4840,21 +5602,23 @@ class DreameMowerDevice:
         zone_ids: list[int] | None = None,
         contour_ids: list[list[int]] | None = None,
         spot_area_ids: list[int] | None = None,
-        spot_rectangle: dict[str, int | float] | None = None,
+        from_stop_point: bool | None = None,
     ) -> bool:
         """Start mowing using an explicit mode-oriented API.
 
         Manual mode is represented explicitly so higher layers can model the full
         roadmap, but its outbound command format is still unverified.
+        `from_stop_point` applies to all-area and zone mowing (see
+        start_mowing_all_area).
         """
         if mode == MowingMode.ALL_AREA:
-            return await self.start_mowing_all_area(map_id)
+            return await self.start_mowing_all_area(map_id, from_stop_point=from_stop_point)
 
         if mode == MowingMode.ZONE:
             if not zone_ids:
                 _LOGGER.error("Zone mowing requires at least one zone ID")
                 return False
-            return await self.start_mowing_zones(zone_ids)
+            return await self.start_mowing_zones(zone_ids, from_stop_point=from_stop_point)
 
         if mode == MowingMode.EDGE:
             if not contour_ids:
@@ -4863,14 +5627,10 @@ class DreameMowerDevice:
             return await self.start_mowing_edges(contour_ids)
 
         if mode == MowingMode.SPOT:
-            if spot_rectangle is not None:
-                _LOGGER.error(
-                    "Spot rectangle creation is separate from spot mowing; create the spot area first, then call spot mowing with spot_area_ids"
-                )
+            if not spot_area_ids:
+                _LOGGER.error("Spot mowing requires at least one existing spot area ID")
                 return False
-            return await self.start_mowing_spot(
-                spot_area_ids=spot_area_ids,
-            )
+            return await self.start_mowing_spots(spot_area_ids)
 
         if mode == MowingMode.MANUAL:
             _LOGGER.error("Manual mowing is not implemented yet; it appears to require Bluetooth")
@@ -4903,17 +5663,6 @@ class DreameMowerDevice:
         return [list(contour.contour_id) for contour in vector_map.contours]
 
     @property
-    def spot_areas(self) -> list[dict]:
-        """Return available spot-mowing area IDs from the vector map."""
-        vector_map = self.vector_map
-        if vector_map is None:
-            return []
-        return [
-            {"id": spot_area.area_id, "name": spot_area.name, "area": spot_area.area}
-            for spot_area in vector_map.spot_areas
-        ]
-
-    @property
     def maintenance_points(self) -> list[dict]:
         """Return the maintenance points of the active map, with their positions."""
         vector_map = self.vector_map
@@ -4930,6 +5679,25 @@ class DreameMowerDevice:
             _LOGGER.error("Failed to send PAUSE command")
             return False
         self._notify_property_change("activity", "paused")
+        return True
+
+    async def end_task(self) -> bool:
+        """End the running task; the mower stays where it is.
+
+        The mower keeps where the task stopped in each zone, so the next task
+        can continue from there.
+        """
+        if not await self._send_action(ACTION_STOP):
+            _LOGGER.error("Failed to send STOP command")
+            return False
+        return True
+
+    async def stop_returning(self) -> bool:
+        """Stop the mower on its way back to the station; it stays where it is."""
+        result = await self._send_task_payload("stop returning", TASK_PAYLOAD_STOP_RETURNING)
+        if not result:
+            _LOGGER.error("Failed to stop the return to the station")
+            return False
         return True
 
     async def dock_without_stopping(self) -> bool:

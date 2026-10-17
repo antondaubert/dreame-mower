@@ -5,7 +5,7 @@
         "title": "Válassza a Fiók típusát",
         "description": "Válassza ki a fiók típusát a Dreame fűnyíró integrációjához.",
         "data": {
-          "account_type": "Számla típus"
+          "account_type": "Fióktípus"
         }
       },
       "dreame": {
@@ -47,21 +47,17 @@
       "invalid_account_type": "Érvénytelen fióktípus van kiválasztva."
     },
     "abort": {
-      "cannot_connect": "Nem sikerült csatlakozni.",
       "already_configured": "Ez az eszköz már konfigurálva van."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Lehetőségek",
+        "title": "Beállítások",
         "description": "Kapcsolódva ezzel a fiókkal: {account} ({account_type}, {country}).\n\nKonfigurálja a Dreame fűnyíró integráció értesítési beállításait.",
         "data": {
           "notify": "Értesítési típusok",
-          "map_rotation": "Térkép elforgatása",
-          "map_show_title": "Térképcím megjelenítése",
-          "map_show_legend": "Térképjelmagyarázat megjelenítése",
-          "map_padding": "Térkép kitöltés (képpont)"
+          "map_rotation": "Térkép elforgatása"
         }
       }
     }
@@ -86,48 +82,8 @@
           "maintenance_paused": "Szüneteltetve a karbantartási ponton"
         }
       },
-      "charging_status": {
-        "name": "Töltési állapot",
-        "state": {
-          "not_docked": "Nem dokkolt",
-          "charging": "Töltés",
-          "not_charging": "Nem töltés",
-          "charging_completed": "A töltés befejeződött",
-          "return_to_charge": "Visszatérés a töltéshez",
-          "charging_paused_high_temperature": "Töltés szüneteltetve: az akkumulátor hőmérséklete túl magas",
-          "charging_paused_low_temperature": "Töltés szüneteltetve: az akkumulátor hőmérséklete túl alacsony"
-        }
-      },
       "mowing_progress": {
         "name": "Kaszálási haladás"
-      },
-      "bluetooth_connection": {
-        "name": "Bluetooth"
-      },
-      "dnd_status": {
-        "name": "Ne zavarjon"
-      },
-      "charging_schedule": {
-        "name": "Töltési ütemterv"
-      },
-      "timezone": {
-        "name": "Időzóna"
-      },
-      "device_code": {
-        "name": "Eszközkód"
-      },
-      "current_task": {
-        "name": "Aktuális feladat",
-        "state": {
-          "idle": "Nincs feladat",
-          "starting": "Indítás",
-          "mowing": "Kaszálás",
-          "paused": "Szüneteltetve",
-          "finished": "Befejezve",
-          "failed": "Sikertelen",
-          "exit": "Leállítva",
-          "returning_to_dock": "Visszatérés az állomásra"
-        }
       },
       "consumable_blade_health": {
         "name": "Penge állapota"
@@ -143,36 +99,6 @@
       },
       "account": {
         "name": "Fiók"
-      }
-    },
-    "camera": {
-      "map_camera": {
-        "name": "Térkép"
-      }
-    },
-    "button": {
-      "reset_blade": {
-        "name": "Pengeszámláló visszaállítása"
-      },
-      "reset_brush": {
-        "name": "Kefeszámláló visszaállítása"
-      },
-      "reset_robot_maintenance": {
-        "name": "Karbantartási számláló visszaállítása"
-      },
-      "dock_without_stopping": {
-        "name": "Dokkolás feladat leállítása nélkül"
-      },
-      "go_to_maintenance_point": {
-        "name": "Karbantartási pontra küldés"
-      }
-    },
-    "number": {
-      "cutting_height": {
-        "name": "Vágási magasság"
-      },
-      "mowing_direction": {
-        "name": "Nyírási irány"
       }
     },
     "switch": {
@@ -197,14 +123,20 @@
       "schedule": {
         "name": "Időzítés {number}"
       },
-      "edge_mowing_auto": {
-        "name": "Automatikus szegélynyírás"
+      "frost_protection": {
+        "name": "Fagyvédelem"
       },
-      "edge_blade_offset": {
-        "name": "EdgeMaster"
+      "path_obstacle_avoidance": {
+        "name": "Akadálykerülés az utakon"
       },
-      "edge_mowing_safe": {
-        "name": "Biztonságos szegélynyírás"
+      "auto_recharge_standby": {
+        "name": "Automatikus töltés készenlét után"
+      },
+      "ai_obstacle_photos": {
+        "name": "MI által észlelt akadályok fényképezése"
+      },
+      "child_lock": {
+        "name": "Gyerekzár"
       }
     },
     "time": {
@@ -218,6 +150,9 @@
     "select": {
       "rain_delay": {
         "name": "Várakozás eső után"
+      },
+      "navigation_path": {
+        "name": "Navigációs útvonal"
       }
     }
   },
@@ -234,9 +169,50 @@
         "map_wide": "Egy beállítás a teljes térképhez",
         "per_zone": "Külön beállítás zónánként"
       }
+    },
+    "mowing_efficiency": {
+      "options": {
+        "standard": "Normál",
+        "efficient": "Hatékony"
+      }
+    },
+    "turning_method": {
+      "options": {
+        "efficient": "Hatékony",
+        "lawn_care": "Gyepkímélő"
+      }
+    },
+    "ai_obstacle_kind": {
+      "options": {
+        "humans": "Emberek",
+        "animals": "Állatok",
+        "objects": "Tárgyak"
+      }
     }
   },
   "services": {
+    "start_all_area_mowing": {
+      "name": "Teljes terület nyírásának indítása",
+      "description": "A teljes aktív térképet nyírja. A már futó nyírás folytatódik.",
+      "fields": {
+        "from_stop_point": {
+          "name": "A megállási ponttól",
+          "description": "Ahol egy befejezetlen feladat megállt egy zónában: be, csak a maradékot nyírja; ki, elölről nyírja. Ha kimarad, a fűnyíró nem kap erről utasítást."
+        }
+      }
+    },
+    "end_task": {
+      "name": "Feladat befejezése",
+      "description": "Befejezi a futó nyírási feladatot. A fűnyíró ott marad, ahol van, és megjegyzi, hol állt meg a feladat, hogy egy későbbi onnan folytathassa."
+    },
+    "stop_returning": {
+      "name": "Visszatérés leállítása",
+      "description": "Megállítja a fűnyírót az állomás felé vezető úton. Ott marad, ahol van."
+    },
+    "recharge": {
+      "name": "Töltés",
+      "description": "A fűnyírót a töltőállomásra küldi. A futó nyírási feladat megmarad, így utána folytatható."
+    },
     "start_zone_mowing": {
       "name": "Zónák nyírásának indítása",
       "description": "Elindítja egy vagy több kiválasztott zóna nyírását.",
@@ -244,6 +220,10 @@
         "zone_ids": {
           "name": "Zónaazonosítók",
           "description": "A nyírandó zónák azonosítóinak listája, például [1, 3]."
+        },
+        "from_stop_point": {
+          "name": "A megállási ponttól",
+          "description": "Ahol egy befejezetlen feladat megállt egy zónában: be, csak a maradékot nyírja; ki, elölről nyírja. Ha kimarad, a fűnyíró nem kap erről utasítást."
         }
       }
     },
@@ -267,61 +247,71 @@
         }
       }
     },
-    "set_cutting_height": {
-      "name": "Vágási magasság beállítása",
-      "description": "Beállítja a vágási magasságot a teljes térképen vagy annak egyik zónájában. Nem minden modell támogatja a magasságállítást; az elérhető tartomány modellenként eltérő.",
+    "select_map": {
+      "name": "Térkép kiválasztása",
+      "description": "Másik térképet tesz azzá, amelyen a fűnyíró dolgozik. Folyamatban lévő nyírási feladat alatt nem lehetséges.",
       "fields": {
-        "height": {
-          "name": "Vágási magasság",
-          "description": "Vágási magasság centiméterben, 0,5 cm-es lépésekben."
-        },
         "map_id": {
-          "name": "Térképazonosító",
-          "description": "A módosítandó térkép. Alapértelmezés szerint az aktív térkép. A térkép betöltése után az elérhető azonosítók a fűnyíró entitás „maps” attribútumában láthatók."
-        },
-        "zone_id": {
-          "name": "Zónaazonosító",
-          "description": "A teljes térkép helyett módosítandó zóna. Ezzel zónánkénti beállítások lépnek életbe: a többi zóna megtartja a saját magasságát, és a teljes térképre vonatkozó magasság nem alkalmazható többé. Az elérhető azonosítók a fűnyíró entitás „zones” attribútumában láthatók."
+          "name": "Térkép azonosító",
+          "description": "A térkép, amelyre váltani kell. Az elérhető térképazonosítók a fűnyíró entitás maps attribútumában láthatók, miután a térkép betöltődött."
         }
       }
     },
-    "set_edge_mowing_settings": {
-      "name": "Szegélynyírási beállítások megadása",
-      "description": "Módosítja a szegélynyírás beállításait a teljes térképen vagy annak egyik zónájában. A kihagyott beállítások megtartják jelenlegi értéküket. Zónánkénti beállítások esetén a módosítás minden zónára érvényes, mert a fűnyíró ilyenkor nem használja a teljes térképre vonatkozó beállításokat. Ezek a beállítások az aktív térképhez kapcsolóként is elérhetők.",
+    "set_mowing_settings": {
+      "name": "Nyírási beállítások megadása",
+      "description": "Egyszerre módosítja a nyírási beállítások bármelyikét a teljes térképen vagy annak egyik zónájában. A kihagyott beállítások megtartják jelenlegi értéküket. Zónánkénti beállítások esetén a módosítás minden zónára érvényes, mert a fűnyíró ilyenkor nem használja a teljes térképre vonatkozó beállításokat. A fűnyíró által nem támogatott beállításokat a rendszer elutasítja.",
       "fields": {
+        "efficiency": {
+          "name": "Nyírási hatékonyság",
+          "description": "Milyen gyorsan dolgozik a fűnyíró. A „Hatékony” mód naponta többet nyír, de kevésbé óvatos az akadályok körül."
+        },
+        "cutting_height": {
+          "name": "Vágási magasság",
+          "description": "Vágási magasság centiméterben, 0,5 cm-es lépésekben."
+        },
+        "mowing_direction": {
+          "name": "Nyírási irány",
+          "description": "A nyírási sávok iránya fokban, az alkalmazásban látható módon. A 180°-tól kezdődő szögek ugyanazokat a sávokat jelentik, mint a 180°-kal kisebb érték."
+        },
+        "mowing_direction_mode": {
+          "name": "Nyírási irány módja",
+          "description": "Megadja, hogy minden menet ugyanabba az irányba nyír-e, vagy az előző menethez képest elfordítja az irányt."
+        },
         "automatic_edge_mowing": {
           "name": "Automatikus szegélynyírás",
           "description": "Megadja, hogy a fűnyíró automatikusan lenyírja-e a szegélyeket a teljes térkép vagy egy zóna nyírásának befejezése után."
         },
         "safe_edge_mowing": {
           "name": "Biztonságos szegélynyírás",
-          "description": "Megadja, hogy a fűnyíró kis távolságot tart-e a gyep szélétől szegélynyírás közben. Nem minden modellen érhető el."
+          "description": "Megadja, hogy a fűnyíró kis távolságot tart-e a gyep szélétől szegélynyírás közben."
         },
         "edge_blade_offset": {
           "name": "A vágótárcsa oldalirányú eltolása",
-          "description": "Megadja, hogy a vágótárcsa oldalra tolódik-e a szegély menti menetek során, hogy közelebb vágjon a gyep széléhez. A funkció bekapcsolásakor a szegélymenetek száma egyről kettőre nő, hogy az eltolt tárcsa a teljes szegélyt lefedje."
+          "description": "Megadja, hogy a vágótárcsa oldalra tolódik-e a szegély menti menetek során, hogy közelebb vágjon a gyep széléhez. A funkció bekapcsolásakor a szegélymenetek száma egyről kettőre nő."
         },
-        "map_id": {
-          "name": "Térképazonosító",
-          "description": "A módosítandó térkép. Alapértelmezés szerint az aktív térkép."
+        "edge_obstacle_avoidance": {
+          "name": "Akadálykerülés a szegélyeken",
+          "description": "Megadja, hogy a fűnyíró a szegélyek mentén is kikerüli-e az akadályokat, ami miatt ott némi fű lenyíratlan maradhat. Automatikusan kikapcsol, ha sem a LiDAR, sem a kamera nem ismer fel akadályokat."
         },
-        "zone_id": {
-          "name": "Zónaazonosító",
-          "description": "A teljes térkép helyett módosítandó zóna. Ezzel zónánkénti beállítások lépnek életbe: a többi zóna megtartja saját értékeit, a teljes térképre vonatkozó beállítások pedig nem alkalmazhatók többé."
-        }
-      }
-    },
-    "set_mowing_direction": {
-      "name": "Nyírási irány beállítása",
-      "description": "Beállítja a nyírási sávok irányát a teljes térképen vagy annak egyik zónájában, valamint azt, hogyan változik ez az irány az egyes menetek között. Zónánkénti beállítások esetén a módosítás minden zónára érvényes, mert a fűnyíró ilyenkor nem használja a teljes térképre vonatkozó beállításokat. Az aktív térképnél ezek a beállítások számként és választóként is elérhetők.",
-      "fields": {
-        "angle": {
-          "name": "Szög",
-          "description": "A nyírás iránya fokban, az alkalmazásban látható módon. Ez egy vonal tájolása, nem haladási irány: a 180°-tól kezdődő szögek ugyanazokat a sávokat jelentik, mint a 180°-kal kisebb érték."
+        "lidar_obstacle_recognition": {
+          "name": "LiDAR-os akadályfelismerés",
+          "description": "Megadja, hogy a fűnyíró a LiDAR segítségével felismeri-e az akadályokat, és érintés nélkül kikerüli-e őket. Kapcsold ki, ha a fűnyírónak a magas füvet is le kell nyírnia."
         },
-        "mode": {
-          "name": "Nyírási mód",
-          "description": "Válaszd ki, hogy minden menet ugyanazt a nyírási irányt használja, vagy váltakozzon az előző menethez képest."
+        "obstacle_height": {
+          "name": "Akadálykerülési magasság",
+          "description": "A legalacsonyabb akadály, amelyet a fűnyíró kikerül, centiméterben."
+        },
+        "obstacle_distance": {
+          "name": "Akadálykerülési távolság",
+          "description": "Mekkora távolságot tart a fűnyíró az akadályoktól, centiméterben. Kisebb távolság ütközéshez vagy karcolásokhoz vezethet."
+        },
+        "ai_obstacle_recognition": {
+          "name": "MI-alapú akadályfelismerés",
+          "description": "Az akadálytípusok, amelyeket a kamera felismer, és amelyeket a fűnyíró kikerül. Üres lista esetén az akadályok kikerülése a lökhárítóra és a LiDAR-ra marad."
+        },
+        "turning_method": {
+          "name": "Fordulási mód",
+          "description": "Hogyan fordul a fűnyíró a sávok végén. A „Gyepkímélő” mód szélesebb ívben fordul és kíméli a gyepet, de némi helyet igényel a forduláshoz. Csak újabb firmware-en érhető el."
         },
         "map_id": {
           "name": "Térképazonosító",
@@ -344,6 +334,368 @@
         "map_id": {
           "name": "Térképazonosító",
           "description": "A módosítandó térkép. Alapértelmezés szerint az aktív térkép."
+        }
+      }
+    },
+    "set_no_go_zone": {
+      "name": "Tiltott zóna megadása",
+      "description": "Tiltott zónát rajzol az aktuális térképre, vagy módosít egyet, térképkoordinátákban (milliméterben, ahogy a térkép zónái is meg vannak adva). Visszaadja a zóna azonosítóját. A fűnyíró ehhez nem mozdul el, de nyírás vagy a töltőállomásra való visszatérés közben elutasítja.",
+      "fields": {
+        "shape": {
+          "name": "Alak",
+          "description": "Vonal, amelyen a fűnyíró nem halad át, téglalap vagy kör."
+        },
+        "points": {
+          "name": "Pontok",
+          "description": "Egy vonal két végpontja, egy téglalap két átellenes sarka vagy egy kör középpontja, mindegyik [x, y] formában."
+        },
+        "radius": {
+          "name": "Sugár",
+          "description": "A kör sugara milliméterben."
+        },
+        "zone_id": {
+          "name": "Tiltott zóna azonosítója",
+          "description": "Új zóna rajzolása helyett módosítandó tiltott zóna."
+        }
+      }
+    },
+    "set_ignore_obstacle_area": {
+      "name": "Akadályokat figyelmen kívül hagyó terület megadása",
+      "description": "Olyan területet rajzol az aktuális térképre, ahol a fűnyíró csak a lökhárítójára hagyatkozik, és áthajt az alacsony akadályokon, vagy módosít egyet. Visszaadja a terület azonosítóját. A fűnyíró ehhez nem mozdul el, de nyírás vagy a töltőállomásra való visszatérés közben elutasítja.",
+      "fields": {
+        "rect": {
+          "name": "Téglalap",
+          "description": "Két átellenes sarok [x0, y0, x1, y1] formában, milliméterben."
+        },
+        "area_id": {
+          "name": "Területazonosító",
+          "description": "Új terület rajzolása helyett módosítandó terület."
+        }
+      }
+    },
+    "set_spot_area": {
+      "name": "Pontszerű terület megadása",
+      "description": "Pontszerű területet rajzol az aktuális térképre, vagy módosít egyet. Egyetlen zónán belül kell lennie. Visszaadja a pontszerű terület azonosítóját. A fűnyíró ehhez nem mozdul el, de nyírás vagy a töltőállomásra való visszatérés közben elutasítja.",
+      "fields": {
+        "rect": {
+          "name": "Téglalap",
+          "description": "Két átellenes sarok [x0, y0, x1, y1] formában, milliméterben."
+        },
+        "area_id": {
+          "name": "Pontszerű terület azonosítója",
+          "description": "Új terület rajzolása helyett módosítandó pontszerű terület."
+        }
+      }
+    },
+    "set_maintenance_point": {
+      "name": "Karbantartási pont megadása",
+      "description": "Karbantartási pontot helyez el az aktuális térképen, vagy áthelyez egyet. Visszaadja a pont azonosítóját. A fűnyíró ehhez nem mozdul el, de nyírás vagy a töltőállomásra való visszatérés közben elutasítja.",
+      "fields": {
+        "x": {
+          "name": "X",
+          "description": "A pont helye milliméterben."
+        },
+        "y": {
+          "name": "Y",
+          "description": "A pont helye milliméterben."
+        },
+        "heading": {
+          "name": "Irány",
+          "description": "Merre néz ott a fűnyíró, fokban. Ha kimarad, az áthelyezett pont megtartja az irányát, az új pont 0 fok felé néz."
+        },
+        "point_id": {
+          "name": "Pontazonosító",
+          "description": "Új pont elhelyezése helyett áthelyezendő pont."
+        }
+      }
+    },
+    "delete_map_item": {
+      "name": "Térképelem törlése",
+      "description": "Töröl egy zónát, útvonalat, tiltott zónát, pontszerű területet, karbantartási pontot vagy akadályokat figyelmen kívül hagyó területet az aktuális térképről. Egy zóna törlésekor az időzítései is törlődnek. A fűnyíró ehhez nem mozdul el, de nyírás vagy a töltőállomásra való visszatérés közben elutasítja.",
+      "fields": {
+        "kind": {
+          "name": "Típus",
+          "description": "Az elem típusa."
+        },
+        "item_id": {
+          "name": "Elemazonosító",
+          "description": "Az elem azonosítója."
+        }
+      }
+    },
+    "rename_zone": {
+      "name": "Zóna átnevezése",
+      "description": "Legfeljebb 24 karakteres új nevet ad az aktuális térkép egyik zónájának. A fűnyíró ehhez nem mozdul el, de nyírás vagy a töltőállomásra való visszatérés közben elutasítja.",
+      "fields": {
+        "zone_id": {
+          "name": "Zónaazonosító",
+          "description": "Az átnevezendő zóna."
+        },
+        "name": {
+          "name": "Név",
+          "description": "Az új név."
+        }
+      }
+    },
+    "split_zone": {
+      "name": "Zóna felosztása",
+      "description": "Az aktuális térkép egyik zónáját egy rajta átmenő vonal mentén kettéosztja. A zónát tartalmazó időzítések törlődnek. Visszaadja a két zóna azonosítóját. A fűnyíró ehhez nem mozdul el, de nyírás vagy a töltőállomásra való visszatérés közben elutasítja.",
+      "fields": {
+        "zone_id": {
+          "name": "Zónaazonosító",
+          "description": "A felosztandó zóna."
+        },
+        "line": {
+          "name": "Vonal",
+          "description": "A vonal két végpontja [x0, y0, x1, y1] formában, milliméterben; át kell érnie a zónán."
+        }
+      }
+    },
+    "merge_zones": {
+      "name": "Zónák egyesítése",
+      "description": "Az aktuális térkép két szomszédos zónáját egyesíti. Visszaadja az egyesített zóna azonosítóját. A fűnyíró ehhez nem mozdul el, de nyírás vagy a töltőállomásra való visszatérés közben elutasítja.",
+      "fields": {
+        "zone_ids": {
+          "name": "Zónaazonosítók",
+          "description": "A két zóna."
+        }
+      }
+    },
+    "rename_map": {
+      "name": "Térkép átnevezése",
+      "description": "Legfeljebb 24 karakteres új nevet ad egy térképnek. A fűnyíró ehhez nem mozdul el, de nyírás vagy a töltőállomásra való visszatérés közben elutasítja.",
+      "fields": {
+        "map_id": {
+          "name": "Térképazonosító",
+          "description": "Az átnevezendő térkép."
+        },
+        "name": {
+          "name": "Név",
+          "description": "Az új név."
+        }
+      }
+    },
+    "clear_rain_protection": {
+      "name": "Esővédelem feloldása",
+      "description": "Feloldja a fűnyíró által jelzett esőt, így az utána indított nyírási feladat akkor is fut, ha az érzékelő vizet észlelt. Közvetlenül utána indítsd a feladatot; más hatása nincs."
+    },
+    "find_robot": {
+      "name": "Robot keresése",
+      "description": "A fűnyíró hangot ad, hogy a hangja alapján megtalálható legyen. Nem mozdul."
+    },
+    "clear_error": {
+      "name": "Hiba törlése",
+      "description": "Törli a fűnyíró által jelentett hibákat és figyelmeztetéseket, majd hagyja folytatni: a szüneteltetett feladat folytatódik, a feladat nélkül az állomáson kívül álló fűnyíró hazatér. A fűnyíró elindulhat.",
+      "fields": {
+        "continue_task": {
+          "name": "Folytatás",
+          "description": "A hibák törlése után a feladat folytatása vagy hazatérés. Kikapcsolva csak törli őket."
+        }
+      }
+    },
+    "set_do_not_disturb": {
+      "name": "Ne zavarjanak beállítása",
+      "description": "Be- vagy kikapcsolja a Ne zavarjanak módot, vagy módosítja az idősávját. Az idősávban nem indul feladat; a futó feladat az elején szünetel, és a fűnyíró visszatér az állomásra.",
+      "fields": {
+        "enabled": {
+          "name": "Bekapcsolva",
+          "description": "Be- vagy kikapcsolás; ha kimarad, változatlan marad."
+        },
+        "start": {
+          "name": "Kezdet",
+          "description": "Mikor kezdődik az idősáv; ha kimarad, változatlan marad."
+        },
+        "end": {
+          "name": "Vége",
+          "description": "Mikor ér véget az idősáv, másnap, ha korábbi a kezdetnél; ha kimarad, változatlan marad. Az időpontok 00:01 és 23:59 közé esnek."
+        }
+      }
+    },
+    "set_low_speed_at_night": {
+      "name": "Éjszakai lassú haladás beállítása",
+      "description": "Be- vagy kikapcsolja az éjszakai lassú haladást, vagy módosítja az idősávját, amelyben a fűnyíró lassan halad.",
+      "fields": {
+        "enabled": {
+          "name": "Bekapcsolva",
+          "description": "Be- vagy kikapcsolás; ha kimarad, változatlan marad."
+        },
+        "start": {
+          "name": "Kezdet",
+          "description": "Mikor kezdődik az idősáv; ha kimarad, változatlan marad."
+        },
+        "end": {
+          "name": "Vége",
+          "description": "Mikor ér véget az idősáv, másnap, ha korábbi a kezdetnél; ha kimarad, változatlan marad. Az időpontok 00:01 és 23:59 közé esnek."
+        }
+      }
+    },
+    "set_start_from_stop_point": {
+      "name": "Folytatás a megállási ponttól beállítása",
+      "description": "Megadja, hogy egy új feladat folytathatja-e ott, ahol egy befejezetlen megállt, és hány napig marad meg egy megállási pont. Kikapcsolva törli a fűnyíró megállási pontjait.",
+      "fields": {
+        "enabled": {
+          "name": "Bekapcsolva",
+          "description": "Be- vagy kikapcsolás; ha kimarad, változatlan marad."
+        },
+        "days": {
+          "name": "Napok",
+          "description": "Hány napig marad meg egy megállási pont, 1–7; ha kimarad, változatlan marad."
+        }
+      }
+    },
+    "set_light": {
+      "name": "Világítás beállítása",
+      "description": "Módosítja, mikor világítanak a fűnyíró lámpái: csak egy saját időszakban vagy egész nap, és mely állapotokban. A kihagyottak változatlanok maradnak.",
+      "fields": {
+        "custom_period": {
+          "name": "Saját időszak",
+          "description": "A lámpák csak a kezdet és vég közti időszakban."
+        },
+        "start": {
+          "name": "Kezdet",
+          "description": "Mikor kezdődik az időszak."
+        },
+        "end": {
+          "name": "Vége",
+          "description": "Mikor ér véget az időszak."
+        },
+        "standby": {
+          "name": "Készenlétben",
+          "description": "Világítás vagy figyelés készenlétben."
+        },
+        "working": {
+          "name": "Munka közben",
+          "description": "Világítás munka közben."
+        },
+        "charging": {
+          "name": "Töltés közben",
+          "description": "Világítás töltés közben."
+        },
+        "error": {
+          "name": "Hibánál",
+          "description": "Világítás, amíg a fűnyíró hibát jelez."
+        }
+      }
+    },
+    "set_human_presence_alert": {
+      "name": "Emberészlelési riasztás beállítása",
+      "description": "Módosítja a riasztást, amikor a fűnyíró kamerája embert lát: be van-e kapcsolva, mennyire érzékeny, mikor figyel, hogyan jelez és milyen gyakran. A kihagyottak változatlanok maradnak.",
+      "fields": {
+        "enabled": {
+          "name": "Bekapcsolva",
+          "description": "A riasztás be- vagy kikapcsolása."
+        },
+        "sensitivity": {
+          "name": "Érzékenység",
+          "description": "Milyen könnyen ismer fel egy embert."
+        },
+        "standby": {
+          "name": "Készenlétben",
+          "description": "Világítás vagy figyelés készenlétben."
+        },
+        "mowing": {
+          "name": "Nyírás közben",
+          "description": "Figyelés nyírás közben."
+        },
+        "returning": {
+          "name": "Visszatéréskor",
+          "description": "Figyelés az állomásra való visszatéréskor."
+        },
+        "patrolling": {
+          "name": "Járőrözéskor",
+          "description": "Figyelés járőrözés közben."
+        },
+        "voice": {
+          "name": "Beszéd és értesítés",
+          "description": "A fűnyíró megszólal, és értesítés megy ki."
+        },
+        "photo": {
+          "name": "Fénykép",
+          "description": "Fénykép készül a személyről, és az alkalmazás albumába kerül."
+        },
+        "interval": {
+          "name": "Időköz",
+          "description": "Legfeljebb egy riasztás ennyi percenként, az ezt támogató fűnyíróknál."
+        }
+      }
+    },
+    "set_robot_voice": {
+      "name": "Hang beállítása",
+      "description": "Módosítja a fűnyíró hangerejét és azt, milyen üzeneteket mond. A kihagyottak változatlanok maradnak.",
+      "fields": {
+        "volume": {
+          "name": "Hangerő",
+          "description": "0 és 100 között."
+        },
+        "regular": {
+          "name": "Általános értesítések",
+          "description": "Általános értesítések bemondása."
+        },
+        "work_status": {
+          "name": "Munkaállapot",
+          "description": "A munkaállapot bemondása."
+        },
+        "special_status": {
+          "name": "Különleges állapotok",
+          "description": "Különleges állapotok bemondása."
+        },
+        "error_status": {
+          "name": "Hibák",
+          "description": "Hibák bemondása."
+        }
+      }
+    },
+    "reset_consumable": {
+      "name": "Fogyóeszköz visszaállítása",
+      "description": "Újrakezdi egy fogyóeszköz számlálását, például a kések vagy az állomás tisztítókefe cseréje, illetve a fűnyíró karbantartása után.",
+      "fields": {
+        "item": {
+          "name": "Fogyóeszköz",
+          "description": "A kések, az állomás tisztítókeféje vagy a fűnyíró karbantartása."
+        }
+      }
+    },
+    "go_to_maintenance_point": {
+      "name": "Karbantartási pontra menés",
+      "description": "A fűnyírót az aktuális térkép egyik karbantartási pontjára küldi, ahol tisztításra vagy karbantartásra vár. A fűnyíró odamegy.",
+      "fields": {
+        "point_id": {
+          "name": "Karbantartási pont",
+          "description": "Az aktív térkép egy karbantartási pontjának azonosítója."
+        }
+      }
+    },
+    "ignore_obstacle": {
+      "name": "Akadály figyelmen kívül hagyása",
+      "description": "A fűnyíró elfelejti a kamerája által felismert akadályt, így az nem jelenik meg többé a térképen. Nem vonható vissza. A fűnyíró ehhez nem mozdul, de nyírás közben elutasítja.",
+      "fields": {
+        "obstacle_id": {
+          "name": "Akadály",
+          "description": "Az akadály azonosítója a fűnyírónál; a térképkártya kitölti, amikor ott figyelmen kívül hagynak egy akadályt."
+        }
+      }
+    },
+    "backup_map": {
+      "name": "Térkép biztonsági mentése",
+      "description": "Biztonsági mentést készít az aktuális térképről, felülírva a korábbi mentését. A fűnyíró ehhez nem mozdul el, de nyírás vagy a töltőállomásra való visszatérés közben elutasítja."
+    },
+    "restore_map": {
+      "name": "Térkép visszaállítása",
+      "description": "Visszaállítja az aktuális térképet a mentéséből, vagy egy hellyel egy törölt térképet hoz vissza az üres helyén maradt mentésből. A térkép ütemezései és nyírási beállításai visszaállhatnak alapértékre. A fűnyíró ehhez nem mozdul, de nyírás vagy hazatérés közben elutasítja.",
+      "fields": {
+        "slot": {
+          "name": "Hely",
+          "description": "Az üres térképhely 1-től számozva, amelynek mentése visszahozza a törölt térképet. Hagyja üresen az aktuális térkép visszaállításához."
+        }
+      }
+    },
+    "delete_map": {
+      "name": "Térkép törlése",
+      "description": "Töröl egy térképet mindennel együtt. A mentése az üres helyén marad, ahonnan a restore_map visszahozza; mentés nélkül új térképet kell felvenni az alkalmazásban, a fűnyíróval körbejárva. A fűnyíró ehhez nem mozdul, de nyírás vagy hazatérés közben elutasítja.",
+      "fields": {
+        "map_id": {
+          "name": "Térképazonosító",
+          "description": "A törlendő térkép."
         }
       }
     }

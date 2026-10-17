@@ -101,14 +101,6 @@ class TestDreameMowerCloudDevice:
             protocol._mqtt_client_connected = True
             assert protocol.connected is True
 
-    def test_object_name_property(self, protocol):
-        """Test object_name property."""
-        protocol._model = "test_model"
-        protocol._uid = "test_uid"
-        protocol._device_id = "test_did"
-        expected = "test_model/test_uid/test_did/0"
-        assert protocol.object_name == expected
-
     def test_get_api_url(self, protocol):
         """Test get_api_url method."""
         # The method should return a properly formatted URL with the protocol's country and API strings
@@ -589,20 +581,6 @@ class TestDreameMowerCloudDevice:
             
             assert result == {"batch_key": "batch_value"}
 
-    def test_set_batch_device_datas_success(self, protocol):
-        """Test set_batch_device_datas with successful response."""
-        protocol._device_id = "123"
-        
-        # Mock the cloud base connected property to return True
-        with patch('custom_components.dreame_mower.dreame.cloud.cloud_base.DreameMowerCloudBase.connected', new_callable=PropertyMock, return_value=True):
-            protocol._cloud_base._api_call = Mock(return_value={
-                "result": {"success": True}
-            })
-            
-            result = protocol.set_batch_device_datas(["prop1", "prop2"])
-            
-            assert result == {"success": True}
-
     @patch('custom_components.dreame_mower.dreame.cloud.cloud_device.mqtt_client.Client')
     def test_connect_success(self, mock_mqtt_client, protocol):
         """Test connect method with successful connection."""
@@ -718,34 +696,6 @@ class TestDreameMowerCloudDevice:
         )
         assert result == {"1.1": "value1"}
 
-    def test_set_property_dreame_cloud(self, protocol):
-        """Test set_property method with dreame cloud."""
-        with patch.object(type(protocol), 'device_id', new_callable=PropertyMock, return_value="123"):
-            protocol.set_properties = Mock(return_value="success")
-            
-            result = protocol.set_property(1, 2, "test_value")
-            
-            expected_params = [{
-                "did": "123",
-                "siid": 1,
-                "piid": 2,
-                "value": "test_value"
-            }]
-            protocol.set_properties.assert_called_once_with(expected_params, retry_count=2)
-            assert result == "success"
-
-    def test_set_properties(self, protocol):
-        """Test set_properties method."""
-        protocol.send = Mock(return_value="success")
-        
-        params = [{"siid": 1, "piid": 2, "value": "test"}]
-        result = protocol.set_properties(params)
-
-        protocol.send.assert_called_once_with(
-            "set_properties", parameters=params, retry_count=2
-        )
-        assert result == "success"
-
     # action_async removed in current implementation; covered in legacy tests
 
     # action_async removed in current implementation; covered in legacy tests
@@ -805,3 +755,123 @@ class TestDreameMowerCloudDevice:
                 protocol.send.assert_called_with(
                     "action", parameters=expected_params, retry_count=2
                 )
+
+
+class TestEventHistory:
+    """The cloud's records of a device event."""
+
+    @pytest.fixture
+    def protocol(self):
+        return DreameMowerCloudDevice(
+            username="test_user", password="test_pass", country="eu", account_type="dreame", device_id="12345"
+        )
+
+    def test_asks_for_the_event_since_a_time(self, protocol):
+        records = [{"history": "[]", "createTime": 1}]
+        protocol._cloud_base._api_call = Mock(return_value={"code": 0, "data": {"list": records}})
+
+        assert protocol.get_event_history(4, 1, 1704038400, 500) == records
+
+        url, params = protocol._cloud_base._api_call.call_args.args
+        assert url == "dreame-user-iot/iotstatus/history"
+        assert params == {"did": "12345", "siid": 4, "eiid": 1, "type": 3, "from": 1704038400, "limit": 500}
+
+    @pytest.mark.parametrize("response", [None, {"code": 10001, "msg": "unreadable"}])
+    def test_reports_an_answer_it_cannot_use_as_none(self, protocol, response):
+        protocol._cloud_base._api_call = Mock(return_value=response)
+
+        assert protocol.get_event_history(4, 1, 0, 500) is None
+
+    def test_an_event_without_records_has_an_empty_history(self, protocol):
+        protocol._cloud_base._api_call = Mock(return_value={"code": 0, "data": {}})
+
+        assert protocol.get_event_history(4, 1, 0, 500) == []
+
+
+class TestDeviceFile:
+    """Files the cloud fetches from the device."""
+
+    @pytest.fixture
+    def protocol(self):
+        return DreameMowerCloudDevice(
+            username="test_user", password="test_pass", country="eu", account_type="dreame", device_id="12345"
+        )
+
+    def test_a_file_arrives_decoded(self, protocol):
+        import base64 as b64
+
+        protocol._cloud_base.post_json = Mock(return_value=(200, {"code": 0, "data": {"byte": b64.b64encode(b"\xff\xd8jpeg").decode()}}))
+
+        assert protocol.get_device_file("a.jpg", "ai_obs") == (b"\xff\xd8jpeg", False)
+        url, body, _timeout = protocol._cloud_base.post_json.call_args.args
+        assert url == "file-bridge/user/getDeiviceFile"
+        assert body == {"did": "12345", "fileinfo": '{"filename": "a.jpg", "type": "ai_obs"}'}
+
+    def test_a_device_too_slow_to_send_may_be_asked_again(self, protocol):
+        protocol._cloud_base.post_json = Mock(return_value=(500, {"code": 10500, "msg": "timeout"}))
+
+        assert protocol.get_device_file("a.jpg", "ai_obs") == (None, True)
+
+    def test_a_missing_file_is_not_asked_for_again(self, protocol):
+        protocol._cloud_base.post_json = Mock(return_value=(404, {"code": 404, "data": {"result": "fail"}}))
+
+        assert protocol.get_device_file("a.jpg", "ai_obs") == (None, False)
+
+
+    def test_a_file_sent_as_it_is_arrives_as_it_is(self, protocol):
+        protocol._cloud_base.post_json = Mock(return_value=(200, b"\xff\xd8jpeg"))
+
+        assert protocol.get_device_file("a.jpg", "ai_obs") == (b"\xff\xd8jpeg", False)
+
+    def test_an_encoded_answer_that_is_no_photo_is_asked_for_again(self, protocol):
+        import base64 as b64
+
+        protocol._cloud_base.post_json = Mock(return_value=(200, {"code": 0, "data": {"byte": b64.b64encode(b"<html>").decode()}}))
+
+        assert protocol.get_device_file("a.jpg", "ai_obs") == (None, True)
+
+    def test_a_page_that_is_no_photo_is_asked_for_again(self, protocol):
+        protocol._cloud_base.post_json = Mock(return_value=(200, b"<html>busy</html>"))
+
+        assert protocol.get_device_file("a.jpg", "ai_obs") == (None, True)
+
+
+class TestPostJson:
+    """A single JSON request whose status the caller judges."""
+
+    @pytest.fixture
+    def base(self):
+        protocol = DreameMowerCloudDevice(
+            username="test_user", password="test_pass", country="eu", account_type="dreame", device_id="12345"
+        )
+        return protocol._cloud_base
+
+    def _response(self, status, content, parsed=None):
+        response = Mock(status_code=status, content=content)
+        if parsed is None:
+            response.json = Mock(side_effect=ValueError)
+        else:
+            response.json = Mock(return_value=parsed)
+        return response
+
+    def test_json_answers_are_parsed_and_others_kept_as_bytes(self, base):
+        base._session.post = Mock(return_value=self._response(200, b"{}", {"code": 0}))
+        assert base.post_json("a/b", {"x": 1}, 5) == (200, {"code": 0})
+        url = base._session.post.call_args.args[0]
+        assert url.endswith("/a/b")
+        assert base._session.post.call_args.kwargs["data"] == '{"x":1}'
+
+        base._session.post = Mock(return_value=self._response(500, b"raw"))
+        assert base.post_json("a/b", {}, 5) == (500, b"raw")
+
+    def test_a_failed_exchange_gives_nothing(self, base):
+        base._session.post = Mock(side_effect=requests.exceptions.ConnectionError())
+        assert base.post_json("a/b", {}, 5) == (None, None)
+
+    def test_a_token_the_cloud_refused_is_renewed_once(self, base):
+        base._secondary_key = "refresh"
+        base.connect = Mock()
+        base._session.post = Mock(side_effect=[self._response(401, b""), self._response(200, b"{}", {"code": 0})])
+
+        assert base.post_json("a/b", {}, 5) == (200, {"code": 0})
+        base.connect.assert_called_once()

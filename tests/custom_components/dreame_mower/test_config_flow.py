@@ -145,8 +145,5 @@ class TestOptionsFlow:
             validated = schema({
                 CONF_NOTIFY: [],
                 CONF_MAP_ROTATION: value,
-                "map_show_title": True,
-                "map_show_legend": True,
-                "map_padding": 50,
             })
             assert validated[CONF_MAP_ROTATION] == int(value)

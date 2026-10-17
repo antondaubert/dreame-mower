@@ -34,3 +34,13 @@ jobs:
       - name: "Run mypy"
         run: |
           python -m mypy custom_components/dreame_mower/ --ignore-missing-imports --python-version 3.14
+
+      - name: "Set up Node"
+        uses: "actions/setup-node@v4"
+        with:
+          node-version: "22"
+
+      - name: "Run the map card tests"
+        run: |
+          npm ci
+          npm test

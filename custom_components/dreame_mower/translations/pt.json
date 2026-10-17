@@ -3,39 +3,39 @@
     "step": {
       "user": {
         "title": "Escolha o tipo de conta",
-        "description": "Selecione seu tipo de conta para a integração do cortador de sonho.",
+        "description": "Selecione o tipo de conta para a integração Dreame Mower.",
         "data": {
           "account_type": "Tipo de conta"
         }
       },
       "dreame": {
         "data": {
-          "username": "Nome de usuário",
-          "password": "Senha",
+          "username": "Nome de utilizador",
+          "password": "Palavra-passe",
           "country": "País do servidor"
         },
-        "description": "Faça login na nuvem Dreamehome."
+        "description": "Inicie sessão na nuvem Dreamehome."
       },
       "mova": {
         "data": {
-          "username": "Nome de usuário",
-          "password": "Senha",
+          "username": "Nome de utilizador",
+          "password": "Palavra-passe",
           "country": "País do servidor"
         },
-        "description": "Faça login na nuvem movehome."
+        "description": "Inicie sessão na nuvem MOVAhome."
       },
       "devices": {
         "data": {
           "devices": "Dispositivos suportados"
         },
-        "description": "Selecione o dispositivo de cortador de sonho que você deseja configurar."
+        "description": "Selecione o dispositivo Dreame Mower que pretende configurar."
       },
       "options": {
         "data": {
           "name": "Nome do dispositivo",
           "notify": "Tipos de notificação"
         },
-        "description": "Configure o nome do dispositivo do cortador de sonho e as preferências de notificação."
+        "description": "Configure o nome do dispositivo Dreame Mower e as preferências de notificação."
       }
     },
     "error": {
@@ -47,7 +47,6 @@
       "invalid_account_type": "Tipo de conta inválido selecionado."
     },
     "abort": {
-      "cannot_connect": "Falhou em conectar.",
       "already_configured": "Este dispositivo já está configurado."
     }
   },
@@ -55,13 +54,10 @@
     "step": {
       "init": {
         "title": "Opções",
-        "description": "Ligado com {account} ({account_type}, {country}).\n\nConfigurar configurações de notificação para a integração do cortador de cortinas de sonho.",
+        "description": "Ligado a {account} ({account_type}, {country}).\n\nEscolha que notificações pretende receber do seu corta-relva Dreame.",
         "data": {
           "notify": "Tipos de notificação",
-          "map_rotation": "Rotação do mapa",
-          "map_show_title": "Mostrar título do mapa",
-          "map_show_legend": "Mostrar legenda do mapa",
-          "map_padding": "Margem do mapa (píxeis)"
+          "map_rotation": "Rotação do mapa"
         }
       }
     }
@@ -86,48 +82,8 @@
           "maintenance_paused": "Pausado no ponto de manutenção"
         }
       },
-      "charging_status": {
-        "name": "Status de carregamento",
-        "state": {
-          "not_docked": "Não atracado",
-          "charging": "Carregamento",
-          "not_charging": "Não cobrar",
-          "charging_completed": "Cobrança concluída",
-          "return_to_charge": "Retornar à cobrança",
-          "charging_paused_high_temperature": "Carregamento pausado: temperatura da bateria muito alta",
-          "charging_paused_low_temperature": "Carregamento pausado: temperatura da bateria muito baixa"
-        }
-      },
       "mowing_progress": {
         "name": "Progresso da corte"
-      },
-      "bluetooth_connection": {
-        "name": "Bluetooth"
-      },
-      "dnd_status": {
-        "name": "Não incomodar"
-      },
-      "charging_schedule": {
-        "name": "Cronograma de cobrança"
-      },
-      "timezone": {
-        "name": "Fuso horário"
-      },
-      "device_code": {
-        "name": "Código do dispositivo"
-      },
-      "current_task": {
-        "name": "Tarefa atual",
-        "state": {
-          "idle": "Sem tarefa",
-          "starting": "Iniciando",
-          "mowing": "Cortando",
-          "paused": "Pausada",
-          "finished": "Concluída",
-          "failed": "Falhou",
-          "exit": "Parada",
-          "returning_to_dock": "Retornando à estação"
-        }
       },
       "consumable_blade_health": {
         "name": "Estado das lâminas"
@@ -143,36 +99,6 @@
       },
       "account": {
         "name": "Conta"
-      }
-    },
-    "camera": {
-      "map_camera": {
-        "name": "Mapa"
-      }
-    },
-    "button": {
-      "reset_blade": {
-        "name": "Repor contador de lâminas"
-      },
-      "reset_brush": {
-        "name": "Repor contador de escova"
-      },
-      "reset_robot_maintenance": {
-        "name": "Repor contador de manutenção"
-      },
-      "dock_without_stopping": {
-        "name": "Regressar à base sem parar a tarefa"
-      },
-      "go_to_maintenance_point": {
-        "name": "Ir para o ponto de manutenção"
-      }
-    },
-    "number": {
-      "cutting_height": {
-        "name": "Altura de corte"
-      },
-      "mowing_direction": {
-        "name": "Direção de corte"
       }
     },
     "switch": {
@@ -197,14 +123,20 @@
       "schedule": {
         "name": "Agendamento {number}"
       },
-      "edge_mowing_auto": {
-        "name": "Corte automático de bordo"
+      "frost_protection": {
+        "name": "Proteção contra geada"
       },
-      "edge_blade_offset": {
-        "name": "EdgeMaster"
+      "path_obstacle_avoidance": {
+        "name": "Desvio de obstáculos nos caminhos"
       },
-      "edge_mowing_safe": {
-        "name": "Corte seguro de bordas"
+      "auto_recharge_standby": {
+        "name": "Recarga automática após espera"
+      },
+      "ai_obstacle_photos": {
+        "name": "Fotografar obstáculos detetados por IA"
+      },
+      "child_lock": {
+        "name": "Bloqueio para crianças"
       }
     },
     "time": {
@@ -218,6 +150,9 @@
     "select": {
       "rain_delay": {
         "name": "Espera após a chuva"
+      },
+      "navigation_path": {
+        "name": "Rota de navegação"
       }
     }
   },
@@ -234,9 +169,50 @@
         "map_wide": "Uma definição para todo o mapa",
         "per_zone": "Uma definição por zona"
       }
+    },
+    "mowing_efficiency": {
+      "options": {
+        "standard": "Padrão",
+        "efficient": "Eficiente"
+      }
+    },
+    "turning_method": {
+      "options": {
+        "efficient": "Eficiente",
+        "lawn_care": "Cuidado do relvado"
+      }
+    },
+    "ai_obstacle_kind": {
+      "options": {
+        "humans": "Pessoas",
+        "animals": "Animais",
+        "objects": "Objetos"
+      }
     }
   },
   "services": {
+    "start_all_area_mowing": {
+      "name": "Iniciar corte de toda a área",
+      "description": "Corta todo o mapa ativo. Uma sessão de corte em curso é retomada.",
+      "fields": {
+        "from_stop_point": {
+          "name": "A partir do ponto de paragem",
+          "description": "Onde uma tarefa inacabada parou numa zona: ligado, corta só o restante; desligado, corta desde o início. Se omitido, o corta-relva não é informado."
+        }
+      }
+    },
+    "end_task": {
+      "name": "Terminar tarefa",
+      "description": "Termina a tarefa de corte em curso. O corta-relva fica onde está e guarda onde a tarefa parou, para que uma tarefa posterior possa continuar dali."
+    },
+    "stop_returning": {
+      "name": "Parar regresso",
+      "description": "Para o corta-relva a caminho da base. Fica onde está."
+    },
+    "recharge": {
+      "name": "Recarregar",
+      "description": "Envia o corta-relva para a base para carregar. Uma tarefa de corte em curso é mantida para continuar depois."
+    },
     "start_zone_mowing": {
       "name": "Iniciar corte de zonas",
       "description": "Inicia o corte de uma ou mais zonas selecionadas.",
@@ -244,6 +220,10 @@
         "zone_ids": {
           "name": "IDs das zonas",
           "description": "Lista de IDs das zonas a cortar, por exemplo [1, 3]."
+        },
+        "from_stop_point": {
+          "name": "A partir do ponto de paragem",
+          "description": "Onde uma tarefa inacabada parou numa zona: ligado, corta só o restante; desligado, corta desde o início. Se omitido, o corta-relva não é informado."
         }
       }
     },
@@ -267,61 +247,71 @@
         }
       }
     },
-    "set_cutting_height": {
-      "name": "Definir altura de corte",
-      "description": "Define a altura de corte para todo o mapa ou para uma das suas zonas. Nem todos os modelos permitem ajustar a altura; o intervalo disponível depende do modelo.",
+    "select_map": {
+      "name": "Selecionar mapa",
+      "description": "Faz o corta-relva trabalhar noutro mapa. Não é possível enquanto decorre uma tarefa de corte.",
       "fields": {
-        "height": {
-          "name": "Altura de corte",
-          "description": "Altura de corte em centímetros, em incrementos de 0,5 cm."
-        },
         "map_id": {
           "name": "ID do mapa",
-          "description": "Mapa a alterar. Por predefinição, o mapa ativo. Os IDs disponíveis aparecem no atributo 'maps' da entidade do cortador depois de o mapa ser carregado."
-        },
-        "zone_id": {
-          "name": "ID da zona",
-          "description": "Zona a alterar em vez de todo o mapa. Isto ativa as definições por zona: as restantes zonas mantêm as suas próprias alturas e a altura geral do mapa deixa de se aplicar. Os IDs disponíveis aparecem no atributo 'zones' da entidade do cortador."
+          "description": "Mapa para o qual mudar. Os IDs de mapa disponíveis aparecem no atributo maps da entidade do corta-relva depois de o mapa ser carregado."
         }
       }
     },
-    "set_edge_mowing_settings": {
-      "name": "Definir as opções de corte dos limites",
-      "description": "Altera as definições de corte dos limites para todo o mapa ou para uma das suas zonas. As definições omitidas mantêm o valor atual. Se o mapa usar definições por zona, as alterações são aplicadas a todas as zonas porque o cortador deixa de usar as definições gerais do mapa. Estas definições também estão disponíveis como interruptores para o mapa ativo.",
+    "set_mowing_settings": {
+      "name": "Definir as opções de corte",
+      "description": "Altera de uma só vez qualquer definição de corte para todo o mapa ou para uma das suas zonas. As definições omitidas mantêm o valor atual. Se o mapa usar definições por zona, as alterações são aplicadas a todas as zonas porque o cortador deixa de usar as definições gerais do mapa. As definições que o cortador não oferece são recusadas.",
       "fields": {
+        "efficiency": {
+          "name": "Eficiência de corte",
+          "description": "Rapidez com que o cortador trabalha. 'Eficiente' corta mais por dia, com menos cuidado à volta dos obstáculos."
+        },
+        "cutting_height": {
+          "name": "Altura de corte",
+          "description": "Altura de corte em centímetros, em incrementos de 0,5 cm."
+        },
+        "mowing_direction": {
+          "name": "Direção de corte",
+          "description": "Direção das linhas de corte em graus, tal como apresentada na aplicação. Ângulos a partir de 180° representam as mesmas linhas que o ângulo 180° inferior."
+        },
+        "mowing_direction_mode": {
+          "name": "Modo da direção de corte",
+          "description": "Indica se cada sessão corta na mesma direção ou a roda em relação à sessão anterior."
+        },
         "automatic_edge_mowing": {
           "name": "Corte automático dos limites",
           "description": "Indica se o cortador corta automaticamente os limites depois de terminar o corte de todo o mapa ou de uma zona."
         },
         "safe_edge_mowing": {
           "name": "Corte seguro dos limites",
-          "description": "Indica se o cortador mantém uma pequena margem em relação ao limite do relvado durante o corte. Não está disponível em todos os modelos."
+          "description": "Indica se o cortador mantém uma pequena margem em relação ao limite do relvado durante o corte."
         },
         "edge_blade_offset": {
           "name": "Deslocamento lateral do disco",
-          "description": "Indica se o disco de corte se desloca lateralmente nas passagens junto aos limites para cortar mais perto. Ativar esta opção também aumenta as passagens nos limites de uma para duas, para que o disco deslocado cubra todo o limite."
+          "description": "Indica se o disco de corte se desloca lateralmente nas passagens junto aos limites para cortar mais perto. Ativar esta opção também aumenta as passagens nos limites de uma para duas."
         },
-        "map_id": {
-          "name": "ID do mapa",
-          "description": "Mapa a alterar. Por predefinição, o mapa ativo. Os IDs disponíveis aparecem no atributo 'maps' da entidade do cortador depois de o mapa ser carregado."
+        "edge_obstacle_avoidance": {
+          "name": "Desvio de obstáculos nos limites",
+          "description": "Indica se o cortador também contorna os obstáculos ao longo dos limites, o que pode deixar alguma relva por cortar. Desativa-se automaticamente quando nem o LiDAR nem a câmara reconhecem obstáculos."
         },
-        "zone_id": {
-          "name": "ID da zona",
-          "description": "Zona a alterar em vez de todo o mapa. Isto ativa as definições por zona: as restantes zonas mantêm as suas próprias definições e as definições gerais do mapa deixam de se aplicar. Os IDs disponíveis aparecem no atributo 'zones' da entidade do cortador."
-        }
-      }
-    },
-    "set_mowing_direction": {
-      "name": "Definir a direção de corte",
-      "description": "Define a direção das linhas de corte para todo o mapa ou para uma das suas zonas, e como essa direção muda entre sessões. Se o mapa usar definições por zona, as alterações são aplicadas a todas as zonas porque o cortador deixa de usar as definições gerais do mapa. Estas definições também estão disponíveis como número e seletor para o mapa ativo.",
-      "fields": {
-        "angle": {
-          "name": "Ângulo",
-          "description": "Direção de corte em graus, tal como apresentada na aplicação. É a orientação de uma linha, não o sentido da marcha: ângulos a partir de 180° representam as mesmas linhas que o ângulo 180° inferior."
+        "lidar_obstacle_recognition": {
+          "name": "Reconhecimento de obstáculos por LiDAR",
+          "description": "Indica se o cortador reconhece os obstáculos com o LiDAR e os contorna sem lhes tocar. Desative para deixar o cortador cortar relva alta."
         },
-        "mode": {
-          "name": "Modo de corte",
-          "description": "Escolha se cada sessão mantém a mesma direção de corte ou alterna em relação à sessão anterior."
+        "obstacle_height": {
+          "name": "Altura de desvio de obstáculos",
+          "description": "O obstáculo mais baixo que o cortador contorna, em centímetros."
+        },
+        "obstacle_distance": {
+          "name": "Distância de desvio de obstáculos",
+          "description": "Distância que o cortador mantém dos obstáculos, em centímetros. Uma distância menor pode provocar colisões ou riscos."
+        },
+        "ai_obstacle_recognition": {
+          "name": "Reconhecimento de obstáculos por IA",
+          "description": "Tipos de obstáculo que a câmara reconhece e que o cortador contorna. Com uma lista vazia, o desvio de obstáculos fica a cargo do para-choques e do LiDAR."
+        },
+        "turning_method": {
+          "name": "Modo de viragem",
+          "description": "Como o cortador vira no fim de cada linha. 'Cuidado do relvado' vira mais aberto e poupa o relvado, mas precisa de algum espaço para virar. Disponível apenas em firmware mais recente."
         },
         "map_id": {
           "name": "ID do mapa",
@@ -344,6 +334,368 @@
         "map_id": {
           "name": "ID do mapa",
           "description": "Mapa a alterar. Por predefinição, o mapa ativo."
+        }
+      }
+    },
+    "set_no_go_zone": {
+      "name": "Definir zona proibida",
+      "description": "Desenha uma zona proibida no mapa atual, ou altera uma, em coordenadas do mapa (milímetros, tal como as zonas do mapa são indicadas). Devolve o ID da zona. O corta-relva não se move para isso, mas recusa o comando enquanto corta ou regressa à base.",
+      "fields": {
+        "shape": {
+          "name": "Forma",
+          "description": "Uma linha que o corta-relva não atravessa, um retângulo ou um círculo."
+        },
+        "points": {
+          "name": "Pontos",
+          "description": "As duas extremidades de uma linha, dois cantos opostos de um retângulo ou o centro de um círculo, cada um como [x, y]."
+        },
+        "radius": {
+          "name": "Raio",
+          "description": "Raio de um círculo em milímetros."
+        },
+        "zone_id": {
+          "name": "ID da zona proibida",
+          "description": "A zona proibida a alterar em vez de desenhar uma nova."
+        }
+      }
+    },
+    "set_ignore_obstacle_area": {
+      "name": "Definir área de obstáculos ignorados",
+      "description": "Desenha no mapa atual uma área onde o corta-relva conta apenas com o para-choques e passa por cima de obstáculos baixos, ou altera uma. Devolve o ID da área. O corta-relva não se move para isso, mas recusa o comando enquanto corta ou regressa à base.",
+      "fields": {
+        "rect": {
+          "name": "Retângulo",
+          "description": "Dois cantos opostos como [x0, y0, x1, y1], em milímetros."
+        },
+        "area_id": {
+          "name": "ID da área",
+          "description": "A área a alterar em vez de desenhar uma nova."
+        }
+      }
+    },
+    "set_spot_area": {
+      "name": "Definir área localizada",
+      "description": "Desenha uma área localizada no mapa atual, ou altera uma. Tem de ficar dentro de uma única zona. Devolve o ID da área localizada. O corta-relva não se move para isso, mas recusa o comando enquanto corta ou regressa à base.",
+      "fields": {
+        "rect": {
+          "name": "Retângulo",
+          "description": "Dois cantos opostos como [x0, y0, x1, y1], em milímetros."
+        },
+        "area_id": {
+          "name": "ID da área localizada",
+          "description": "A área localizada a alterar em vez de desenhar uma nova."
+        }
+      }
+    },
+    "set_maintenance_point": {
+      "name": "Definir ponto de manutenção",
+      "description": "Coloca um ponto de manutenção no mapa atual, ou move um. Devolve o ID do ponto. O corta-relva não se move para isso, mas recusa o comando enquanto corta ou regressa à base.",
+      "fields": {
+        "x": {
+          "name": "X",
+          "description": "Onde o ponto fica, em milímetros."
+        },
+        "y": {
+          "name": "Y",
+          "description": "Onde o ponto fica, em milímetros."
+        },
+        "heading": {
+          "name": "Orientação",
+          "description": "Para onde o corta-relva fica virado ali, em graus. Se omitido, um ponto movido mantém a direção e um novo fica virado para 0 graus."
+        },
+        "point_id": {
+          "name": "ID do ponto",
+          "description": "O ponto a mover em vez de colocar um novo."
+        }
+      }
+    },
+    "delete_map_item": {
+      "name": "Eliminar item do mapa",
+      "description": "Elimina uma zona, caminho, zona proibida, área localizada, ponto de manutenção ou área de obstáculos ignorados do mapa atual. Eliminar uma zona também remove os seus agendamentos. O corta-relva não se move para isso, mas recusa o comando enquanto corta ou regressa à base.",
+      "fields": {
+        "kind": {
+          "name": "Tipo",
+          "description": "Que tipo de item é."
+        },
+        "item_id": {
+          "name": "ID do item",
+          "description": "O ID do item."
+        }
+      }
+    },
+    "rename_zone": {
+      "name": "Mudar o nome da zona",
+      "description": "Dá a uma zona do mapa atual um novo nome com até 24 caracteres. O corta-relva não se move para isso, mas recusa o comando enquanto corta ou regressa à base.",
+      "fields": {
+        "zone_id": {
+          "name": "ID da zona",
+          "description": "A zona a que mudar o nome."
+        },
+        "name": {
+          "name": "Nome",
+          "description": "O novo nome."
+        }
+      }
+    },
+    "split_zone": {
+      "name": "Dividir zona",
+      "description": "Divide em duas uma zona do mapa atual ao longo de uma linha que a atravessa. Os agendamentos que incluem a zona são removidos. Devolve os IDs das duas zonas. O corta-relva não se move para isso, mas recusa o comando enquanto corta ou regressa à base.",
+      "fields": {
+        "zone_id": {
+          "name": "ID da zona",
+          "description": "A zona a dividir."
+        },
+        "line": {
+          "name": "Linha",
+          "description": "As duas extremidades da linha como [x0, y0, x1, y1], em milímetros; deve atravessar a zona."
+        }
+      }
+    },
+    "merge_zones": {
+      "name": "Unir zonas",
+      "description": "Une duas zonas vizinhas do mapa atual numa só. Devolve o ID da zona resultante. O corta-relva não se move para isso, mas recusa o comando enquanto corta ou regressa à base.",
+      "fields": {
+        "zone_ids": {
+          "name": "IDs das zonas",
+          "description": "As duas zonas."
+        }
+      }
+    },
+    "rename_map": {
+      "name": "Mudar o nome do mapa",
+      "description": "Dá a um mapa um novo nome com até 24 caracteres. O corta-relva não se move para isso, mas recusa o comando enquanto corta ou regressa à base.",
+      "fields": {
+        "map_id": {
+          "name": "ID do mapa",
+          "description": "O mapa a que mudar o nome."
+        },
+        "name": {
+          "name": "Nome",
+          "description": "O novo nome."
+        }
+      }
+    },
+    "clear_rain_protection": {
+      "name": "Desativar a proteção contra chuva",
+      "description": "Limpa a chuva comunicada pelo corta-relva, para que uma tarefa de corte iniciada a seguir seja executada mesmo que o sensor tenha detetado água. Inicie a tarefa logo a seguir; não provoca nenhuma outra ação."
+    },
+    "find_robot": {
+      "name": "Encontrar robô",
+      "description": "Faz o corta-relva emitir um som para ser encontrado. Não se move."
+    },
+    "clear_error": {
+      "name": "Limpar erro",
+      "description": "Limpa os erros e avisos comunicados pelo corta-relva e deixa-o continuar: uma tarefa em pausa é retomada e um corta-relva fora da base sem tarefa regressa a casa. O corta-relva pode mover-se.",
+      "fields": {
+        "continue_task": {
+          "name": "Continuar",
+          "description": "Retomar a tarefa, ou regressar a casa, depois de limpar os erros. Desligado apenas os limpa."
+        }
+      }
+    },
+    "set_do_not_disturb": {
+      "name": "Definir Não incomodar",
+      "description": "Liga ou desliga o Não incomodar, ou muda a sua janela. Nenhuma tarefa começa na janela; uma tarefa em curso fica em pausa no início e o corta-relva regressa à base.",
+      "fields": {
+        "enabled": {
+          "name": "Ativado",
+          "description": "Ligar ou desligar; se omitido, fica como está."
+        },
+        "start": {
+          "name": "Início",
+          "description": "Quando a janela começa; se omitido, fica como está."
+        },
+        "end": {
+          "name": "Fim",
+          "description": "Quando a janela termina, no dia seguinte se for antes do início; se omitido, fica como está. Os horários vão das 00:01 às 23:59."
+        }
+      }
+    },
+    "set_low_speed_at_night": {
+      "name": "Definir velocidade baixa à noite",
+      "description": "Liga ou desliga a velocidade baixa à noite, ou muda a sua janela, na qual o corta-relva anda devagar.",
+      "fields": {
+        "enabled": {
+          "name": "Ativado",
+          "description": "Ligar ou desligar; se omitido, fica como está."
+        },
+        "start": {
+          "name": "Início",
+          "description": "Quando a janela começa; se omitido, fica como está."
+        },
+        "end": {
+          "name": "Fim",
+          "description": "Quando a janela termina, no dia seguinte se for antes do início; se omitido, fica como está. Os horários vão das 00:01 às 23:59."
+        }
+      }
+    },
+    "set_start_from_stop_point": {
+      "name": "Definir início no ponto de paragem",
+      "description": "Escolhe se uma nova tarefa pode continuar onde uma inacabada parou e por quantos dias um ponto de paragem é guardado. Desligar apaga os pontos de paragem do corta-relva.",
+      "fields": {
+        "enabled": {
+          "name": "Ativado",
+          "description": "Ligar ou desligar; se omitido, fica como está."
+        },
+        "days": {
+          "name": "Dias",
+          "description": "Por quantos dias um ponto de paragem é guardado, de 1 a 7; se omitido, fica como está."
+        }
+      }
+    },
+    "set_light": {
+      "name": "Definir luz",
+      "description": "Muda quando as luzes do corta-relva acendem: só num período próprio ou todo o dia, e em que estados. O que for omitido fica como está.",
+      "fields": {
+        "custom_period": {
+          "name": "Período próprio",
+          "description": "Limitar as luzes ao período do início ao fim."
+        },
+        "start": {
+          "name": "Início",
+          "description": "Quando o período começa."
+        },
+        "end": {
+          "name": "Fim",
+          "description": "Quando o período termina."
+        },
+        "standby": {
+          "name": "Em espera",
+          "description": "Luz ou vigilância em espera."
+        },
+        "working": {
+          "name": "A trabalhar",
+          "description": "Luz durante o trabalho."
+        },
+        "charging": {
+          "name": "A carregar",
+          "description": "Luz durante a carga."
+        },
+        "error": {
+          "name": "Em erros",
+          "description": "Luz enquanto o corta-relva comunica um erro."
+        }
+      }
+    },
+    "set_human_presence_alert": {
+      "name": "Definir alerta de presença humana",
+      "description": "Muda o alerta dado quando a câmara do corta-relva vê uma pessoa: se está ativo, a sensibilidade, quando vigia, como avisa e com que frequência. O que for omitido fica como está.",
+      "fields": {
+        "enabled": {
+          "name": "Ativado",
+          "description": "Ligar ou desligar o alerta."
+        },
+        "sensitivity": {
+          "name": "Sensibilidade",
+          "description": "Com que facilidade uma pessoa é reconhecida."
+        },
+        "standby": {
+          "name": "Em espera",
+          "description": "Luz ou vigilância em espera."
+        },
+        "mowing": {
+          "name": "A cortar",
+          "description": "Vigiar durante o corte."
+        },
+        "returning": {
+          "name": "A regressar",
+          "description": "Vigiar durante o regresso à base."
+        },
+        "patrolling": {
+          "name": "Em patrulha",
+          "description": "Vigiar durante a patrulha."
+        },
+        "voice": {
+          "name": "Falar e notificar",
+          "description": "O corta-relva fala e é enviada uma notificação."
+        },
+        "photo": {
+          "name": "Tirar fotografia",
+          "description": "É tirada uma fotografia da pessoa, que vai para o álbum da app."
+        },
+        "interval": {
+          "name": "Intervalo",
+          "description": "No máximo um alerta a cada tantos minutos, nos corta-relva que espaçam os alertas."
+        }
+      }
+    },
+    "set_robot_voice": {
+      "name": "Definir voz",
+      "description": "Muda o volume da voz do corta-relva e os avisos que diz. O que for omitido fica como está.",
+      "fields": {
+        "volume": {
+          "name": "Volume",
+          "description": "De 0 a 100."
+        },
+        "regular": {
+          "name": "Avisos normais",
+          "description": "Dizer avisos normais."
+        },
+        "work_status": {
+          "name": "Estado de trabalho",
+          "description": "Dizer o estado de trabalho."
+        },
+        "special_status": {
+          "name": "Estados especiais",
+          "description": "Dizer estados especiais."
+        },
+        "error_status": {
+          "name": "Erros",
+          "description": "Dizer erros."
+        }
+      }
+    },
+    "reset_consumable": {
+      "name": "Repor consumível",
+      "description": "Recomeça a contagem de um consumível, como após trocar as lâminas ou a escova de limpeza da base, ou após a manutenção do corta-relva.",
+      "fields": {
+        "item": {
+          "name": "Consumível",
+          "description": "As lâminas, a escova de limpeza da base ou a manutenção do corta-relva."
+        }
+      }
+    },
+    "go_to_maintenance_point": {
+      "name": "Ir ao ponto de manutenção",
+      "description": "Envia o corta-relva para um ponto de manutenção do mapa atual, onde espera pela limpeza ou manutenção. O corta-relva desloca-se até lá.",
+      "fields": {
+        "point_id": {
+          "name": "Ponto de manutenção",
+          "description": "O id de um ponto de manutenção do mapa ativo."
+        }
+      }
+    },
+    "ignore_obstacle": {
+      "name": "Ignorar obstáculo",
+      "description": "Faz o corta-relva esquecer um obstáculo que a sua câmara reconheceu, deixando de aparecer no mapa. Não pode ser anulado. O corta-relva não se move para isso, mas recusa enquanto corta.",
+      "fields": {
+        "obstacle_id": {
+          "name": "Obstáculo",
+          "description": "O id do obstáculo no corta-relva; o cartão do mapa preenche-o quando se ignora lá um obstáculo."
+        }
+      }
+    },
+    "backup_map": {
+      "name": "Criar cópia de segurança do mapa",
+      "description": "Cria uma cópia de segurança do mapa atual, substituindo a anterior. O corta-relva não se move para isso, mas recusa o comando enquanto corta ou regressa à base."
+    },
+    "restore_map": {
+      "name": "Restaurar mapa",
+      "description": "Repõe o mapa atual tal como está na cópia de segurança ou, com uma posição, recupera um mapa apagado a partir da cópia mantida na posição vazia. Os agendamentos e as definições de corte do mapa podem ser repostos. O corta-relva não se move para isso, mas recusa enquanto corta ou regressa à base.",
+      "fields": {
+        "slot": {
+          "name": "Posição",
+          "description": "A posição de mapa vazia, contada a partir de 1, cuja cópia recupera um mapa apagado. Omita para repor o mapa atual."
+        }
+      }
+    },
+    "delete_map": {
+      "name": "Eliminar mapa",
+      "description": "Apaga um mapa com tudo o que contém. A cópia de segurança fica na posição vazia, de onde restore_map o recupera; sem cópia é preciso criar um mapa novo na app, conduzindo o corta-relva. O corta-relva não se move para isso, mas recusa enquanto corta ou regressa à base.",
+      "fields": {
+        "map_id": {
+          "name": "ID do mapa",
+          "description": "O mapa a eliminar."
         }
       }
     }

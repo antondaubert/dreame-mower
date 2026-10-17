@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 from typing import NamedTuple
-from enum import IntEnum
+from enum import IntEnum, IntFlag
 import logging
 
 from homeassistant.components.lawn_mower import LawnMowerActivity  # type: ignore[attr-defined]
@@ -97,6 +97,55 @@ SERVICE5_PROPERTY_108 = PropertyIdentifier(siid=5, piid=108, name="service5_prop
 SERVICE6_PROPERTY_1 = PropertyIdentifier(siid=6, piid=1, name="service6_property_1")
 SERVICE6_PROPERTY_3 = PropertyIdentifier(siid=6, piid=3, name="service6_property_3")
 
+# Properties the mower reports that nothing here acts on. They are taken in
+# silently rather than reported as unhandled.
+IGNORED_PROPERTIES: tuple[PropertyIdentifier, ...] = (
+    # Flags without a value: 1:50 as a session starts, 1:52 once it ended.
+    SERVICE1_PROPERTY_50,
+    SERVICE1_COMPLETION_FLAG_PROPERTY,
+    # Device metadata: active_time, expire_time, num and sn.
+    SERVICE1_PROPERTY_54,
+    # An integer of unknown meaning.
+    SERVICE1_PROPERTY_55,
+    # Unknown; 100 is the only value known for either.
+    SERVICE2_PROPERTY_53,
+    SERVICE2_PROPERTY_54,
+    # The zones of the running task, {"status": [[zone_id, code], ...]}: -1
+    # queued, 0 mowing, 2 completed, 4 paused.
+    MOWER_CONTROL_STATUS_PROPERTY,
+    # Integers of unknown meaning.
+    SERVICE2_PROPERTY_60,
+    SERVICE2_PROPERTY_62,
+    # A negative code of unknown meaning, such as -33101 or -33001.
+    SERVICE2_PROPERTY_63,
+    # Work statistics: the current week (cw), full week (fw), position (p),
+    # work range (wr/ws) and more.
+    SERVICE2_PROPERTY_64,
+    # What the mower navigates to or relocates for: dm::TASK_NAV_DOCK,
+    # dm::TASK_NAV_DIVIDE_REGION, dm::TASK_NAV_CRUISE_POINT, TASK_NAV_CHECK,
+    # dm::TASK_SLAM_RELOCATE (when stuck), dm::TASK_SLAM_RELOCATE_NEARDOCK,
+    # dm::TASK_SLAM_RELOCATE_OFFDOCK and dm::TASK_SLAM_EXIT_ERASE.
+    # TODO: Consider doing something useful with this property change later
+    SERVICE2_PROPERTY_65,
+    # Arrays of two and of four integers of unknown meaning; 2:67 follows a
+    # finished task.
+    SERVICE2_PROPERTY_66,
+    SERVICE2_PROPERTY_67,
+    # 5:100 an integer, possibly followed by " time_diff=<seconds>"; 5:101
+    # "success"; 5:104 a task status code (7: a spot task left unfinished);
+    # 5:107 an energy index; 5:105, 5:106 and 5:108 integers.
+    SERVICE5_PROPERTY_100,
+    SERVICE5_PROPERTY_101,
+    TASK_STATUS_PROPERTY,
+    SERVICE5_PROPERTY_105,
+    SERVICE5_PROPERTY_106,
+    SERVICE5_ENERGY_INDEX_PROPERTY,
+    SERVICE5_PROPERTY_108,
+    # An integer and a [bool, int] pair of unknown meaning.
+    SERVICE6_PROPERTY_1,
+    SERVICE6_PROPERTY_3,
+)
+
 # Properties 99:10 and 99:20 provide file paths for downloadable files from the cloud, including:
 # - Firmware/OTA update packages (when firmware updates are available)
 # - Device log files (when user selects "Report logs" in the app)
@@ -117,6 +166,8 @@ ACTION_PAUSE = ActionIdentifier(siid=5, aiid=4, name="pause")
 # Embedded protocol task payloads (sent via SCHEDULING_TASK_PROPERTY 2:50)
 # Format: {m: 'a', p: <priority>, o: <opcode>, d?: <data>}
 TASK_PAYLOAD_RESUME = {"m": "a", "p": 0, "o": 5}  # continueControl
+# Stop the mower on its way back to the station; it stays where it is.
+TASK_PAYLOAD_STOP_RETURNING = {"m": "a", "p": 2, "o": 13}
 
 # Mowing preference ("PRE") records
 #
@@ -137,6 +188,9 @@ MOWING_PREFERENCE_GLOBAL_AREA_ID = 0
 MOWING_PREFERENCE_VERSION_INDEX = 0
 MOWING_PREFERENCE_MAP_INDEX_INDEX = 1
 MOWING_PREFERENCE_AREA_ID_INDEX = 2
+# How fast the mower works: 0 standard, 1 efficient (faster, with less care
+# around obstacles).
+MOWING_PREFERENCE_EFFICIENCY_INDEX = 3
 MOWING_PREFERENCE_CUTTING_HEIGHT_INDEX = 4
 # Mowing direction slots:
 #   mode   how the direction carries from one session to the next
@@ -152,6 +206,21 @@ MOWING_PREFERENCE_EDGE_MOWING_AUTO_INDEX = 7
 MOWING_PREFERENCE_EDGE_BLADE_OFFSET_INDEX = 10
 MOWING_PREFERENCE_EDGE_MOWING_LAPS_INDEX = 11
 MOWING_PREFERENCE_EDGE_MOWING_SAFE_INDEX = 16
+# Obstacle avoidance slots:
+#   edge       steer around obstacles along the edges too, which may leave grass
+#              uncut there; it needs something that detects obstacles
+#   lidar      recognise obstacles with the LiDAR, 1 while on
+#   height     the lowest obstacle avoided, in cm (OBSTACLE_HEIGHTS_CM)
+#   distance   how far obstacles are kept away, in cm (OBSTACLE_DISTANCES_CM)
+#   ai         the obstacle kinds the camera recognises, a mask of AiObstacleKind
+MOWING_PREFERENCE_EDGE_OBSTACLE_AVOIDANCE_INDEX = 9
+MOWING_PREFERENCE_LIDAR_OBSTACLE_INDEX = 12
+MOWING_PREFERENCE_OBSTACLE_HEIGHT_INDEX = 13
+MOWING_PREFERENCE_OBSTACLE_DISTANCE_INDEX = 14
+MOWING_PREFERENCE_AI_OBSTACLE_INDEX = 15
+# How the mower turns at the end of a lane: 0 efficient, 1 lawn care (wider
+# turns that spare the lawn). Only firmware with the full record carries it.
+MOWING_PREFERENCE_TURNING_METHOD_INDEX = 19
 # The offset blade disc only covers the edge over more than one lap, so the mower
 # rejects the setting while it is told to mow the edges a single time.
 MOWING_PREFERENCE_EDGE_BLADE_OFFSET_MIN_LAPS = 2
@@ -180,6 +249,33 @@ class MowingDirectionMode(IntEnum):
 # the one half a turn away from it are the same. Directions are therefore kept
 # within half a turn, and angles beyond it fold back into that range.
 MOWING_DIRECTION_ANGLE_PERIOD_DEGREES = 180
+
+
+class MowingEfficiency(IntEnum):
+    """How fast the mower works."""
+
+    STANDARD = 0
+    EFFICIENT = 1  # Faster, with less care around obstacles
+
+
+class TurningMethod(IntEnum):
+    """How the mower turns at the end of a lane."""
+
+    EFFICIENT = 0
+    LAWN_CARE = 1  # Wider turns that spare the lawn
+
+
+class AiObstacleKind(IntFlag):
+    """The obstacle kinds the camera can be told to recognise."""
+
+    HUMANS = 1
+    ANIMALS = 2
+    OBJECTS = 4
+
+
+# The values the obstacle avoidance height and distance take, in cm.
+OBSTACLE_HEIGHTS_CM = (5, 10, 15, 20)
+OBSTACLE_DISTANCES_CM = (10, 15, 20)
 
 
 class MowingPreferenceMode(IntEnum):
@@ -233,6 +329,58 @@ def cutting_height_max_cm(model: str) -> float:
 DEVICE_SETTINGS_BATTERY_KEY = "BAT"
 DEVICE_SETTINGS_RAIN_KEY = "WRP"
 DEVICE_SETTINGS_ANTI_THEFT_KEY = "ATA"
+# On/off settings of the record, each written as {"value": 0 | 1}:
+#   FDP   frost protection: back to the station at 6 °C or less
+#   PATH  steer around obstacles on the paths between zones
+#   STUN  back to the station after an hour paused or idle outside it
+#   AOP   photograph the obstacles the camera recognises
+#   CLS   child lock: the control panel locks after five idle minutes
+DEVICE_SETTINGS_FROST_PROTECTION_KEY = "FDP"
+DEVICE_SETTINGS_PATH_OBSTACLE_AVOIDANCE_KEY = "PATH"
+DEVICE_SETTINGS_AUTO_RECHARGE_KEY = "STUN"
+DEVICE_SETTINGS_AI_OBSTACLE_PHOTOS_KEY = "AOP"
+DEVICE_SETTINGS_CHILD_LOCK_KEY = "CLS"
+# Settings with a time window, [on, start, end] in minutes after midnight; a
+# window that ends before it starts runs over midnight:
+#   DND  Do Not Disturb: no task starts, and a running one pauses and the mower
+#        returns to its station
+#   LOW  the mower drives slowly at night
+DEVICE_SETTINGS_DO_NOT_DISTURB_KEY = "DND"
+DEVICE_SETTINGS_LOW_SPEED_AT_NIGHT_KEY = "LOW"
+# Going on from where an unfinished task stopped: [on, days a stop point is
+# kept]; written as {"on": true | false, "day": days}. Switching it off clears
+# the stop points the mower holds.
+DEVICE_SETTINGS_STOP_POINT_KEY = "BP"
+STOP_POINT_DAYS_RANGE = (1, 7)
+# The lights: [custom period on, start, end (minutes, 0 to 1440), in standby,
+# while working, while charging, on errors (, fill light)]; written as
+# {"value", "time": [start, end], "light": [four scenes] (, "fill")}.
+DEVICE_SETTINGS_LIGHT_KEY = "LIT"
+LIGHT_SCENES = ("standby", "working", "charging", "error")
+# Human presence alert: [on, sensitivity, in standby, while mowing, while
+# returning, while patrolling, voice and notification, photo (, minutes
+# between alerts)]; written as {"value", "sen", "mode": [four], "report":
+# [voice, photo (, minutes)]}.
+DEVICE_SETTINGS_HUMAN_PRESENCE_KEY = "REC"
+HUMAN_PRESENCE_MODES = ("standby", "mowing", "returning", "patrolling")
+HUMAN_PRESENCE_SENSITIVITIES = ("low", "medium", "high")
+HUMAN_PRESENCE_INTERVALS_MINUTES = (3, 10, 20)
+# The robot's voice: its volume (0 to 100), the kinds of prompt it speaks
+# [regular notifications, work status, special status, errors], and
+# [text language, voice language] by index into VOICE_LANGUAGES.
+DEVICE_SETTINGS_VOLUME_KEY = "VOL"
+DEVICE_SETTINGS_VOICE_PROMPTS_KEY = "VOICE"
+DEVICE_SETTINGS_LANGUAGE_KEY = "LANG"
+VOICE_PROMPTS = ("regular", "work_status", "special_status", "error_status")
+VOICE_LANGUAGES = (
+    "English", "Chinese", "German", "French", "Italian", "Spanish", "Portuguese", "Norwegian",
+    "Swedish", "Danish", "Finnish", "Dutch", "Turkish", "Polish", "Russian", "Lithuanian",
+)
+# The mower's time zone, an IANA name.
+DEVICE_SETTINGS_TIME_ZONE_KEY = "TIME"
+# How the mower drives between the station and the zones: 0 the direct way,
+# 1 a route that varies, to spare the lawn from ruts.
+DEVICE_SETTINGS_NAVIGATION_PATH_KEY = "PROT"
 
 # Battery and charging settings ("BAT")
 #
@@ -334,6 +482,57 @@ MAP_DATA_KEY = "MAPD"
 
 # Bytes requested per chunk of a map document.
 MAP_CHUNK_SIZE = 400
+
+# Where the charging station stands is its own read: x and y in the map
+# document's units (ten map units each) and its heading in tenths of a degree.
+DOCK_KEY = "DOCK"
+DOCK_POSITION_SCALE = 10
+DOCK_YAW_SCALE = 10
+
+# The trail of the running session is read back in pages of this many points,
+# each five bytes: x and y as 20-bit signed values in pose units, as in the
+# position reports. A page past the end comes back empty.
+TRAIL_KEY = "MITRC"
+TRAIL_PAGE_SIZE = 60
+# A long session stays well below this many pages.
+TRAIL_MAX_PAGES = 400
+
+# Where the mower stands: x and y in pose units, its heading in 1/255 of a turn.
+POSITION_KEY = "MPOS"
+
+# Where an unfinished task left off in each zone of one map, by map index: the
+# zone, how far it got in hundredths of a percent, and the day it stopped.
+STOP_POINTS_KEY = "RGBPSTA"
+
+# The totals of the work log: the area mowed in m², the time in minutes, the
+# number of tasks, and since when (unix time) they are counted.
+WORK_TOTALS_KEY = "MIHIS"
+# The most tasks one read of the work log lists.
+WORK_LOG_LIMIT = 500
+
+# The kind of file a photo of a recognised obstacle is, when it is fetched
+# from the mower.
+AI_OBSTACLE_PHOTO_KIND = "ai_obs"
+# Where the photos are kept once fetched, within the configuration directory,
+# a folder per mower. Not below www: what lies there is served to anyone who
+# asks.
+AI_OBSTACLE_PHOTO_DIR = ("dreame_mower", "obstacle_photos")
+# The recognised obstacles seen while mowing are kept there too, so a task's
+# details still show one the mower dropped before the task ended; the latest
+# this many are kept.
+AI_OBSTACLES_SEEN_FILE = "seen.json"
+AI_OBSTACLES_SEEN_LIMIT = 1000
+# How often a photo is asked for before giving up: the mower sends it over its
+# own connection, which can take longer than the cloud waits for one try.
+AI_OBSTACLE_PHOTO_TRIES = 5
+# How long one try waits for the cloud's answer, in seconds; the cloud itself
+# gives up on the mower sooner.
+AI_OBSTACLE_PHOTO_TIMEOUT = 20
+
+# The obstacles the mower ran into on one map, by map index, as outlines in the
+# map document's units; and the ones its camera recognised, in map units.
+OBSTACLES_KEY = "OBS"
+AI_OBSTACLES_KEY = "AIOBS"
 
 # Schedule slots every map is known to hold. The mower reports the slots it
 # keeps, so this only stands in while they have not been read yet.
@@ -545,7 +744,6 @@ FIRMWARE_UPDATE_MIN_BATTERY_PERCENT = 20
 
 # Individual property names
 PROPERTY_FIRMWARE = "firmware"
-PROPERTY_TEMPERATURE = "temperature"
 
 # Derived state names reported through the device property callbacks
 CURRENT_MAP_ID_PROPERTY_NAME = "current_map_id"
@@ -568,3 +766,17 @@ EDGE_MOWING_SAFE_KEY = "edge_mowing_safe"
 # Keys the mowing direction of one mowing preference record is reported under.
 MOWING_DIRECTION_ANGLE_KEY = "angle"
 MOWING_DIRECTION_MODE_KEY = "mode"
+
+# Keys every setting of one mowing preference record is reported and changed
+# under, the edge mowing keys above among them. A setting the record is too
+# short to carry is left out.
+EFFICIENCY_KEY = "efficiency"
+CUTTING_HEIGHT_KEY = "cutting_height"
+DIRECTION_ANGLE_KEY = "mowing_direction"
+DIRECTION_MODE_KEY = "mowing_direction_mode"
+EDGE_OBSTACLE_AVOIDANCE_KEY = "edge_obstacle_avoidance"
+LIDAR_OBSTACLE_KEY = "lidar_obstacle_recognition"
+OBSTACLE_HEIGHT_KEY = "obstacle_height"
+OBSTACLE_DISTANCE_KEY = "obstacle_distance"
+AI_OBSTACLE_KEY = "ai_obstacle_recognition"
+TURNING_METHOD_KEY = "turning_method"

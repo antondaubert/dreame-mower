@@ -47,7 +47,6 @@
       "invalid_account_type": "Type de compte invalide sélectionné."
     },
     "abort": {
-      "cannot_connect": "Échec de la connexion.",
       "already_configured": "Cet appareil est déjà configuré."
     }
   },
@@ -58,10 +57,7 @@
         "description": "Connecté avec {account} ({account_type}, {country}).\n\nConfigurer les paramètres de notification pour l'intégration de la tondeuse Dreame.",
         "data": {
           "notify": "Types de notification",
-          "map_rotation": "Rotation de la carte",
-          "map_show_title": "Afficher le titre de la carte",
-          "map_show_legend": "Afficher la légende de la carte",
-          "map_padding": "Marge de la carte (pixels)"
+          "map_rotation": "Rotation de la carte"
         }
       }
     }
@@ -86,48 +82,8 @@
           "maintenance_paused": "En pause au point d'entretien"
         }
       },
-      "charging_status": {
-        "name": "Statut de charge",
-        "state": {
-          "not_docked": "Pas amarré",
-          "charging": "En charge",
-          "not_charging": "Pas en charge",
-          "charging_completed": "Charge terminée",
-          "return_to_charge": "Retour à la station de charge",
-          "charging_paused_high_temperature": "Charge pausée : température de la batterie trop élevée",
-          "charging_paused_low_temperature": "Charge pausée : température de la batterie trop basse"
-        }
-      },
       "mowing_progress": {
         "name": "Progression de la tonte"
-      },
-      "bluetooth_connection": {
-        "name": "Bluetooth"
-      },
-      "dnd_status": {
-        "name": "Ne pas déranger"
-      },
-      "charging_schedule": {
-        "name": "Calendrier de charge"
-      },
-      "timezone": {
-        "name": "Fuseau horaire"
-      },
-      "device_code": {
-        "name": "Code de périphérique"
-      },
-      "current_task": {
-        "name": "Tâche actuelle",
-        "state": {
-          "idle": "Aucune tâche",
-          "starting": "Démarrage",
-          "mowing": "En tonte",
-          "paused": "En pause",
-          "finished": "Terminée",
-          "failed": "Échouée",
-          "exit": "Arrêtée",
-          "returning_to_dock": "Retour à la station"
-        }
       },
       "consumable_blade_health": {
         "name": "État des lames"
@@ -143,36 +99,6 @@
       },
       "account": {
         "name": "Compte"
-      }
-    },
-    "camera": {
-      "map_camera": {
-        "name": "Carte"
-      }
-    },
-    "button": {
-      "reset_blade": {
-        "name": "Réinitialiser le compteur des lames"
-      },
-      "reset_brush": {
-        "name": "Réinitialiser le compteur de brosse"
-      },
-      "reset_robot_maintenance": {
-        "name": "Réinitialiser le compteur de maintenance"
-      },
-      "dock_without_stopping": {
-        "name": "Revenir à la base sans arrêter la tâche"
-      },
-      "go_to_maintenance_point": {
-        "name": "Aller au point de maintenance"
-      }
-    },
-    "number": {
-      "cutting_height": {
-        "name": "Hauteur de coupe"
-      },
-      "mowing_direction": {
-        "name": "Direction de tonte"
       }
     },
     "switch": {
@@ -197,14 +123,20 @@
       "schedule": {
         "name": "Programmation {number}"
       },
-      "edge_mowing_auto": {
-        "name": "Tonte automatique des bordures"
+      "frost_protection": {
+        "name": "Protection contre le gel"
       },
-      "edge_blade_offset": {
-        "name": "EdgeMaster"
+      "path_obstacle_avoidance": {
+        "name": "Évitement d'obstacles sur les chemins"
       },
-      "edge_mowing_safe": {
-        "name": "Tonte des bordures sécurisée"
+      "auto_recharge_standby": {
+        "name": "Recharge automatique après veille"
+      },
+      "ai_obstacle_photos": {
+        "name": "Photographier les obstacles détectés par l'IA"
+      },
+      "child_lock": {
+        "name": "Sécurité enfant"
       }
     },
     "time": {
@@ -218,6 +150,9 @@
     "select": {
       "rain_delay": {
         "name": "Délai après la pluie"
+      },
+      "navigation_path": {
+        "name": "Trajet de navigation"
       }
     }
   },
@@ -234,9 +169,50 @@
         "map_wide": "Un seul réglage pour toute la carte",
         "per_zone": "Un réglage par zone"
       }
+    },
+    "mowing_efficiency": {
+      "options": {
+        "standard": "Standard",
+        "efficient": "Efficace"
+      }
+    },
+    "turning_method": {
+      "options": {
+        "efficient": "Efficace",
+        "lawn_care": "Respect de la pelouse"
+      }
+    },
+    "ai_obstacle_kind": {
+      "options": {
+        "humans": "Personnes",
+        "animals": "Animaux",
+        "objects": "Objets"
+      }
     }
   },
   "services": {
+    "start_all_area_mowing": {
+      "name": "Lancer la tonte de toute la surface",
+      "description": "Tond toute la carte active. Une session de tonte déjà en cours est poursuivie.",
+      "fields": {
+        "from_stop_point": {
+          "name": "Depuis le point d'arrêt",
+          "description": "Là où une tâche inachevée s'est arrêtée dans une zone : activé, tondre seulement le reste ; désactivé, la tondre depuis le début. Omis, la tondeuse n'en est pas informée."
+        }
+      }
+    },
+    "end_task": {
+      "name": "Terminer la tâche",
+      "description": "Termine la tâche de tonte en cours. La tondeuse reste sur place et garde l'endroit où la tâche s'est arrêtée pour qu'une tâche ultérieure puisse reprendre de là."
+    },
+    "stop_returning": {
+      "name": "Arrêter le retour",
+      "description": "Arrête la tondeuse sur le chemin de la station. Elle reste sur place."
+    },
+    "recharge": {
+      "name": "Recharger",
+      "description": "Envoie la tondeuse à sa station pour se recharger. Une tâche de tonte en cours est conservée et peut être poursuivie ensuite."
+    },
     "start_zone_mowing": {
       "name": "Lancer la tonte de zones",
       "description": "Lancer la tonte d'une ou plusieurs zones précises.",
@@ -244,6 +220,10 @@
         "zone_ids": {
           "name": "Identifiants des zones",
           "description": "Liste des identifiants de zones à tondre, par exemple [1, 3]."
+        },
+        "from_stop_point": {
+          "name": "Depuis le point d'arrêt",
+          "description": "Là où une tâche inachevée s'est arrêtée dans une zone : activé, tondre seulement le reste ; désactivé, la tondre depuis le début. Omis, la tondeuse n'en est pas informée."
         }
       }
     },
@@ -267,61 +247,71 @@
         }
       }
     },
-    "set_cutting_height": {
-      "name": "Définir la hauteur de coupe",
-      "description": "Définir la hauteur de coupe pour toute une carte ou pour une seule de ses zones. Tous les modèles ne permettent pas de régler la hauteur de coupe ; la plage disponible dépend du modèle.",
+    "select_map": {
+      "name": "Choisir la carte",
+      "description": "Fait travailler la tondeuse sur une autre carte. Impossible pendant une tâche de tonte en cours.",
       "fields": {
-        "height": {
-          "name": "Hauteur de coupe",
-          "description": "Hauteur de coupe en centimètres, par pas de 0,5 cm."
-        },
         "map_id": {
-          "name": "Identifiant de la carte",
-          "description": "Carte à modifier. Par défaut, la carte active. Les identifiants disponibles apparaissent dans l'attribut maps de l'entité du robot une fois les cartes récupérées."
-        },
-        "zone_id": {
-          "name": "Identifiant de la zone",
-          "description": "Zone à modifier au lieu de toute la carte. Le réglage par zone sera alors activé : les autres zones conserveront leur propre hauteur et le réglage général de la carte ne s'appliquera plus. Les identifiants disponibles apparaissent dans l'attribut zones de l'entité du robot."
+          "name": "ID de carte",
+          "description": "Carte vers laquelle basculer. Les ID de carte disponibles figurent dans l'attribut maps de l'entité de la tondeuse une fois la carte chargée."
         }
       }
     },
-    "set_edge_mowing_settings": {
-      "name": "Régler la tonte des bordures",
-      "description": "Modifier les réglages de tonte des bordures pour toute une carte ou pour une seule de ses zones. Tout réglage omis conserve sa valeur actuelle. Si la carte utilise des réglages par zone, la modification est appliquée à chaque zone, car le robot n'utilise alors plus les réglages généraux de la carte. Ces réglages sont également disponibles sous forme d'interrupteurs pour la carte active.",
+    "set_mowing_settings": {
+      "name": "Définir les réglages de tonte",
+      "description": "Modifier en une seule fois n'importe quel réglage de tonte pour toute une carte ou pour une seule de ses zones. Tout réglage omis conserve sa valeur actuelle. Si la carte utilise des réglages par zone, la modification est appliquée à chaque zone, car le robot n'utilise alors plus les réglages généraux de la carte. Les réglages que le robot ne propose pas sont refusés.",
       "fields": {
+        "efficiency": {
+          "name": "Efficacité de tonte",
+          "description": "Vitesse de travail du robot. « Efficace » tond davantage par jour, avec moins de précautions autour des obstacles."
+        },
+        "cutting_height": {
+          "name": "Hauteur de coupe",
+          "description": "Hauteur de coupe en centimètres, par pas de 0,5 cm."
+        },
+        "mowing_direction": {
+          "name": "Sens de tonte",
+          "description": "Sens des lignes de tonte en degrés, tel qu'affiché dans l'application. Un angle à partir de 180° correspond aux mêmes lignes que l'angle situé 180° plus tôt."
+        },
+        "mowing_direction_mode": {
+          "name": "Mode du sens de tonte",
+          "description": "Indique si chaque session tond dans le même sens ou pivote par rapport à la session précédente."
+        },
         "automatic_edge_mowing": {
           "name": "Tonte automatique des bordures",
           "description": "Indique si le robot tond automatiquement les bordures après avoir terminé la tonte de toute la carte ou d'une zone."
         },
         "safe_edge_mowing": {
           "name": "Tonte sécurisée des bordures",
-          "description": "Indique si le robot garde une petite marge par rapport à la limite de la pelouse pendant la tonte des bordures. Ce réglage n'est pas disponible sur tous les modèles."
+          "description": "Indique si le robot garde une petite marge par rapport à la limite de la pelouse pendant la tonte des bordures."
         },
         "edge_blade_offset": {
           "name": "Décalage latéral de la lame",
-          "description": "Indique si le disque de coupe se décale latéralement pendant les passages le long des bordures pour couper plus près de la limite. Cette option augmente aussi le nombre de passages de bordure de un à deux, afin que le disque décalé puisse couvrir toute la bordure."
+          "description": "Indique si le disque de coupe se décale latéralement pendant les passages le long des bordures pour couper plus près de la limite. Cette option augmente aussi le nombre de passages de bordure de un à deux."
         },
-        "map_id": {
-          "name": "Identifiant de la carte",
-          "description": "Carte à modifier. Par défaut, la carte active. Les identifiants disponibles apparaissent dans l'attribut maps de l'entité du robot une fois les cartes récupérées."
+        "edge_obstacle_avoidance": {
+          "name": "Évitement des obstacles en bordure",
+          "description": "Indique si le robot contourne aussi les obstacles le long des bordures, ce qui peut y laisser un peu d'herbe non coupée. Se désactive automatiquement lorsque ni le LiDAR ni la caméra ne reconnaissent d'obstacles."
         },
-        "zone_id": {
-          "name": "Identifiant de la zone",
-          "description": "Zone à modifier au lieu de toute la carte. Le réglage par zone sera alors activé : les autres zones conserveront leurs propres réglages et les réglages généraux de la carte ne s'appliqueront plus. Les identifiants disponibles apparaissent dans l'attribut zones de l'entité du robot."
-        }
-      }
-    },
-    "set_mowing_direction": {
-      "name": "Régler le sens de tonte",
-      "description": "Définir le sens des lignes de tonte pour toute une carte ou pour une seule de ses zones, ainsi que la façon dont ce sens évolue d'une session à l'autre. Si la carte utilise des réglages par zone, la modification est appliquée à chaque zone, car le robot n'utilise alors plus les réglages généraux de la carte. Ces réglages sont également disponibles sous forme de nombre et de liste de choix pour la carte active.",
-      "fields": {
-        "angle": {
-          "name": "Angle",
-          "description": "Sens de tonte en degrés, tel qu'affiché dans l'application. Il s'agit d'une orientation de ligne, et non d'une direction de déplacement : un angle à partir de 180° correspond aux mêmes lignes que l'angle situé 180° plus tôt."
+        "lidar_obstacle_recognition": {
+          "name": "Reconnaissance des obstacles par LiDAR",
+          "description": "Indique si le robot reconnaît les obstacles avec son LiDAR et les évite sans les toucher. Désactivez-la pour laisser le robot tondre l'herbe haute."
         },
-        "mode": {
-          "name": "Mode de tonte",
-          "description": "Choisir si chaque session utilise le même sens de tonte ou si le robot alterne le sens par rapport à la session précédente."
+        "obstacle_height": {
+          "name": "Hauteur d'évitement des obstacles",
+          "description": "Hauteur du plus petit obstacle que le robot évite, en centimètres."
+        },
+        "obstacle_distance": {
+          "name": "Distance d'évitement des obstacles",
+          "description": "Distance que le robot garde par rapport aux obstacles, en centimètres. Une distance plus courte peut entraîner des collisions ou des éraflures."
+        },
+        "ai_obstacle_recognition": {
+          "name": "Reconnaissance des obstacles par IA",
+          "description": "Types d'obstacles que la caméra reconnaît et que le robot évite. Avec une liste vide, l'évitement des obstacles est laissé au pare-chocs et au LiDAR."
+        },
+        "turning_method": {
+          "name": "Mode de demi-tour",
+          "description": "Façon dont le robot fait demi-tour en bout de ligne. « Respect de la pelouse » tourne plus large et ménage la pelouse, mais demande un peu de place pour tourner. Proposé uniquement par les micrologiciels récents."
         },
         "map_id": {
           "name": "Identifiant de la carte",
@@ -344,6 +334,368 @@
         "map_id": {
           "name": "Identifiant de la carte",
           "description": "Carte à modifier. Par défaut, la carte active."
+        }
+      }
+    },
+    "set_no_go_zone": {
+      "name": "Définir une zone interdite",
+      "description": "Dessine une zone interdite sur la carte actuelle, ou en modifie une, en coordonnées de carte (millimètres, comme pour les zones de la carte). Renvoie l'identifiant de la zone. La tondeuse ne se déplace pas pour cela, mais refuse l'action pendant qu'elle tond ou retourne à sa station.",
+      "fields": {
+        "shape": {
+          "name": "Forme",
+          "description": "Une ligne que la tondeuse ne franchit pas, un rectangle ou un cercle."
+        },
+        "points": {
+          "name": "Points",
+          "description": "Les deux extrémités d'une ligne, deux coins opposés d'un rectangle ou le centre d'un cercle, chacun sous la forme [x, y]."
+        },
+        "radius": {
+          "name": "Rayon",
+          "description": "Rayon d'un cercle en millimètres."
+        },
+        "zone_id": {
+          "name": "Identifiant de la zone interdite",
+          "description": "La zone interdite à modifier au lieu d'en dessiner une nouvelle."
+        }
+      }
+    },
+    "set_ignore_obstacle_area": {
+      "name": "Définir une zone d'obstacles ignorés",
+      "description": "Dessine sur la carte actuelle une zone où la tondeuse se fie uniquement à son pare-chocs et roule sur les obstacles bas, ou en modifie une. Renvoie l'identifiant de la zone. La tondeuse ne se déplace pas pour cela, mais refuse l'action pendant qu'elle tond ou retourne à sa station.",
+      "fields": {
+        "rect": {
+          "name": "Rectangle",
+          "description": "Deux coins opposés sous la forme [x0, y0, x1, y1], en millimètres."
+        },
+        "area_id": {
+          "name": "Identifiant de la zone",
+          "description": "La zone à modifier au lieu d'en dessiner une nouvelle."
+        }
+      }
+    },
+    "set_spot_area": {
+      "name": "Définir une zone ponctuelle",
+      "description": "Dessine une zone ponctuelle sur la carte actuelle, ou en modifie une. Elle doit se trouver dans une seule zone. Renvoie l'identifiant de la zone ponctuelle. La tondeuse ne se déplace pas pour cela, mais refuse l'action pendant qu'elle tond ou retourne à sa station.",
+      "fields": {
+        "rect": {
+          "name": "Rectangle",
+          "description": "Deux coins opposés sous la forme [x0, y0, x1, y1], en millimètres."
+        },
+        "area_id": {
+          "name": "Identifiant de la zone ponctuelle",
+          "description": "La zone ponctuelle à modifier au lieu d'en dessiner une nouvelle."
+        }
+      }
+    },
+    "set_maintenance_point": {
+      "name": "Définir un point de maintenance",
+      "description": "Place un point de maintenance sur la carte actuelle, ou en déplace un. Renvoie l'identifiant du point. La tondeuse ne se déplace pas pour cela, mais refuse l'action pendant qu'elle tond ou retourne à sa station.",
+      "fields": {
+        "x": {
+          "name": "X",
+          "description": "Position du point, en millimètres."
+        },
+        "y": {
+          "name": "Y",
+          "description": "Position du point, en millimètres."
+        },
+        "heading": {
+          "name": "Orientation",
+          "description": "Dans quelle direction la tondeuse s'oriente là, en degrés. Omis, un point déplacé garde son orientation et un nouveau est orienté à 0 degré."
+        },
+        "point_id": {
+          "name": "Identifiant du point",
+          "description": "Le point à déplacer au lieu d'en placer un nouveau."
+        }
+      }
+    },
+    "delete_map_item": {
+      "name": "Supprimer un élément de la carte",
+      "description": "Supprime une zone, un chemin, une zone interdite, une zone ponctuelle, un point de maintenance ou une zone d'obstacles ignorés de la carte actuelle. Supprimer une zone supprime aussi ses programmations. La tondeuse ne se déplace pas pour cela, mais refuse l'action pendant qu'elle tond ou retourne à sa station.",
+      "fields": {
+        "kind": {
+          "name": "Type",
+          "description": "Le type d'élément."
+        },
+        "item_id": {
+          "name": "Identifiant de l'élément",
+          "description": "L'identifiant de l'élément."
+        }
+      }
+    },
+    "rename_zone": {
+      "name": "Renommer une zone",
+      "description": "Donne à une zone de la carte actuelle un nouveau nom de 24 caractères au maximum. La tondeuse ne se déplace pas pour cela, mais refuse l'action pendant qu'elle tond ou retourne à sa station.",
+      "fields": {
+        "zone_id": {
+          "name": "Identifiant de la zone",
+          "description": "La zone à renommer."
+        },
+        "name": {
+          "name": "Nom",
+          "description": "Le nouveau nom."
+        }
+      }
+    },
+    "split_zone": {
+      "name": "Diviser une zone",
+      "description": "Divise en deux une zone de la carte actuelle le long d'une ligne qui la traverse. Les programmations qui incluent la zone sont supprimées. Renvoie les identifiants des deux zones. La tondeuse ne se déplace pas pour cela, mais refuse l'action pendant qu'elle tond ou retourne à sa station.",
+      "fields": {
+        "zone_id": {
+          "name": "Identifiant de la zone",
+          "description": "La zone à diviser."
+        },
+        "line": {
+          "name": "Ligne",
+          "description": "Les deux extrémités de la ligne sous la forme [x0, y0, x1, y1], en millimètres ; elle doit traverser la zone."
+        }
+      }
+    },
+    "merge_zones": {
+      "name": "Fusionner des zones",
+      "description": "Fusionne deux zones voisines de la carte actuelle en une seule. Renvoie l'identifiant de la zone fusionnée. La tondeuse ne se déplace pas pour cela, mais refuse l'action pendant qu'elle tond ou retourne à sa station.",
+      "fields": {
+        "zone_ids": {
+          "name": "Identifiants des zones",
+          "description": "Les deux zones."
+        }
+      }
+    },
+    "rename_map": {
+      "name": "Renommer une carte",
+      "description": "Donne à une carte un nouveau nom de 24 caractères au maximum. La tondeuse ne se déplace pas pour cela, mais refuse l'action pendant qu'elle tond ou retourne à sa station.",
+      "fields": {
+        "map_id": {
+          "name": "Identifiant de la carte",
+          "description": "La carte à renommer."
+        },
+        "name": {
+          "name": "Nom",
+          "description": "Le nouveau nom."
+        }
+      }
+    },
+    "clear_rain_protection": {
+      "name": "Lever la protection contre la pluie",
+      "description": "Lève la pluie signalée par la tondeuse afin qu'une tâche de tonte lancée ensuite s'exécute même si le capteur a détecté de l'eau. Lancez la tâche juste après ; cela ne déclenche rien d'autre."
+    },
+    "find_robot": {
+      "name": "Trouver le robot",
+      "description": "Fait appeler la tondeuse pour la retrouver au son. Elle ne bouge pas."
+    },
+    "clear_error": {
+      "name": "Effacer l'erreur",
+      "description": "Efface les erreurs et avertissements signalés par la tondeuse, puis la laisse continuer : une tâche en pause reprend, et une tondeuse hors de sa station sans tâche rentre. La tondeuse peut se déplacer.",
+      "fields": {
+        "continue_task": {
+          "name": "Continuer",
+          "description": "Reprendre la tâche, ou rentrer, une fois les erreurs effacées. Désactivé les efface seulement."
+        }
+      }
+    },
+    "set_do_not_disturb": {
+      "name": "Régler Ne pas déranger",
+      "description": "Active ou désactive Ne pas déranger, ou change sa plage. Aucune tâche ne démarre dans la plage ; une tâche en cours est mise en pause à son début et la tondeuse rentre à la station.",
+      "fields": {
+        "enabled": {
+          "name": "Activé",
+          "description": "Activer ou désactiver ; omis, il reste tel quel."
+        },
+        "start": {
+          "name": "Début",
+          "description": "Quand la plage commence ; omis, il reste tel quel."
+        },
+        "end": {
+          "name": "Fin",
+          "description": "Quand la plage se termine, le lendemain s'il est avant le début ; omis, il reste tel quel. Les heures vont de 00:01 à 23:59."
+        }
+      }
+    },
+    "set_low_speed_at_night": {
+      "name": "Régler la vitesse réduite la nuit",
+      "description": "Active ou désactive la vitesse réduite la nuit, ou change sa plage, pendant laquelle la tondeuse roule lentement.",
+      "fields": {
+        "enabled": {
+          "name": "Activé",
+          "description": "Activer ou désactiver ; omis, il reste tel quel."
+        },
+        "start": {
+          "name": "Début",
+          "description": "Quand la plage commence ; omis, il reste tel quel."
+        },
+        "end": {
+          "name": "Fin",
+          "description": "Quand la plage se termine, le lendemain s'il est avant le début ; omis, il reste tel quel. Les heures vont de 00:01 à 23:59."
+        }
+      }
+    },
+    "set_start_from_stop_point": {
+      "name": "Régler le départ depuis le point d'arrêt",
+      "description": "Choisit si une nouvelle tâche peut reprendre là où une tâche inachevée s'est arrêtée, et combien de jours un point d'arrêt est conservé. Le désactiver efface les points d'arrêt de la tondeuse.",
+      "fields": {
+        "enabled": {
+          "name": "Activé",
+          "description": "Activer ou désactiver ; omis, il reste tel quel."
+        },
+        "days": {
+          "name": "Jours",
+          "description": "Combien de jours un point d'arrêt est conservé, de 1 à 7 ; omis, il reste tel quel."
+        }
+      }
+    },
+    "set_light": {
+      "name": "Régler la lumière",
+      "description": "Change quand les lumières de la tondeuse s'allument : seulement pendant une période propre ou toute la journée, et dans quels états. Ce qui est omis reste tel quel.",
+      "fields": {
+        "custom_period": {
+          "name": "Période propre",
+          "description": "Limiter les lumières à la période du début à la fin."
+        },
+        "start": {
+          "name": "Début",
+          "description": "Quand la période commence."
+        },
+        "end": {
+          "name": "Fin",
+          "description": "Quand la période se termine."
+        },
+        "standby": {
+          "name": "En veille",
+          "description": "Lumière ou surveillance pendant la veille."
+        },
+        "working": {
+          "name": "En travail",
+          "description": "Lumière pendant le travail."
+        },
+        "charging": {
+          "name": "En charge",
+          "description": "Lumière pendant la charge."
+        },
+        "error": {
+          "name": "En erreur",
+          "description": "Lumière quand la tondeuse signale une erreur."
+        }
+      }
+    },
+    "set_human_presence_alert": {
+      "name": "Régler l'alerte de présence humaine",
+      "description": "Change l'alerte donnée quand la caméra de la tondeuse voit une personne : si elle est active, sa sensibilité, quand elle surveille, comment elle signale et à quelle fréquence. Ce qui est omis reste tel quel.",
+      "fields": {
+        "enabled": {
+          "name": "Activé",
+          "description": "Activer ou désactiver l'alerte."
+        },
+        "sensitivity": {
+          "name": "Sensibilité",
+          "description": "Avec quelle facilité une personne est reconnue."
+        },
+        "standby": {
+          "name": "En veille",
+          "description": "Lumière ou surveillance pendant la veille."
+        },
+        "mowing": {
+          "name": "En tonte",
+          "description": "Surveiller pendant la tonte."
+        },
+        "returning": {
+          "name": "En retour",
+          "description": "Surveiller pendant le retour à la station."
+        },
+        "patrolling": {
+          "name": "En patrouille",
+          "description": "Surveiller pendant la patrouille."
+        },
+        "voice": {
+          "name": "Parler et notifier",
+          "description": "La tondeuse parle et une notification est envoyée."
+        },
+        "photo": {
+          "name": "Prendre une photo",
+          "description": "Une photo de la personne est prise et va dans l'album de l'application."
+        },
+        "interval": {
+          "name": "Intervalle",
+          "description": "Au plus une alerte en autant de minutes, sur les tondeuses qui espacent leurs alertes."
+        }
+      }
+    },
+    "set_robot_voice": {
+      "name": "Régler la voix",
+      "description": "Change le volume de la voix de la tondeuse et les annonces qu'elle prononce. Ce qui est omis reste tel quel.",
+      "fields": {
+        "volume": {
+          "name": "Volume",
+          "description": "De 0 à 100."
+        },
+        "regular": {
+          "name": "Annonces habituelles",
+          "description": "Prononcer les annonces habituelles."
+        },
+        "work_status": {
+          "name": "État de travail",
+          "description": "Annoncer l'état de travail."
+        },
+        "special_status": {
+          "name": "États particuliers",
+          "description": "Annoncer les états particuliers."
+        },
+        "error_status": {
+          "name": "Erreurs",
+          "description": "Annoncer les erreurs."
+        }
+      }
+    },
+    "reset_consumable": {
+      "name": "Réinitialiser un consommable",
+      "description": "Remet à zéro le compteur d'un consommable, par exemple après le remplacement des lames ou de la brosse de nettoyage de la station, ou après l'entretien de la tondeuse.",
+      "fields": {
+        "item": {
+          "name": "Consommable",
+          "description": "Les lames, la brosse de nettoyage de la station ou l'entretien de la tondeuse."
+        }
+      }
+    },
+    "go_to_maintenance_point": {
+      "name": "Aller au point d'entretien",
+      "description": "Envoie la tondeuse à un point d'entretien du plan actuel, où elle attend pour le nettoyage ou l'entretien. La tondeuse s'y rend.",
+      "fields": {
+        "point_id": {
+          "name": "Point d'entretien",
+          "description": "L'identifiant d'un point d'entretien de la carte active."
+        }
+      }
+    },
+    "ignore_obstacle": {
+      "name": "Ignorer l'obstacle",
+      "description": "Fait oublier à la tondeuse un obstacle reconnu par sa caméra, qui n'apparaît alors plus sur la carte. Impossible à annuler. La tondeuse ne se déplace pas pour cela, mais refuse pendant la tonte.",
+      "fields": {
+        "obstacle_id": {
+          "name": "Obstacle",
+          "description": "L'identifiant de l'obstacle chez la tondeuse ; la carte du plan le renseigne quand on y ignore un obstacle."
+        }
+      }
+    },
+    "backup_map": {
+      "name": "Sauvegarder la carte",
+      "description": "Sauvegarde la carte actuelle en remplaçant sa sauvegarde précédente. La tondeuse ne se déplace pas pour cela, mais refuse l'action pendant qu'elle tond ou retourne à sa station."
+    },
+    "restore_map": {
+      "name": "Restaurer la carte",
+      "description": "Rétablit le plan actuel tel que sa sauvegarde le contient ou, avec un emplacement, ramène un plan supprimé depuis la sauvegarde restée dans son emplacement vide. Les programmes et réglages de tonte du plan peuvent être réinitialisés. La tondeuse ne se déplace pas pour cela, mais refuse pendant la tonte ou le retour à la station.",
+      "fields": {
+        "slot": {
+          "name": "Emplacement",
+          "description": "L'emplacement de plan vide, numéroté à partir de 1, dont la sauvegarde ramène un plan supprimé. Laisser vide pour rétablir le plan actuel."
+        }
+      }
+    },
+    "delete_map": {
+      "name": "Supprimer une carte",
+      "description": "Supprime un plan avec tout ce qu'il contient. Sa sauvegarde reste dans son emplacement vide, d'où restore_map le ramène ; sans sauvegarde, un nouveau plan doit être créé dans l'application en conduisant la tondeuse. La tondeuse ne se déplace pas pour cela, mais refuse pendant la tonte ou le retour à la station.",
+      "fields": {
+        "map_id": {
+          "name": "Identifiant de la carte",
+          "description": "La carte à supprimer."
         }
       }
     }

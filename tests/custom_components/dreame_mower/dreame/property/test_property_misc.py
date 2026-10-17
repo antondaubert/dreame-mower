@@ -1,7 +1,7 @@
 """Tests for miscellaneous property handlers (property_misc module)."""
 
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, Mock
 
 from custom_components.dreame_mower.dreame.property.property_misc import (
     Property11Handler,
@@ -10,7 +10,6 @@ from custom_components.dreame_mower.dreame.property.property_misc import (
     PROPERTY_1_1_ACTIVE_CODES_NAME,
     PROPERTY_1_1_TASK_STATUS_NAME,
     SETTINGS_CHANGED_PROPERTY_NAME,
-    TASK_STATUS_OPTIONS,
 )
 
 # Raw heartbeat subState bytes (byte 13) for relevant task statuses.
@@ -39,8 +38,11 @@ class TestProperty11Handler:
         """Test handler initialization."""
         handler = Property11Handler()
         
-        # Should initialize with None last_value
-        assert handler.last_value is None
+        # Nothing is known before the first heartbeat
+        assert handler.task_status is None
+        assert handler.active_codes is None
+        assert handler.robot_state is None
+        assert handler.link_module_installed is None
 
     def test_parse_value_valid_data(self):
         """Test parsing valid property 1:1 data."""
@@ -74,9 +76,6 @@ class TestProperty11Handler:
         
         # Should return True for successful parsing
         assert result is True
-        
-        # Check that last_value is stored
-        assert handler.last_value == test_data
 
     def test_parse_value_unknown_length(self):
         """Test parsing with non-standard data lengths."""
@@ -128,22 +127,6 @@ class TestProperty11Handler:
         # Test with invalid type
         handler.parse_value("not a list")
         mock_logger.warning.assert_called()
-
-    def test_multiple_parse_calls_update_values(self):
-        """Test that multiple parse calls properly update values."""
-        handler = Property11Handler()
-        
-        # First parse
-        test_data_1 = [206] + [1] * 18 + [206]
-        result = handler.parse_value(test_data_1)
-        assert result is True
-        assert handler.last_value == test_data_1
-        
-        # Second parse with different data
-        test_data_2 = [206] + [2] * 18 + [206]
-        result = handler.parse_value(test_data_2)
-        assert result is True
-        assert handler.last_value == test_data_2
 
     def test_notify_not_called_when_status_unchanged(self):
         """Notify is not emitted when the decoded task status doesn't change."""
@@ -203,13 +186,6 @@ class TestProperty11Handler:
         handler.parse_value(_heartbeat(_MOWING_BYTE, _SUB_WORKING), notify)
         assert not [c for c in notify.call_args_list if c.args[0] == PROPERTY_1_1_TASK_STATUS_NAME]
 
-    def test_task_status_options_complete(self):
-        """The exported options tuple covers every decodable status."""
-        assert TASK_STATUS_OPTIONS == (
-            "idle", "starting", "mowing", "paused",
-            "finished", "failed", "exit", "returning_to_dock",
-        )
-
     def test_mowing_session_active_initially_false(self):
         """No session is active before the first heartbeat."""
         assert Property11Handler().mowing_session_active is False
@@ -241,15 +217,17 @@ class TestSettingsChangeHandler:
         """Test parsing settings change from dict format."""
         handler = SettingsChangeHandler()
         settings_data = {'start': 855, 'end': 858, 'value': 1}
-        assert handler.parse_value(settings_data) is True
-        assert handler.last_value == settings_data
+        notify = Mock()
+        assert handler.parse_value(settings_data, notify) is True
+        notify.assert_called_once_with(SETTINGS_CHANGED_PROPERTY_NAME, settings_data)
 
     def test_parse_timezone_format(self):
         """Test parsing settings change with timezone data."""
         handler = SettingsChangeHandler()
         settings_data = {'time': '1234567890', 'tz': 'Europe/Berlin'}
-        assert handler.parse_value(settings_data) is True
-        assert handler.last_value == {'time': '1234567890', 'tz': 'Europe/Berlin'}
+        notify = Mock()
+        assert handler.parse_value(settings_data, notify) is True
+        notify.assert_called_once_with(SETTINGS_CHANGED_PROPERTY_NAME, {'time': '1234567890', 'tz': 'Europe/Berlin'})
 
     def test_parse_invalid_format(self):
         """Test parsing invalid settings change format."""
@@ -374,10 +352,10 @@ class TestActiveCodes:
         ]
         assert code_calls == []
 
-    def test_a_captured_heartbeat_decodes_to_the_reported_conditions(self):
+    def test_a_docked_heartbeat_decodes_to_the_reported_conditions(self):
         """A heartbeat as the device sends it decodes to the codes it stands for."""
         handler = Property11Handler()
-        # Captured while the device was docked after finishing a task: it reports
+        # Sent while the device is docked after finishing a task: it reports
         # the task having started and finished, plus the ever-present bit 79.
         handler.parse_value(
             [206, 0, 0, 0, 0, 0, 0, 5, 0, 0, 128, 100, 129, 255, 0, 0, 128, 189, 186, 206]
@@ -412,3 +390,44 @@ class TestLinkModuleState:
         assert handler.parse_value(payload) is True
         assert handler.link_module_installed is installed
         assert handler.link_module_plan_valid is plan_valid
+
+
+def test_the_heartbeat_says_where_the_mower_stands():
+    """Byte 14: position (bits 0-1), way to the station (bits 2-4), leaving (bit 6)."""
+    from custom_components.dreame_mower.dreame.property.property_misc import PROPERTY_1_1_ROBOT_STATE_NAME
+
+    handler = Property11Handler()
+    notify = MagicMock()
+    data = _heartbeat(_MOWING_BYTE, _SUB_WORKING)
+    data[11] = 0x80 | 90  # charging, 90 %
+    data[14] = 1 | (1 << 2) | 0x40  # relocating, out of the station, leaving it
+    data[15] = (2 << 1) | 1  # zone mowing, started by a schedule
+
+    assert handler.parse_value(data, notify)
+
+    assert handler.robot_state == {
+        "main_state": 4,
+        "sub_state": _SUB_WORKING,
+        "location": "relocating",
+        "docking": "out_of_station",
+        "leaving_station": True,
+        "work_mode": 2,
+        "scheduled": True,
+        "charging": True,
+    }
+    notify.assert_any_call(PROPERTY_1_1_ROBOT_STATE_NAME, handler.robot_state)
+
+    # The same state again announces nothing.
+    notify.reset_mock()
+    handler.parse_value(data, notify)
+    assert not any(call.args[0] == PROPERTY_1_1_ROBOT_STATE_NAME for call in notify.call_args_list)
+
+
+def test_a_heartbeat_describing_no_real_state_is_passed_over():
+    handler = Property11Handler()
+    data = _heartbeat(_IDLE_BYTE, 0x28)
+    data[14] = 7
+
+    handler.parse_value(data, MagicMock())
+
+    assert handler.robot_state is None

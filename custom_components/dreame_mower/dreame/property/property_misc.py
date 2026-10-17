@@ -1,9 +1,4 @@
-"""Miscellaneous property handlers for known but not actively used properties.
-
-This module provides simple logging handlers for properties that are known
-but not currently useful for the integration. These handlers log the data
-for observability without extracting specific values.
-"""
+"""Handlers for the heartbeat (1:1) and the settings change announcement (2:51)."""
 
 from __future__ import annotations
 
@@ -16,6 +11,32 @@ from ..const import PROPERTY_1_1, SETTINGS_CHANGE_PROPERTY
 _MAIN_STATE_MOWING = 4
 PROPERTY_1_1_TASK_STATUS_NAME = "property_1_1_task_status"
 PROPERTY_1_1_ACTIVE_CODES_NAME = "property_1_1_active_codes"
+PROPERTY_1_1_ROBOT_STATE_NAME = "property_1_1_robot_state"
+
+# Byte 14 of the heartbeat says where the mower stands: bits 0-1 whether it
+# knows where it is, bits 2-4 its way to and from the station, bit 6 that it
+# is leaving the station.
+_ROBOT_STATE_INDEX = 14
+_LOCATION_STATES = {0: "idle", 1: "relocating", 2: "locating_failed", 3: "located"}
+_DOCKING_STATES = {
+    0: "in_station",
+    1: "out_of_station",
+    2: "pause_docking",
+    3: "finish_docking",
+    4: "docking_failed",
+    5: "docking_in_base",
+}
+_LEAVING_STATION_BIT = 0x40
+# Byte 15 says, while the mower mows, the task's mode (bits 1 and up) and
+# whether a schedule started it (bit 0).
+_WORK_MODE_INDEX = 15
+# Byte 11 carries the battery level, with bit 7 set while the mower charges.
+_BATTERY_INDEX = 11
+_CHARGING_BIT = 0x80
+# A heartbeat with this sub-state and one of these station states describes
+# no real state of the mower; it is passed over.
+_SPURIOUS_SUB_STATE = 0x28
+_SPURIOUS_STATION_STATES = frozenset({4, 7})
 SETTINGS_CHANGED_PROPERTY_NAME = "device_settings_changed"
 
 # The heartbeat carries the codes the device currently reports as a bitmask in
@@ -50,8 +71,6 @@ _TASK_STATUS_BY_INDEX: dict[int, str] = {
     6: "exit",
     7: "returning_to_dock",
 }
-# Ordered tuple of every possible task-status value, for sensor enum options.
-TASK_STATUS_OPTIONS: tuple[str, ...] = tuple(_TASK_STATUS_BY_INDEX.values())
 
 # Task statuses that mean no mowing session is in progress. Every other decoded
 # status (starting/mowing/paused/finished/failed/returning_to_dock) means a
@@ -73,20 +92,19 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class Property11Handler:
-    """Handler for property 1:1 - complex status/telemetry data.
-    
-    This property contains 20-byte array with various telemetry including:
-    - Raw battery charging state (byte 10: 0-100 direct %, ≥128 means charging with value-128)
-    
-    Currently only logged for observability, not actively used in integration.
+    """Handler for property 1:1, the mower's heartbeat.
+
+    Its 20-byte form carries the mowing task status, the codes the mower
+    currently reports, where it stands and what it does, and the state of the
+    cellular module.
     """
     
     def __init__(self) -> None:
         """Initialize property handler."""
-        self._last_value: list[int] | None = None
         self._task_status: str | None = None
         self._active_codes: frozenset[int] | None = None
         self._link_module_rssi: int | None = None
+        self._robot_state: dict[str, Any] | None = None
 
     def parse_value(self, value: list[int], notify_callback: Callable[[str, Any], None] | None = None) -> bool:
         """Parse and log property 1:1 value."""
@@ -94,8 +112,6 @@ class Property11Handler:
             if not isinstance(value, list):
                 _LOGGER.warning("Property 1:1 unexpected type: %s, value: %s", type(value), value)
                 return False
-
-            self._last_value = value.copy()
 
             # Known format: 20-byte array with sentinel 0xCE at positions 0 and 19
             if len(value) == 20 and value[0] == 206 and value[19] == 206:
@@ -108,6 +124,7 @@ class Property11Handler:
                 )
                 self._update_task_status(main_state, sub_state, notify_callback)
                 self._update_active_codes(value, notify_callback)
+                self._update_robot_state(value, main_state, sub_state, notify_callback)
                 self._link_module_rssi = value[_LINK_MODULE_RSSI_INDEX]
             elif len(value) == 24:
                 # 24-byte variant seen on mova.mower.g2405c firmware 4.3.6_0062 (issue #18)
@@ -177,6 +194,39 @@ class Property11Handler:
         if notify_callback is not None:
             notify_callback(PROPERTY_1_1_ACTIVE_CODES_NAME, active_codes)
 
+    def _update_robot_state(
+        self,
+        value: list[int],
+        main_state: int,
+        sub_state: int,
+        notify_callback: Callable[[str, Any], None] | None,
+    ) -> None:
+        """Update where the mower stands and what it does, notifying on change."""
+        station = value[_ROBOT_STATE_INDEX]
+        if sub_state == _SPURIOUS_SUB_STATE and station & 0x1F in _SPURIOUS_STATION_STATES:
+            return
+        work = value[_WORK_MODE_INDEX]
+        state = {
+            "main_state": main_state,
+            "sub_state": sub_state,
+            "location": _LOCATION_STATES[station & 0x03],
+            "docking": _DOCKING_STATES.get((station >> 2) & 0x07, "unknown"),
+            "leaving_station": bool(station & _LEAVING_STATION_BIT),
+            "work_mode": work >> 1 if main_state == _MAIN_STATE_MOWING else None,
+            "scheduled": bool(work & 1) if main_state == _MAIN_STATE_MOWING else None,
+            "charging": bool(value[_BATTERY_INDEX] & _CHARGING_BIT),
+        }
+        if state == self._robot_state:
+            return
+        self._robot_state = state
+        if notify_callback is not None:
+            notify_callback(PROPERTY_1_1_ROBOT_STATE_NAME, dict(state))
+
+    @property
+    def robot_state(self) -> dict[str, Any] | None:
+        """Return where the mower stands and what it does (None until a heartbeat is seen)."""
+        return dict(self._robot_state) if self._robot_state is not None else None
+
     @property
     def active_codes(self) -> frozenset[int] | None:
         """Return the codes the device currently reports (None until a heartbeat is seen)."""
@@ -209,11 +259,6 @@ class Property11Handler:
             return None
         return self._link_module_rssi >= _LINK_MODULE_VALID_PLAN_RSSI
 
-    @property
-    def last_value(self) -> list[int] | None:
-        """Return last received property value."""
-        return self._last_value.copy() if self._last_value else None
-
 
 class SettingsChangeHandler:
     """Handler for generic settings change acknowledgment property (2:51).
@@ -224,10 +269,6 @@ class SettingsChangeHandler:
     settings as with the do-not-disturb window. It therefore only says *that*
     something changed, which is the cue to read the settings record back.
     """
-
-    def __init__(self) -> None:
-        """Initialize settings change handler."""
-        self._last_value: dict[str, Any] | None = None
 
     def parse_value(
         self,
@@ -240,8 +281,6 @@ class SettingsChangeHandler:
                 _LOGGER.warning("Invalid settings change value type: %s, value: %s", type(value), value)
                 return False
 
-            self._last_value = value
-
             # Log the settings change as info with JSON content
             _LOGGER.info("Settings change acknowledged (2:51): %s", json.dumps(value))
             if notify_callback is not None:
@@ -251,11 +290,6 @@ class SettingsChangeHandler:
         except Exception as ex:
             _LOGGER.error("Failed to parse settings change acknowledgment: %s, value: %s", ex, value)
             return False
-    
-    @property
-    def last_value(self) -> dict[str, Any] | None:
-        """Return last received settings change data."""
-        return self._last_value.copy() if self._last_value else None
 
 
 class MiscPropertyHandler:
@@ -285,6 +319,11 @@ class MiscPropertyHandler:
     def active_codes(self) -> frozenset[int] | None:
         """Return the codes the device currently reports in its heartbeat."""
         return self._property_1_1_handler.active_codes
+
+    @property
+    def robot_state(self) -> dict[str, Any] | None:
+        """Return where the mower stands and what it does, from the heartbeat."""
+        return self._property_1_1_handler.robot_state
 
     @property
     def link_module_installed(self) -> bool | None:
