@@ -132,10 +132,5 @@ dmypy.json
 .DS_Store
 .vscode/
 
-# Protocol discovery results (contain sensitive info like serial numbers)
-debug/
-dev/logs/
-dev/issues/
-dev/zone_selection/
-dev/map_selection/
+# Test output
 tests/custom_components/dreame_mower/dreame/test_data/*_actual.svg

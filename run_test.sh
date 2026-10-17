@@ -5,7 +5,6 @@
 # This script runs comprehensive tests on the codebase:
 # 1. pytest - Runs all unit tests (tests/ directory)
 # 2. mypy (main) - Type checks main codebase (custom_components/)
-# 3. mypy (dev) - Type checks development scripts (dev/)
 #
 # Usage: ./run_test.sh
 # Requirements: Virtual environment with pytest and mypy installed at .venv/
@@ -26,10 +25,8 @@ NC='\033[0m' # No Color
 # Track results and counts
 PYTEST_RESULT=0
 MYPY_MAIN_RESULT=0
-MYPY_DEV_RESULT=0
 TEST_COUNT=""
 MAIN_FILE_COUNT=""
-DEV_FILE_COUNT=""
 
 print_header() {
     echo
@@ -90,31 +87,6 @@ else
     MYPY_MAIN_RESULT=1
 fi
 
-# 3. Run mypy on dev directory (bypassing exclusions)
-if [ -d "dev" ]; then
-    DEV_PY_FILES=$(find dev -name "*.py" -type f)
-    if [ -n "$DEV_PY_FILES" ]; then
-        print_header "Running mypy on dev directory"
-        if MYPY_DEV_OUTPUT=$(.venv/bin/mypy $DEV_PY_FILES 2>&1); then
-            # Extract file count from success message
-            DEV_FILE_COUNT=$(echo "$MYPY_DEV_OUTPUT" | grep -o 'Success: no issues found in [0-9]\+ source files' | grep -o '[0-9]\+')
-            if [ -n "$DEV_FILE_COUNT" ]; then
-                echo -e "${GREEN}✅ mypy dev - $DEV_FILE_COUNT files${NC}"
-            else
-                print_success "mypy dev"
-            fi
-        else
-            print_error "mypy dev"
-            echo "$MYPY_DEV_OUTPUT"
-            MYPY_DEV_RESULT=1
-        fi
-    else
-        echo -e "${YELLOW}⚠️ No Python files found in dev/ directory${NC}"
-    fi
-else
-    echo -e "${YELLOW}⚠️ dev/ directory not found${NC}"
-fi
-
 # Print summary
 echo
 echo "============================================================"
@@ -138,24 +110,10 @@ else
     print_error "mypy (main codebase)"
 fi
 
-if [ -d "dev" ] && find dev/ -name "*.py" -print -quit | grep -q .; then
-    if [ $MYPY_DEV_RESULT -eq 0 ]; then
-        if [ -n "$DEV_FILE_COUNT" ]; then
-            echo -e "${GREEN}✅ mypy (dev/ directory) - $DEV_FILE_COUNT files PASSED${NC}"
-        else
-            print_success "mypy (dev/ directory)"
-        fi
-    else
-        print_error "mypy (dev/ directory)"
-    fi
-else
-    print_warning "mypy (dev/ directory) - SKIPPED (no .py files)"
-fi
-
 echo "============================================================"
 
 # Overall result
-TOTAL_ERRORS=$((PYTEST_RESULT + MYPY_MAIN_RESULT + MYPY_DEV_RESULT))
+TOTAL_ERRORS=$((PYTEST_RESULT + MYPY_MAIN_RESULT))
 
 if [ $TOTAL_ERRORS -eq 0 ]; then
     echo -e "${GREEN}🎉 All tests PASSED!${NC}"
