@@ -104,6 +104,7 @@ from .const import (
     FIRMWARE_INSTALL_STATE_PROPERTY,
     FIRMWARE_DOWNLOAD_PROGRESS_PROPERTY,
     POSE_COVERAGE_PROPERTY,
+    SERVICE1_PROPERTY_50,
     SERVICE1_PROPERTY_51,
     STATUS_MAPPING,
     PROPERTY_FIRMWARE,
@@ -129,6 +130,8 @@ from .const import (
     ONLINE_OFFLINE_DEBOUNCE_POLLS,
     TRANSPORT_DISCONNECT_GRACE_SECONDS,
     CURRENT_MAP_ID_PROPERTY_NAME,
+    MAP_SWITCH_ANNOUNCED_PROPERTY_NAME,
+    TASK_OPCODE_MAP_SWITCH,
     CUTTING_HEIGHT_ABSOLUTE_MAX_CM,
     CUTTING_HEIGHT_MIN_CM,
     CUTTING_HEIGHT_STEP_CM,
@@ -1698,6 +1701,11 @@ class DreameMowerDevice:
         The hash of every map comes out of a single read each, and the maps are
         only read back once one of the hashes, or the set of maps, moved.
 
+        A switch of the active map made outside Home Assistant leaves every
+        hash as it was, and the signs the mower gives of it do not name the
+        new map. The slot read that carries the hashes also flags the active
+        map, so that flag is applied even when nothing has to be read back.
+
         Returns:
             True if map data was read back and updated, False otherwise.
         """
@@ -1718,6 +1726,10 @@ class DreameMowerDevice:
         if self._map_hashes is not None and {
             slot["index"]: slot["hash"] for slot in slots
         } == self._map_hashes:
+            for slot in slots:
+                if slot["current"]:
+                    self._apply_current_map_id(self._map_id_from_index(slot["index"]))
+                    break
             return False
 
         return self.fetch_vector_map()
@@ -1820,7 +1832,7 @@ class DreameMowerDevice:
             return None
 
     def _read_map_slots(self) -> list[dict[str, Any]] | None:
-        """Read the map slots that hold a map, with the hash of each.
+        """Read the map slots that hold a map, with the hash of each and whether it is the active one.
 
         Returns None when the mower does not report its map slots.
         """
@@ -1856,7 +1868,7 @@ class DreameMowerDevice:
             if info is None:
                 return None
 
-            slots.append({"index": map_index, "hash": info[0]})
+            slots.append({"index": map_index, "hash": info[0], "current": bool(row[1])})
 
         self._map_backups = backups
         self._held_map_slots = {slot["index"] for slot in slots}
@@ -2337,6 +2349,9 @@ class DreameMowerDevice:
                 # Handle scheduling properties (2:50, 2:52) in unified handler
                 if not self._scheduling_handler.handle_property_update(siid, piid, message["value"], self._notify_property_change):
                     return False  # Parsing failed - treat as unhandled property
+                if SCHEDULING_TASK_PROPERTY.matches(siid, piid) and self._is_map_switch_echo(message["value"]):
+                    _LOGGER.debug("Map switch announced on 2:50: %s", message["value"])
+                    self._notify_property_change(MAP_SWITCH_ANNOUNCED_PROPERTY_NAME, None)
             elif POSE_COVERAGE_PROPERTY.matches(siid, piid):
                 # Handle pose and coverage property (1:4) with mowing progress and coordinates
                 try:
@@ -2379,6 +2394,10 @@ class DreameMowerDevice:
                 if old_progress != firmware_download_progress:
                     self._notify_property_change(FIRMWARE_DOWNLOAD_PROGRESS_PROPERTY.name, firmware_download_progress)
                     _LOGGER.info("Firmware download progress updated: %s%%", firmware_download_progress)
+            elif SERVICE1_PROPERTY_50.matches(siid, piid):
+                # 1:50 carries no value; the mower sends it as a session starts
+                # and when its active map is switched.
+                self._notify_property_change(SERVICE1_PROPERTY_50.name, True)
             elif SERVICE1_PROPERTY_51.matches(siid, piid):
                 # 1:51 carries no value; the mower sends it as a session starts.
                 self._notify_property_change(SERVICE1_PROPERTY_51.name, True)
@@ -4105,12 +4124,19 @@ class DreameMowerDevice:
             _LOGGER.debug("MAPL response did not expose a current map: %s", result)
             return False
 
-        if self._current_map_id != current_map_id:
-            self._current_map_id = current_map_id
-            self._reset_cutting_height_cache()
-            self._notify_property_change(CURRENT_MAP_ID_PROPERTY_NAME, current_map_id)
-
+        self._apply_current_map_id(current_map_id)
         return True
+
+    def _apply_current_map_id(self, current_map_id: int | None) -> None:
+        """Take on the active map the mower reports, announcing it when it changed."""
+        if current_map_id is None or self._current_map_id == current_map_id:
+            return
+
+        if self._current_map_id is not None:
+            _LOGGER.info("Active map changed from map ID %s to %s", self._current_map_id, current_map_id)
+        self._current_map_id = current_map_id
+        self._reset_cutting_height_cache()
+        self._notify_property_change(CURRENT_MAP_ID_PROPERTY_NAME, current_map_id)
 
     def _build_get_mowing_preference_payload(
         self,
@@ -5209,12 +5235,20 @@ class DreameMowerDevice:
             data[FROM_STOP_POINT_KEY] = from_stop_point
         return {"m": "a", "p": 0, "o": 100, "d": data}
 
+    @staticmethod
+    def _is_map_switch_echo(value: Any) -> bool:
+        """Return whether a 2:50 task report is the echo of a map switch."""
+        if not isinstance(value, dict) or value.get("t") != "TASK":
+            return False
+        data = value.get("d")
+        return isinstance(data, dict) and data.get("o") == TASK_OPCODE_MAP_SWITCH
+
     def _build_set_current_map_payload(self, map_index: int) -> dict[str, Any]:
         """Build the 2:50 action payload for switching the active map."""
         return {
             "m": "a",
             "p": 0,
-            "o": 200,
+            "o": TASK_OPCODE_MAP_SWITCH,
             "d": {
                 "idx": map_index,
             },

@@ -100,8 +100,7 @@ SERVICE6_PROPERTY_3 = PropertyIdentifier(siid=6, piid=3, name="service6_property
 # Properties the mower reports that nothing here acts on. They are taken in
 # silently rather than reported as unhandled.
 IGNORED_PROPERTIES: tuple[PropertyIdentifier, ...] = (
-    # Flags without a value: 1:50 as a session starts, 1:52 once it ended.
-    SERVICE1_PROPERTY_50,
+    # A flag without a value, sent once a session ended.
     SERVICE1_COMPLETION_FLAG_PROPERTY,
     # Device metadata: active_time, expire_time, num and sn.
     SERVICE1_PROPERTY_54,
@@ -168,6 +167,10 @@ ACTION_PAUSE = ActionIdentifier(siid=5, aiid=4, name="pause")
 TASK_PAYLOAD_RESUME = {"m": "a", "p": 0, "o": 5}  # continueControl
 # Stop the mower on its way back to the station; it stays where it is.
 TASK_PAYLOAD_STOP_RETURNING = {"m": "a", "p": 2, "o": 13}
+
+# Opcode of a switch of the active map. The mower may echo it on 2:50 after a
+# switch, whoever made it, but without saying which map is now active.
+TASK_OPCODE_MAP_SWITCH = 200
 
 # Mowing preference ("PRE") records
 #
@@ -747,6 +750,7 @@ PROPERTY_FIRMWARE = "firmware"
 
 # Derived state names reported through the device property callbacks
 CURRENT_MAP_ID_PROPERTY_NAME = "current_map_id"
+MAP_SWITCH_ANNOUNCED_PROPERTY_NAME = "map_switch_announced"
 CUTTING_HEIGHT_PROPERTY_NAME = "cutting_height"
 ZONE_CUTTING_HEIGHTS_PROPERTY_NAME = "zone_cutting_heights"
 MOWING_PREFERENCE_MODE_PROPERTY_NAME = "mowing_preference_mode"

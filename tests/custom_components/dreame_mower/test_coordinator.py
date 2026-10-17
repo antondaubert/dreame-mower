@@ -15,6 +15,7 @@ from custom_components.dreame_mower.const import DOMAIN
 from custom_components.dreame_mower.config_flow import CONF_ACCOUNT_TYPE, CONF_COUNTRY, CONF_DID, CONF_MAC, CONF_MODEL, CONF_SERIAL
 from custom_components.dreame_mower.dreame.const import (
     CURRENT_MAP_ID_PROPERTY_NAME,
+    MAP_SWITCH_ANNOUNCED_PROPERTY_NAME,
     FIRMWARE_INSTALL_STATE_PROPERTY,
     FirmwareInstallState,
     SCHEDULING_SUMMARY_PROPERTY,
@@ -63,6 +64,65 @@ async def test_coordinator_holds_no_data_of_its_own(hass: HomeAssistant, minimal
     coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
 
     assert await coordinator._async_update_data() is None
+
+
+async def test_coordinator_rereads_the_active_map_when_the_mower_announces_a_switch(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """A switch made outside Home Assistant is announced without the map, so the map list is read."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device.refresh_current_map_id = MagicMock(return_value=True)
+
+    with patch("custom_components.dreame_mower.coordinator._MAP_SWITCH_READ_BACK_DELAY_SECONDS", 0):
+        coordinator._handle_device_update(MAP_SWITCH_ANNOUNCED_PROPERTY_NAME, None)
+        await hass.async_block_till_done()
+
+    coordinator.device.refresh_current_map_id.assert_called_once()
+
+
+async def test_coordinator_rereads_the_active_map_on_the_marker_alone(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """The 1:50 marker comes with every switch, also when the echo does not."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device.refresh_current_map_id = MagicMock(return_value=True)
+
+    with patch("custom_components.dreame_mower.coordinator._MAP_SWITCH_READ_BACK_DELAY_SECONDS", 0):
+        coordinator._handle_device_update("service1_property_50", True)
+        await hass.async_block_till_done()
+
+    coordinator.device.refresh_current_map_id.assert_called_once()
+
+
+async def test_coordinator_follows_every_later_switch_too(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """Once a read-back ran, the next switch is read back again."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device.refresh_current_map_id = MagicMock(return_value=True)
+
+    with patch("custom_components.dreame_mower.coordinator._MAP_SWITCH_READ_BACK_DELAY_SECONDS", 0):
+        coordinator._handle_device_update(MAP_SWITCH_ANNOUNCED_PROPERTY_NAME, None)
+        await hass.async_block_till_done()
+        coordinator._handle_device_update(MAP_SWITCH_ANNOUNCED_PROPERTY_NAME, None)
+        await hass.async_block_till_done()
+
+    assert coordinator.device.refresh_current_map_id.call_count == 2
+
+
+async def test_coordinator_reads_the_map_list_once_for_echo_and_marker(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """The echo and the 1:50 marker of one switch cost a single read."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device.refresh_current_map_id = MagicMock(return_value=True)
+
+    with patch("custom_components.dreame_mower.coordinator._MAP_SWITCH_READ_BACK_DELAY_SECONDS", 0):
+        coordinator._handle_device_update("service1_property_50", True)
+        coordinator._handle_device_update(MAP_SWITCH_ANNOUNCED_PROPERTY_NAME, None)
+        await hass.async_block_till_done()
+
+    coordinator.device.refresh_current_map_id.assert_called_once()
 
 
 async def test_coordinator_refreshes_the_mowing_preferences_of_fixed_height_models(
