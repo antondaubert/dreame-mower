@@ -8,7 +8,7 @@ import logging
 from homeassistant.components.time import TimeEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -39,19 +39,24 @@ async def async_setup_entry(
     """Set up Dreame Mower times from a config entry."""
     coordinator: DreameMowerCoordinator = hass.data[DOMAIN][entry.entry_id][DATA_COORDINATOR]
 
-    if not coordinator.supports_charging_period:
-        _LOGGER.debug(
-            "Skipping the charging period entities: device %s reported no charging settings",
-            coordinator.device_name,
-        )
-        return
+    # The charging period exists only on mowers that turn out to offer it.
+    @callback
+    def add_times() -> None:
+        if not coordinator.supports_charging_period:
+            _LOGGER.debug(
+                "Skipping the charging period entities: device %s reported no charging settings",
+                coordinator.device_name,
+            )
+            return
 
-    async_add_entities(
-        [
-            DreameMowerChargingPeriodStartTime(coordinator),
-            DreameMowerChargingPeriodEndTime(coordinator),
-        ]
-    )
+        async_add_entities(
+            [
+                DreameMowerChargingPeriodStartTime(coordinator),
+                DreameMowerChargingPeriodEndTime(coordinator),
+            ]
+        )
+
+    coordinator.async_when_probed(add_times)
 
 
 class DreameMowerChargingPeriodTime(DreameMowerEntity, TimeEntity):

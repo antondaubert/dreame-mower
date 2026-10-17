@@ -24,6 +24,12 @@ Track encoding (11 or 15 bytes)::
     Then pairs of int16 LE (dx, dy) deltas from the robot pose.
     Sentinel: |dx| > 32766 AND |dy| > 32766 marks a segment break.
 
+The track is the trail of the running session, one numbered point per turn.
+Each message repeats the newest few points from the start index on, padding
+the ones not reached yet with segment breaks, so the trail is kept by point
+number: a later message fills in what an earlier one padded. The numbers start
+again from zero with every session.
+
 Robot coordinates are in "pose units".  Multiplying by 10 converts them to the
 same unit system as the batch-API zone / M_PATH coordinates.
 """
@@ -62,6 +68,20 @@ _TRACK_SENTINEL_THRESHOLD = 32766
 
 # Sentinel coordinate value used for segment breaks in track data
 _SEGMENT_BREAK = 2147483647
+
+# How far the track numbers may step back before they count as a new session.
+# Within a session they only grow; a message may still repeat a few older ones.
+_TRAIL_RESTART_MARGIN = 16
+
+# The most trail points kept; the oldest go first. A long session on a large
+# lawn stays well below this.
+MAX_TRAIL_POINTS = 50000
+
+
+def decode_pose_point(raw: bytes) -> tuple[int, int]:
+    """Decode x and y of one five-byte point, packed like the pose (pose units)."""
+    x, y, _angle = _parse_pose([*raw, 0], offset=0)
+    return x, y
 
 
 def _parse_pose(data: List[int], offset: int) -> tuple[int, int, float]:
@@ -186,8 +206,10 @@ class PoseCoverageHandler:
 
         # Newly accumulated track points (list of [x, y] in map units)
         self._new_track_points: list[list[int]] = []
-        # Full path history
-        self._path_history: list[list[int]] = []
+        # The session's trail by point number, and how often it changed.
+        self._trail: dict[int, list[int]] = {}
+        self._trail_last_index = -1
+        self._trail_revision = 0
     
     def parse_value(self, value: Any) -> bool:
         """Parse pose coverage value from the raw IoT property byte array.
@@ -230,12 +252,10 @@ class PoseCoverageHandler:
             elif n == 22:
                 # [CE] pose(6) trace(15)
                 return self._parse_pose_trace_format(value)
-            elif n == 13:
-                # [CE] pose(6) extra(5)
+            elif n in (13, 8):
+                # [CE] pose(6) extra(5), or [CE] pose(6) [CE]: the pose alone,
+                # as the mower reports it while it drives without mowing.
                 return self._parse_pose_short_format(value)
-            elif n == 8:
-                # Meaning unknown — silently acknowledge
-                return True
             else:
                 _LOGGER.debug("Unrecognised pose coverage payload length: %d", n)
                 return self._parse_fallback(value)
@@ -304,8 +324,67 @@ class PoseCoverageHandler:
     
     @property
     def path_history(self) -> list[list[int]]:
-        """Return accumulated track path (list of [x, y] in map units)."""
-        return self._path_history.copy()
+        """Return the session's trail in order, [x, y] in map units.
+
+        A segment break is a point with both coordinates set to the break
+        sentinel. Breaks the device used as padding past the newest point are
+        left out.
+        """
+        # One copy first: the trail grows on the thread the reports arrive on.
+        points = [point for _index, point in sorted(list(self._trail.items()))]
+        while points and points[-1][0] == _SEGMENT_BREAK:
+            points.pop()
+        return points
+
+    def set_position(self, x_raw: int, y_raw: int, angle: float) -> None:
+        """Take the mower's position as read from it, in pose units and degrees."""
+        self._new_track_points = []
+        self._apply_pose(x_raw, y_raw, angle)
+
+    def first_missing_trail_index(self) -> int | None:
+        """Return the first point number the trail lacks, or None when it has them all.
+
+        An empty trail lacks its very first point.
+        """
+        known = list(self._trail)
+        if not known:
+            return 0
+        present = set(known)
+        for index in range(max(known) + 1):
+            if index not in present:
+                return index
+        return None
+
+    def merge_trail(self, start_index: int, points: list[tuple[int, int]]) -> bool:
+        """Take in a stretch of the session's trail read back from the mower.
+
+        `points` are numbered on from `start_index` in pose units, a segment
+        break being a point with both coordinates out of range. They fill in
+        or replace what the trail holds under the same numbers; a break never
+        replaces a known point. Returns True when the trail changed.
+        """
+        changed = False
+        for offset, (x, y) in enumerate(points):
+            index = start_index + offset
+            if abs(x) > _TRACK_SENTINEL_THRESHOLD and abs(y) > _TRACK_SENTINEL_THRESHOLD:
+                if index in self._trail:
+                    continue
+                point = [_SEGMENT_BREAK, _SEGMENT_BREAK]
+            else:
+                point = [x * _POSE_SCALE, y * _POSE_SCALE]
+            if self._trail.get(index) != point:
+                self._trail[index] = point
+                changed = True
+        if points:
+            self._trail_last_index = max(self._trail_last_index, start_index + len(points) - 1)
+        if changed:
+            self._trail_revision += 1
+        return changed
+
+    @property
+    def trail_revision(self) -> int:
+        """Return a number that changes whenever the trail changed."""
+        return self._trail_revision
 
     # ------------------------------------------------------------------
     # Lifecycle helpers
@@ -313,7 +392,9 @@ class PoseCoverageHandler:
 
     def clear_path_history(self) -> None:
         """Clear the path history (e.g., when a new mowing session starts)."""
-        self._path_history.clear()
+        self._trail.clear()
+        self._trail_last_index = -1
+        self._trail_revision += 1
         _LOGGER.debug("Path history cleared")
     
     def mark_mission_completed(self) -> None:
@@ -353,15 +434,32 @@ class PoseCoverageHandler:
         if self._mission_completed and self._progress_percent and self._progress_percent > 0:
             self._progress_percent = 100.0
 
-    def _apply_track(self, points: list[list[int]]) -> None:
-        """Accumulate track points (both new and history)."""
+    def _apply_track(self, start_index: int, points: list[list[int]]) -> None:
+        """Store track points by their number in the session's trail."""
         if not points:
             return
         self._new_track_points.extend(points)
-        self._path_history.extend(points)
-        # Cap history to avoid unbounded growth
-        if len(self._path_history) > 5000:
-            self._path_history = self._path_history[-5000:]
+        if start_index < self._trail_last_index - _TRAIL_RESTART_MARGIN:
+            # The numbers started over: this is the next session's trail.
+            self._trail.clear()
+            self._trail_last_index = -1
+        self._trail_last_index = max(self._trail_last_index, start_index + len(points) - 1)
+        changed = False
+        for offset, point in enumerate(points):
+            index = start_index + offset
+            if point[0] == _SEGMENT_BREAK and index in self._trail:
+                # Padding never replaces a point that is already known.
+                continue
+            if self._trail.get(index) != point:
+                self._trail[index] = point
+                changed = True
+        if len(self._trail) > MAX_TRAIL_POINTS:
+            # Trim a tenth at once, so this sort runs only now and then.
+            keep = MAX_TRAIL_POINTS - MAX_TRAIL_POINTS // 10
+            for index in sorted(self._trail)[: len(self._trail) - keep]:
+                del self._trail[index]
+        if changed:
+            self._trail_revision += 1
 
     # ------------------------------------------------------------------
     # Private: format handlers
@@ -372,8 +470,8 @@ class PoseCoverageHandler:
         x, y, angle = _parse_pose(raw, offset=1)
         mx, my = self._apply_pose(x, y, angle)
 
-        _idx, pts = _parse_track_deltas(raw, offset=7, length=15, base_x=mx, base_y=my)
-        self._apply_track(pts)
+        idx, pts = _parse_track_deltas(raw, offset=7, length=15, base_x=mx, base_y=my)
+        self._apply_track(idx, pts)
 
         task = _parse_task(raw, offset=22)
         self._apply_task(task)
@@ -384,14 +482,14 @@ class PoseCoverageHandler:
         x, y, angle = _parse_pose(raw, offset=1)
         mx, my = self._apply_pose(x, y, angle)
 
-        _idx1, pts1 = _parse_track_deltas(raw, offset=7, length=15, base_x=mx, base_y=my)
-        self._apply_track(pts1)
+        idx1, pts1 = _parse_track_deltas(raw, offset=7, length=15, base_x=mx, base_y=my)
+        self._apply_track(idx1, pts1)
 
         task = _parse_task(raw, offset=22)
         self._apply_task(task)
 
-        _idx2, pts2 = _parse_track_deltas(raw, offset=32, length=11, base_x=mx, base_y=my)
-        self._apply_track(pts2)
+        idx2, pts2 = _parse_track_deltas(raw, offset=32, length=11, base_x=mx, base_y=my)
+        self._apply_track(idx2, pts2)
         return True
 
     def _parse_pose_trace_format(self, raw: List[int]) -> bool:
@@ -399,12 +497,12 @@ class PoseCoverageHandler:
         x, y, angle = _parse_pose(raw, offset=1)
         mx, my = self._apply_pose(x, y, angle)
 
-        _idx, pts = _parse_track_deltas(raw, offset=7, length=15, base_x=mx, base_y=my)
-        self._apply_track(pts)
+        idx, pts = _parse_track_deltas(raw, offset=7, length=15, base_x=mx, base_y=my)
+        self._apply_track(idx, pts)
         return True
 
     def _parse_pose_short_format(self, raw: List[int]) -> bool:
-        """13 raw bytes: [CE] pose(6) extra(5) — pose only."""
+        """13 or 8 raw bytes: [CE] pose(6) and maybe extra(5) — pose only."""
         x, y, angle = _parse_pose(raw, offset=1)
         self._apply_pose(x, y, angle)
         return True
@@ -423,7 +521,3 @@ class PoseCoverageHandler:
             self._apply_pose(x, y, angle)
             return True
         return False
-
-
-# Alias used by device.py imports
-PoseCoveragePropertyHandler = PoseCoverageHandler

@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Escolha o tipo de conta",
-        "description": "Selecione seu tipo de conta para a integração do cortador de sonho.",
+        "description": "Selecione o tipo de conta para a integração Dreame Mower.",
         "data": {
           "account_type": "Tipo de conta"
         }
@@ -22,20 +22,20 @@
           "password": "Senha",
           "country": "País do servidor"
         },
-        "description": "Faça login na nuvem movehome."
+        "description": "Faça login na nuvem MOVAhome."
       },
       "devices": {
         "data": {
           "devices": "Dispositivos suportados"
         },
-        "description": "Selecione o dispositivo de cortador de sonho que você deseja configurar."
+        "description": "Selecione o dispositivo Dreame Mower que deseja configurar."
       },
       "options": {
         "data": {
           "name": "Nome do dispositivo",
           "notify": "Tipos de notificação"
         },
-        "description": "Configure o nome do dispositivo do cortador de sonho e as preferências de notificação."
+        "description": "Configure o nome do dispositivo Dreame Mower e as preferências de notificação."
       }
     },
     "error": {
@@ -47,7 +47,6 @@
       "invalid_account_type": "Tipo de conta inválido selecionado."
     },
     "abort": {
-      "cannot_connect": "Falhou em conectar.",
       "already_configured": "Este dispositivo já está configurado."
     }
   },
@@ -55,13 +54,10 @@
     "step": {
       "init": {
         "title": "Opções",
-        "description": "Conectado com {account} ({account_type}, {country}).\n\nConfigurar configurações de notificação para a integração do cortador de cortinas de sonho.",
+        "description": "Conectado com {account} ({account_type}, {country}).\n\nEscolha quais notificações deseja receber do seu cortador de grama Dreame.",
         "data": {
           "notify": "Tipos de notificação",
-          "map_rotation": "Rotação do mapa",
-          "map_show_title": "Exibir título do mapa",
-          "map_show_legend": "Exibir legenda do mapa",
-          "map_padding": "Margem do mapa (pixels)"
+          "map_rotation": "Rotação do mapa"
         }
       }
     }
@@ -86,48 +82,8 @@
           "maintenance_paused": "Pausado no ponto de manutenção"
         }
       },
-      "charging_status": {
-        "name": "Status de carregamento",
-        "state": {
-          "not_docked": "Não atracado",
-          "charging": "Carregamento",
-          "not_charging": "Não cobrar",
-          "charging_completed": "Cobrança concluída",
-          "return_to_charge": "Retornar à cobrança",
-          "charging_paused_high_temperature": "Carregamento pausado: temperatura da bateria muito alta",
-          "charging_paused_low_temperature": "Carregamento pausado: temperatura da bateria muito baixa"
-        }
-      },
       "mowing_progress": {
         "name": "Progresso da corte"
-      },
-      "bluetooth_connection": {
-        "name": "Bluetooth"
-      },
-      "dnd_status": {
-        "name": "Não incomodar"
-      },
-      "charging_schedule": {
-        "name": "Cronograma de cobrança"
-      },
-      "timezone": {
-        "name": "Fuso horário"
-      },
-      "device_code": {
-        "name": "Código do dispositivo"
-      },
-      "current_task": {
-        "name": "Tarefa atual",
-        "state": {
-          "idle": "Sem tarefa",
-          "starting": "Iniciando",
-          "mowing": "Cortando",
-          "paused": "Pausada",
-          "finished": "Concluída",
-          "failed": "Falhou",
-          "exit": "Parada",
-          "returning_to_dock": "Retornando à estação"
-        }
       },
       "consumable_blade_health": {
         "name": "Estado das lâminas"
@@ -143,36 +99,6 @@
       },
       "account": {
         "name": "Conta"
-      }
-    },
-    "camera": {
-      "map_camera": {
-        "name": "Mapa"
-      }
-    },
-    "button": {
-      "reset_blade": {
-        "name": "Redefinir contador de lâminas"
-      },
-      "reset_brush": {
-        "name": "Redefinir contador de escova"
-      },
-      "reset_robot_maintenance": {
-        "name": "Redefinir contador de manutenção"
-      },
-      "dock_without_stopping": {
-        "name": "Retornar à base sem parar a tarefa"
-      },
-      "go_to_maintenance_point": {
-        "name": "Ir ao ponto de manutenção"
-      }
-    },
-    "number": {
-      "cutting_height": {
-        "name": "Altura de corte"
-      },
-      "mowing_direction": {
-        "name": "Direção de corte"
       }
     },
     "switch": {
@@ -197,14 +123,20 @@
       "schedule": {
         "name": "Agendamento {number}"
       },
-      "edge_mowing_auto": {
-        "name": "Corte automático de bordas"
+      "frost_protection": {
+        "name": "Proteção contra geada"
       },
-      "edge_blade_offset": {
-        "name": "EdgeMaster"
+      "path_obstacle_avoidance": {
+        "name": "Desvio de obstáculos nos caminhos"
       },
-      "edge_mowing_safe": {
-        "name": "Corte seguro de bordas"
+      "auto_recharge_standby": {
+        "name": "Recarga automática após espera"
+      },
+      "ai_obstacle_photos": {
+        "name": "Fotografar obstáculos detectados por IA"
+      },
+      "child_lock": {
+        "name": "Bloqueio infantil"
       }
     },
     "time": {
@@ -218,6 +150,9 @@
     "select": {
       "rain_delay": {
         "name": "Espera após a chuva"
+      },
+      "navigation_path": {
+        "name": "Rota de navegação"
       }
     }
   },
@@ -234,9 +169,50 @@
         "map_wide": "Uma configuração para todo o mapa",
         "per_zone": "Uma configuração por zona"
       }
+    },
+    "mowing_efficiency": {
+      "options": {
+        "standard": "Padrão",
+        "efficient": "Eficiente"
+      }
+    },
+    "turning_method": {
+      "options": {
+        "efficient": "Eficiente",
+        "lawn_care": "Cuidado com o gramado"
+      }
+    },
+    "ai_obstacle_kind": {
+      "options": {
+        "humans": "Pessoas",
+        "animals": "Animais",
+        "objects": "Objetos"
+      }
     }
   },
   "services": {
+    "start_all_area_mowing": {
+      "name": "Iniciar corte de toda a área",
+      "description": "Corta todo o mapa ativo. Uma sessão de corte em andamento é retomada.",
+      "fields": {
+        "from_stop_point": {
+          "name": "A partir do ponto de parada",
+          "description": "Onde uma tarefa inacabada parou numa zona: ligado, corta só o restante; desligado, corta desde o início. Se omitido, o cortador não é informado."
+        }
+      }
+    },
+    "end_task": {
+      "name": "Encerrar tarefa",
+      "description": "Encerra a tarefa de corte em andamento. O cortador fica onde está e guarda onde a tarefa parou, para que uma tarefa posterior possa continuar dali."
+    },
+    "stop_returning": {
+      "name": "Parar retorno",
+      "description": "Para o cortador a caminho da base. Ele fica onde está."
+    },
+    "recharge": {
+      "name": "Recarregar",
+      "description": "Envia o cortador para a base para carregar. Uma tarefa de corte em andamento é mantida para continuar depois."
+    },
     "start_zone_mowing": {
       "name": "Iniciar corte de zonas",
       "description": "Inicia o corte de uma ou mais zonas selecionadas.",
@@ -244,6 +220,10 @@
         "zone_ids": {
           "name": "IDs das zonas",
           "description": "Lista de IDs das zonas a cortar, por exemplo [1, 3]."
+        },
+        "from_stop_point": {
+          "name": "A partir do ponto de parada",
+          "description": "Onde uma tarefa inacabada parou numa zona: ligado, corta só o restante; desligado, corta desde o início. Se omitido, o cortador não é informado."
         }
       }
     },
@@ -267,61 +247,71 @@
         }
       }
     },
-    "set_cutting_height": {
-      "name": "Definir altura de corte",
-      "description": "Define a altura de corte para todo o mapa ou para uma de suas zonas. Nem todos os modelos permitem ajustar a altura; o intervalo disponível depende do modelo.",
+    "select_map": {
+      "name": "Selecionar mapa",
+      "description": "Faz o cortador trabalhar em outro mapa. Não é possível enquanto houver uma tarefa de corte em andamento.",
       "fields": {
-        "height": {
-          "name": "Altura de corte",
-          "description": "Altura de corte em centímetros, em incrementos de 0,5 cm."
-        },
         "map_id": {
           "name": "ID do mapa",
-          "description": "Mapa a alterar. Por padrão, o mapa ativo. Os IDs disponíveis aparecem no atributo 'maps' da entidade do cortador após o carregamento do mapa."
-        },
-        "zone_id": {
-          "name": "ID da zona",
-          "description": "Zona a alterar em vez do mapa inteiro. Isso ativa as configurações por zona: as demais zonas mantêm suas próprias alturas e a altura geral do mapa deixa de ser aplicada. Os IDs disponíveis aparecem no atributo 'zones' da entidade do cortador."
+          "description": "Mapa para o qual trocar. Os IDs de mapa disponíveis aparecem no atributo maps da entidade do cortador depois que o mapa é carregado."
         }
       }
     },
-    "set_edge_mowing_settings": {
-      "name": "Definir configurações de corte das bordas",
-      "description": "Altera as configurações de corte das bordas para todo o mapa ou para uma de suas zonas. As configurações omitidas mantêm o valor atual. Se o mapa usar configurações por zona, as alterações serão aplicadas a todas as zonas, pois o cortador deixa de usar as configurações gerais do mapa. Essas configurações também estão disponíveis como interruptores para o mapa ativo.",
+    "set_mowing_settings": {
+      "name": "Definir configurações de corte",
+      "description": "Altera de uma só vez qualquer configuração de corte para todo o mapa ou para uma de suas zonas. As configurações omitidas mantêm o valor atual. Se o mapa usar configurações por zona, as alterações serão aplicadas a todas as zonas, pois o cortador deixa de usar as configurações gerais do mapa. Configurações que o cortador não oferece são recusadas.",
       "fields": {
+        "efficiency": {
+          "name": "Eficiência de corte",
+          "description": "Rapidez com que o cortador trabalha. 'Eficiente' corta mais por dia, com menos cuidado ao redor dos obstáculos."
+        },
+        "cutting_height": {
+          "name": "Altura de corte",
+          "description": "Altura de corte em centímetros, em incrementos de 0,5 cm."
+        },
+        "mowing_direction": {
+          "name": "Direção do corte",
+          "description": "Direção das linhas de corte em graus, conforme exibida no aplicativo. Ângulos a partir de 180° representam as mesmas linhas que o ângulo 180° menor."
+        },
+        "mowing_direction_mode": {
+          "name": "Modo de direção do corte",
+          "description": "Indica se cada sessão corta na mesma direção ou a gira em relação à sessão anterior."
+        },
         "automatic_edge_mowing": {
           "name": "Corte automático das bordas",
           "description": "Indica se o cortador corta as bordas automaticamente após terminar o corte de todo o mapa ou de uma zona."
         },
         "safe_edge_mowing": {
           "name": "Corte seguro das bordas",
-          "description": "Indica se o cortador mantém uma pequena margem em relação ao limite do gramado ao cortar as bordas. Não disponível em todos os modelos."
+          "description": "Indica se o cortador mantém uma pequena margem em relação ao limite do gramado ao cortar as bordas."
         },
         "edge_blade_offset": {
           "name": "Deslocamento lateral do disco",
-          "description": "Indica se o disco de corte se desloca lateralmente nas passadas pelas bordas para cortar mais perto do limite. Ativar esta opção também aumenta as passadas nas bordas de uma para duas, para que o disco deslocado cubra toda a borda."
+          "description": "Indica se o disco de corte se desloca lateralmente nas passadas pelas bordas para cortar mais perto do limite. Ativar esta opção também aumenta as passadas nas bordas de uma para duas."
         },
-        "map_id": {
-          "name": "ID do mapa",
-          "description": "Mapa a alterar. Por padrão, o mapa ativo. Os IDs disponíveis aparecem no atributo 'maps' da entidade do cortador após o carregamento do mapa."
+        "edge_obstacle_avoidance": {
+          "name": "Desvio de obstáculos nas bordas",
+          "description": "Indica se o cortador também desvia de obstáculos ao longo das bordas, o que pode deixar um pouco de grama sem cortar ali. É desativado automaticamente quando nem o LiDAR nem a câmera reconhecem obstáculos."
         },
-        "zone_id": {
-          "name": "ID da zona",
-          "description": "Zona a alterar em vez do mapa inteiro. Isso ativa as configurações por zona: as demais zonas mantêm suas próprias configurações e as configurações gerais do mapa deixam de ser aplicadas. Os IDs disponíveis aparecem no atributo 'zones' da entidade do cortador."
-        }
-      }
-    },
-    "set_mowing_direction": {
-      "name": "Definir direção do corte",
-      "description": "Define a direção das linhas de corte para todo o mapa ou para uma de suas zonas, e como ela muda entre as sessões. Se o mapa usar configurações por zona, as alterações serão aplicadas a todas as zonas, pois o cortador deixa de usar as configurações gerais do mapa. Essas configurações também estão disponíveis como número e seletor para o mapa ativo.",
-      "fields": {
-        "angle": {
-          "name": "Ângulo",
-          "description": "Direção do corte em graus, conforme exibida no aplicativo. É a orientação de uma linha, não o sentido de deslocamento: ângulos a partir de 180° representam as mesmas linhas que o ângulo 180° menor."
+        "lidar_obstacle_recognition": {
+          "name": "Reconhecimento de obstáculos por LiDAR",
+          "description": "Indica se o cortador reconhece obstáculos com o LiDAR e desvia deles sem tocá-los. Desative para que o cortador possa cortar grama alta."
         },
-        "mode": {
-          "name": "Modo de corte",
-          "description": "Escolha se cada sessão mantém a mesma direção de corte ou alterna em relação à sessão anterior."
+        "obstacle_height": {
+          "name": "Altura de desvio de obstáculos",
+          "description": "O obstáculo mais baixo do qual o cortador desvia, em centímetros."
+        },
+        "obstacle_distance": {
+          "name": "Distância de desvio de obstáculos",
+          "description": "Distância que o cortador mantém dos obstáculos, em centímetros. Uma distância menor pode causar colisões ou arranhões."
+        },
+        "ai_obstacle_recognition": {
+          "name": "Reconhecimento de obstáculos por IA",
+          "description": "Tipos de obstáculo que a câmera reconhece e dos quais o cortador desvia. Com uma lista vazia, o desvio de obstáculos fica a cargo do para-choque e do LiDAR."
+        },
+        "turning_method": {
+          "name": "Modo de manobra",
+          "description": "Como o cortador faz a curva no fim de cada linha. 'Cuidado com o gramado' faz curvas mais abertas e preserva o gramado, mas precisa de algum espaço para manobrar. Disponível apenas em firmware mais recente."
         },
         "map_id": {
           "name": "ID do mapa",
@@ -344,6 +334,368 @@
         "map_id": {
           "name": "ID do mapa",
           "description": "Mapa a alterar. Por padrão, o mapa ativo."
+        }
+      }
+    },
+    "set_no_go_zone": {
+      "name": "Definir zona proibida",
+      "description": "Desenha uma zona proibida no mapa atual, ou altera uma, em coordenadas do mapa (milímetros, como as zonas do mapa são informadas). Retorna o ID da zona. O cortador não se move para isso, mas recusa o comando enquanto corta ou volta para a base.",
+      "fields": {
+        "shape": {
+          "name": "Forma",
+          "description": "Uma linha que o cortador não atravessa, um retângulo ou um círculo."
+        },
+        "points": {
+          "name": "Pontos",
+          "description": "As duas extremidades de uma linha, dois cantos opostos de um retângulo ou o centro de um círculo, cada um como [x, y]."
+        },
+        "radius": {
+          "name": "Raio",
+          "description": "Raio de um círculo em milímetros."
+        },
+        "zone_id": {
+          "name": "ID da zona proibida",
+          "description": "A zona proibida a alterar em vez de desenhar uma nova."
+        }
+      }
+    },
+    "set_ignore_obstacle_area": {
+      "name": "Definir área de obstáculos ignorados",
+      "description": "Desenha no mapa atual uma área onde o cortador conta apenas com o para-choque e passa por cima de obstáculos baixos, ou altera uma. Retorna o ID da área. O cortador não se move para isso, mas recusa o comando enquanto corta ou volta para a base.",
+      "fields": {
+        "rect": {
+          "name": "Retângulo",
+          "description": "Dois cantos opostos como [x0, y0, x1, y1], em milímetros."
+        },
+        "area_id": {
+          "name": "ID da área",
+          "description": "A área a alterar em vez de desenhar uma nova."
+        }
+      }
+    },
+    "set_spot_area": {
+      "name": "Definir área específica",
+      "description": "Desenha uma área específica no mapa atual, ou altera uma. Ela precisa ficar dentro de uma única zona. Retorna o ID da área específica. O cortador não se move para isso, mas recusa o comando enquanto corta ou volta para a base.",
+      "fields": {
+        "rect": {
+          "name": "Retângulo",
+          "description": "Dois cantos opostos como [x0, y0, x1, y1], em milímetros."
+        },
+        "area_id": {
+          "name": "ID da área específica",
+          "description": "A área específica a alterar em vez de desenhar uma nova."
+        }
+      }
+    },
+    "set_maintenance_point": {
+      "name": "Definir ponto de manutenção",
+      "description": "Coloca um ponto de manutenção no mapa atual, ou move um. Retorna o ID do ponto. O cortador não se move para isso, mas recusa o comando enquanto corta ou volta para a base.",
+      "fields": {
+        "x": {
+          "name": "X",
+          "description": "Onde o ponto fica, em milímetros."
+        },
+        "y": {
+          "name": "Y",
+          "description": "Onde o ponto fica, em milímetros."
+        },
+        "heading": {
+          "name": "Orientação",
+          "description": "Para onde o cortador fica virado ali, em graus. Se omitido, um ponto movido mantém a direção e um novo fica virado para 0 grau."
+        },
+        "point_id": {
+          "name": "ID do ponto",
+          "description": "O ponto a mover em vez de colocar um novo."
+        }
+      }
+    },
+    "delete_map_item": {
+      "name": "Excluir item do mapa",
+      "description": "Exclui uma zona, caminho, zona proibida, área específica, ponto de manutenção ou área de obstáculos ignorados do mapa atual. Excluir uma zona também remove seus agendamentos. O cortador não se move para isso, mas recusa o comando enquanto corta ou volta para a base.",
+      "fields": {
+        "kind": {
+          "name": "Tipo",
+          "description": "Que tipo de item é."
+        },
+        "item_id": {
+          "name": "ID do item",
+          "description": "O ID do item."
+        }
+      }
+    },
+    "rename_zone": {
+      "name": "Renomear zona",
+      "description": "Dá a uma zona do mapa atual um novo nome de até 24 caracteres. O cortador não se move para isso, mas recusa o comando enquanto corta ou volta para a base.",
+      "fields": {
+        "zone_id": {
+          "name": "ID da zona",
+          "description": "A zona a renomear."
+        },
+        "name": {
+          "name": "Nome",
+          "description": "O novo nome."
+        }
+      }
+    },
+    "split_zone": {
+      "name": "Dividir zona",
+      "description": "Divide em duas uma zona do mapa atual ao longo de uma linha que a atravessa. Os agendamentos que incluem a zona são removidos. Retorna os IDs das duas zonas. O cortador não se move para isso, mas recusa o comando enquanto corta ou volta para a base.",
+      "fields": {
+        "zone_id": {
+          "name": "ID da zona",
+          "description": "A zona a dividir."
+        },
+        "line": {
+          "name": "Linha",
+          "description": "As duas extremidades da linha como [x0, y0, x1, y1], em milímetros; ela deve atravessar a zona."
+        }
+      }
+    },
+    "merge_zones": {
+      "name": "Mesclar zonas",
+      "description": "Mescla duas zonas vizinhas do mapa atual em uma só. Retorna o ID da zona resultante. O cortador não se move para isso, mas recusa o comando enquanto corta ou volta para a base.",
+      "fields": {
+        "zone_ids": {
+          "name": "IDs das zonas",
+          "description": "As duas zonas."
+        }
+      }
+    },
+    "rename_map": {
+      "name": "Renomear mapa",
+      "description": "Dá a um mapa um novo nome de até 24 caracteres. O cortador não se move para isso, mas recusa o comando enquanto corta ou volta para a base.",
+      "fields": {
+        "map_id": {
+          "name": "ID do mapa",
+          "description": "O mapa a renomear."
+        },
+        "name": {
+          "name": "Nome",
+          "description": "O novo nome."
+        }
+      }
+    },
+    "clear_rain_protection": {
+      "name": "Desativar a proteção contra chuva",
+      "description": "Limpa a chuva informada pelo cortador, para que uma tarefa de corte iniciada em seguida seja executada mesmo que o sensor tenha detectado água. Inicie a tarefa logo depois; não causa nenhuma outra ação."
+    },
+    "find_robot": {
+      "name": "Encontrar robô",
+      "description": "Faz o cortador emitir um som para ser encontrado. Ele não se move."
+    },
+    "clear_error": {
+      "name": "Limpar erro",
+      "description": "Limpa os erros e avisos informados pelo cortador e o deixa continuar: uma tarefa pausada é retomada, e um cortador fora da base sem tarefa volta para casa. O cortador pode se mover.",
+      "fields": {
+        "continue_task": {
+          "name": "Continuar",
+          "description": "Retomar a tarefa, ou voltar para casa, após limpar os erros. Desligado apenas os limpa."
+        }
+      }
+    },
+    "set_do_not_disturb": {
+      "name": "Definir Não perturbe",
+      "description": "Liga ou desliga o Não perturbe, ou muda sua janela. Nenhuma tarefa começa na janela; uma tarefa em andamento é pausada no início e o cortador volta à base.",
+      "fields": {
+        "enabled": {
+          "name": "Ativado",
+          "description": "Ligar ou desligar; se omitido, fica como está."
+        },
+        "start": {
+          "name": "Início",
+          "description": "Quando a janela começa; se omitido, fica como está."
+        },
+        "end": {
+          "name": "Fim",
+          "description": "Quando a janela termina, no dia seguinte se for antes do início; se omitido, fica como está. Os horários vão de 00:01 a 23:59."
+        }
+      }
+    },
+    "set_low_speed_at_night": {
+      "name": "Definir velocidade baixa à noite",
+      "description": "Liga ou desliga a velocidade baixa à noite, ou muda sua janela, na qual o cortador anda devagar.",
+      "fields": {
+        "enabled": {
+          "name": "Ativado",
+          "description": "Ligar ou desligar; se omitido, fica como está."
+        },
+        "start": {
+          "name": "Início",
+          "description": "Quando a janela começa; se omitido, fica como está."
+        },
+        "end": {
+          "name": "Fim",
+          "description": "Quando a janela termina, no dia seguinte se for antes do início; se omitido, fica como está. Os horários vão de 00:01 a 23:59."
+        }
+      }
+    },
+    "set_start_from_stop_point": {
+      "name": "Definir início pelo ponto de parada",
+      "description": "Escolhe se uma nova tarefa pode continuar de onde uma inacabada parou e por quantos dias um ponto de parada é mantido. Desligar apaga os pontos de parada do cortador.",
+      "fields": {
+        "enabled": {
+          "name": "Ativado",
+          "description": "Ligar ou desligar; se omitido, fica como está."
+        },
+        "days": {
+          "name": "Dias",
+          "description": "Por quantos dias um ponto de parada é mantido, de 1 a 7; se omitido, fica como está."
+        }
+      }
+    },
+    "set_light": {
+      "name": "Definir luz",
+      "description": "Muda quando as luzes do cortador acendem: só num período próprio ou o dia todo, e em quais estados. O que for omitido fica como está.",
+      "fields": {
+        "custom_period": {
+          "name": "Período próprio",
+          "description": "Limitar as luzes ao período do início ao fim."
+        },
+        "start": {
+          "name": "Início",
+          "description": "Quando o período começa."
+        },
+        "end": {
+          "name": "Fim",
+          "description": "Quando o período termina."
+        },
+        "standby": {
+          "name": "Em espera",
+          "description": "Luz ou vigilância em espera."
+        },
+        "working": {
+          "name": "Trabalhando",
+          "description": "Luz durante o trabalho."
+        },
+        "charging": {
+          "name": "Carregando",
+          "description": "Luz durante a carga."
+        },
+        "error": {
+          "name": "Em erros",
+          "description": "Luz enquanto o cortador informa um erro."
+        }
+      }
+    },
+    "set_human_presence_alert": {
+      "name": "Definir alerta de presença humana",
+      "description": "Muda o alerta dado quando a câmera do cortador vê uma pessoa: se está ativo, a sensibilidade, quando vigia, como avisa e com que frequência. O que for omitido fica como está.",
+      "fields": {
+        "enabled": {
+          "name": "Ativado",
+          "description": "Ligar ou desligar o alerta."
+        },
+        "sensitivity": {
+          "name": "Sensibilidade",
+          "description": "Com que facilidade uma pessoa é reconhecida."
+        },
+        "standby": {
+          "name": "Em espera",
+          "description": "Luz ou vigilância em espera."
+        },
+        "mowing": {
+          "name": "Cortando",
+          "description": "Vigiar durante o corte."
+        },
+        "returning": {
+          "name": "Voltando",
+          "description": "Vigiar durante a volta à base."
+        },
+        "patrolling": {
+          "name": "Patrulhando",
+          "description": "Vigiar durante a patrulha."
+        },
+        "voice": {
+          "name": "Falar e notificar",
+          "description": "O cortador fala e uma notificação é enviada."
+        },
+        "photo": {
+          "name": "Tirar foto",
+          "description": "Uma foto da pessoa é tirada e vai para o álbum do app."
+        },
+        "interval": {
+          "name": "Intervalo",
+          "description": "No máximo um alerta a cada tantos minutos, em cortadores que espaçam seus alertas."
+        }
+      }
+    },
+    "set_robot_voice": {
+      "name": "Definir voz",
+      "description": "Muda o volume da voz do cortador e os avisos que ele fala. O que for omitido fica como está.",
+      "fields": {
+        "volume": {
+          "name": "Volume",
+          "description": "De 0 a 100."
+        },
+        "regular": {
+          "name": "Avisos normais",
+          "description": "Falar avisos normais."
+        },
+        "work_status": {
+          "name": "Estado de trabalho",
+          "description": "Falar do estado de trabalho."
+        },
+        "special_status": {
+          "name": "Estados especiais",
+          "description": "Falar de estados especiais."
+        },
+        "error_status": {
+          "name": "Erros",
+          "description": "Falar de erros."
+        }
+      }
+    },
+    "reset_consumable": {
+      "name": "Redefinir consumível",
+      "description": "Reinicia a contagem de um consumível, como após trocar as lâminas ou a escova de limpeza da base, ou após a manutenção do cortador.",
+      "fields": {
+        "item": {
+          "name": "Consumível",
+          "description": "As lâminas, a escova de limpeza da base ou a manutenção do cortador."
+        }
+      }
+    },
+    "go_to_maintenance_point": {
+      "name": "Ir ao ponto de manutenção",
+      "description": "Envia o cortador a um ponto de manutenção do mapa atual, onde ele espera por limpeza ou manutenção. O cortador se desloca até lá.",
+      "fields": {
+        "point_id": {
+          "name": "Ponto de manutenção",
+          "description": "O id de um ponto de manutenção do mapa ativo."
+        }
+      }
+    },
+    "ignore_obstacle": {
+      "name": "Ignorar obstáculo",
+      "description": "Faz o cortador esquecer um obstáculo que sua câmera reconheceu, para que ele não apareça mais no mapa. Não pode ser desfeito. O cortador não se move para isso, mas recusa enquanto corta.",
+      "fields": {
+        "obstacle_id": {
+          "name": "Obstáculo",
+          "description": "O id do obstáculo no cortador; o cartão do mapa o preenche ao ignorar um obstáculo nele."
+        }
+      }
+    },
+    "backup_map": {
+      "name": "Fazer backup do mapa",
+      "description": "Faz backup do mapa atual, substituindo o backup anterior. O cortador não se move para isso, mas recusa o comando enquanto corta ou volta para a base."
+    },
+    "restore_map": {
+      "name": "Restaurar mapa",
+      "description": "Restaura o mapa atual como está no backup ou, com um slot, traz de volta um mapa excluído a partir do backup mantido no slot vazio. Os agendamentos e ajustes de corte do mapa podem ser redefinidos. O cortador não se move para isso, mas recusa enquanto corta ou volta à base.",
+      "fields": {
+        "slot": {
+          "name": "Slot",
+          "description": "O slot de mapa vazio, contado a partir de 1, cujo backup traz de volta um mapa excluído. Omita para restaurar o mapa atual."
+        }
+      }
+    },
+    "delete_map": {
+      "name": "Excluir mapa",
+      "description": "Exclui um mapa com tudo o que há nele. O backup do mapa fica no slot vazio, de onde restore_map o traz de volta; sem backup é preciso criar um novo mapa no app, conduzindo o cortador. O cortador não se move para isso, mas recusa enquanto corta ou volta à base.",
+      "fields": {
+        "map_id": {
+          "name": "ID do mapa",
+          "description": "O mapa a excluir."
         }
       }
     }

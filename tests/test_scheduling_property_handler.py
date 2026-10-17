@@ -33,12 +33,16 @@ class TestTaskHandler:
         
         assert result is True
         assert self.handler.task_type == TaskType.TASK
-        assert self.handler.area_id == []
-        assert self.handler.execution_active is True
-        assert self.handler.coverage_target == 100
         assert self.handler.region_id == [1]
-        assert self.handler.task_active is True
-        assert self.handler.elapsed_time == 2323
+        assert self.handler.get_notification_data() == {
+            'type': 'TASK',
+            'area_id': [],
+            'execution_active': True,
+            'coverage_target': 100,
+            'region_id': [1],
+            'task_active': True,
+            'elapsed_time': 2323,
+        }
 
     def test_parse_task_dict_format_multi_area(self):
         """Test parsing task descriptor from dict format with multiple areas."""
@@ -51,12 +55,16 @@ class TestTaskHandler:
         
         assert result is True
         assert self.handler.task_type == TaskType.TASK
-        assert self.handler.area_id == [2, 3]
-        assert self.handler.execution_active is False
-        assert self.handler.coverage_target == 80
         assert self.handler.region_id == [2, 3]
-        assert self.handler.task_active is False
-        assert self.handler.elapsed_time == 1800
+        assert self.handler.get_notification_data() == {
+            'type': 'TASK',
+            'area_id': [2, 3],
+            'execution_active': False,
+            'coverage_target': 80,
+            'region_id': [2, 3],
+            'task_active': False,
+            'elapsed_time': 1800,
+        }
 
     def test_parse_task_unknown_type(self):
         """Test parsing task with unknown type."""
@@ -87,13 +95,17 @@ class TestTaskHandler:
         
         assert result is True
         assert self.handler.task_type == TaskType.TASK
-        assert self.handler.execution_active is True
-        assert self.handler.coverage_target == 4
-        assert self.handler.task_active is True
         # Optional fields should have default values
-        assert self.handler.area_id is None
         assert self.handler.region_id is None
-        assert self.handler.elapsed_time is None
+        assert self.handler.get_notification_data() == {
+            'type': 'TASK',
+            'area_id': None,
+            'execution_active': True,
+            'coverage_target': 4,
+            'region_id': None,
+            'task_active': True,
+            'elapsed_time': None,
+        }
 
     def test_get_notification_data(self):
         """Test getting notification data."""
@@ -130,7 +142,7 @@ class TestSummaryHandler:
         
         assert result is True
         assert self.handler.is_empty is True
-        assert self.handler.summary_data == {}
+        assert self.handler.get_notification_data() == {}
 
     def test_parse_future_summary_data(self):
         """Test parsing future summary data with content."""
@@ -147,7 +159,7 @@ class TestSummaryHandler:
         
         assert result is True
         assert self.handler.is_empty is False
-        assert self.handler.summary_data == summary_data
+        assert self.handler.get_notification_data() == summary_data
 
     def test_parse_invalid_format(self):
         """Test parsing invalid summary format."""
@@ -227,3 +239,27 @@ class TestSchedulingPropertyHandler:
         # Invalid summary data
         result = self.handler.handle_property_update(2, 52, "not a dict", self.notify_callback)
         assert result is False
+
+
+def test_a_confirmed_map_action_leaves_the_task_alone():
+    """The 2:50 report also confirms changes to the map; those are no task."""
+    handler = SchedulingPropertyHandler()
+    notify = Mock()
+
+    handled = handler.handle_property_update(
+        SCHEDULING_TASK_PROPERTY.siid,
+        SCHEDULING_TASK_PROPERTY.piid,
+        {"t": "TASK", "d": {"o": 215, "exe": True, "status": True, "error": 0, "id": 101}},
+        notify,
+    )
+
+    assert handled is True
+    notify.assert_not_called()
+
+    handler.handle_property_update(
+        SCHEDULING_TASK_PROPERTY.siid,
+        SCHEDULING_TASK_PROPERTY.piid,
+        {"t": "TASK", "d": {"o": 100, "exe": True, "status": True}},
+        notify,
+    )
+    notify.assert_called_once()

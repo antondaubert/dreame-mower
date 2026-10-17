@@ -3,6 +3,7 @@
 import struct
 import pytest
 from custom_components.dreame_mower.dreame.property.pose_coverage import (
+    MAX_TRAIL_POINTS,
     PoseCoverageHandler,
     _parse_pose,
     _parse_track_deltas,
@@ -345,9 +346,13 @@ class TestShortFormats:
         assert handler.x_coordinate == 100 * _POSE_SCALE
         assert handler.y_coordinate == 200 * _POSE_SCALE
 
-    def test_8_bytes_acknowledged(self, handler):
-        payload = [0xCE, 0, 0, 0, 0, 0, 0, 0xCE]
+    def test_pose_alone_8_bytes(self, handler):
+        """While it drives without mowing the mower reports only its pose."""
+        payload = [0xCE, 232, 255, 63, 241, 255, 60, 0xCE]
         assert handler.parse_value(payload) is True
+        assert handler.x_coordinate == -24 * _POSE_SCALE
+        assert handler.y_coordinate == -237 * _POSE_SCALE
+        assert handler.heading == round(60 / 255 * 360, 2)
 
     def test_alt_format_task_only(self, handler):
         """11-byte format: task(10) + CE (no leading sentinel)."""
@@ -397,15 +402,131 @@ class TestEdgeCases:
     def test_bad_sentinels(self, handler):
         assert handler.parse_value([0, 0, 0, 0, 0, 0, 0, 0]) is False
 
-    def test_path_history_accumulates(self, handler):
-        p1 = _build_full_payload(x=10, y=20, trace_deltas=[(1, 1)])
-        p2 = _build_full_payload(x=30, y=40, trace_deltas=[(2, 2)])
-        handler.parse_value(p1)
-        handler.parse_value(p2)
-        assert len(handler.path_history) >= 2
-
     def test_clear_path_history(self, handler):
-        p = _build_full_payload(x=10, y=20, trace_deltas=[(1, 1)])
+        p = _trail_payload(0, [(1, 1), BREAK, BREAK])
         handler.parse_value(p)
+        revision = handler.trail_revision
         handler.clear_path_history()
         assert handler.path_history == []
+        assert handler.trail_revision != revision
+
+
+# A track pair the device sends for a break, and as padding past its newest point.
+BREAK = (32767, -32768)
+_BREAK_POINT = [2147483647, 2147483647]
+
+
+def _trail_payload(start_index: int, deltas: list[tuple[int, int]], x: int = 0, y: int = 0) -> list[int]:
+    """A full payload whose trace starts at start_index; the pose is (x, y)."""
+    pose = _encode_pose_bytes(x, y)
+    trace = _encode_trace_bytes(start_index=start_index, deltas=deltas, pad_to=15)
+    return [0xCE] + pose + trace + _encode_task_bytes() + [0xCE]
+
+
+class TestTrail:
+    """The session's trail is kept by point number."""
+
+    def test_repeated_points_are_kept_once(self, handler):
+        handler.parse_value(_trail_payload(0, [(1, 1), (2, 2), (3, 3)]))
+        handler.parse_value(_trail_payload(0, [(1, 1), (2, 2), (3, 3)]))
+        handler.parse_value(_trail_payload(2, [(3, 3), (4, 4), (5, 5)]))
+
+        assert handler.path_history == [[10, 10], [20, 20], [30, 30], [40, 40], [50, 50]]
+
+    def test_later_message_fills_in_padding(self, handler):
+        handler.parse_value(_trail_payload(0, [(1, 1), BREAK, BREAK]))
+        assert handler.path_history == [[10, 10]]
+
+        handler.parse_value(_trail_payload(1, [(2, 2), BREAK, BREAK]))
+        assert handler.path_history == [[10, 10], [20, 20]]
+
+    def test_padding_never_replaces_a_known_point(self, handler):
+        handler.parse_value(_trail_payload(0, [(1, 1), (2, 2), BREAK]))
+        handler.parse_value(_trail_payload(1, [BREAK, BREAK, BREAK]))
+
+        assert handler.path_history == [[10, 10], [20, 20]]
+
+    def test_break_inside_the_trail_is_kept(self, handler):
+        handler.parse_value(_trail_payload(0, [(1, 1), BREAK, (3, 3)]))
+
+        assert handler.path_history == [[10, 10], _BREAK_POINT, [30, 30]]
+
+    def test_points_are_relative_to_the_pose(self, handler):
+        handler.parse_value(_trail_payload(0, [(1, -1), BREAK, BREAK], x=100, y=200))
+
+        assert handler.path_history == [[1010, 1990]]
+
+    def test_numbers_starting_over_begin_a_new_trail(self, handler):
+        handler.parse_value(_trail_payload(500, [(1, 1), (2, 2), (3, 3)]))
+        handler.parse_value(_trail_payload(0, [(9, 9), BREAK, BREAK]))
+
+        assert handler.path_history == [[90, 90]]
+
+    def test_a_slightly_older_message_does_not_restart_the_trail(self, handler):
+        handler.parse_value(_trail_payload(10, [(1, 1), (2, 2), (3, 3)]))
+        handler.parse_value(_trail_payload(8, [(7, 7), (8, 8), (1, 1)]))
+
+        assert handler.path_history == [[70, 70], [80, 80], [10, 10], [20, 20], [30, 30]]
+
+    def test_revision_moves_only_when_the_trail_changed(self, handler):
+        handler.parse_value(_trail_payload(0, [(1, 1), (2, 2), BREAK]))
+        revision = handler.trail_revision
+        handler.parse_value(_trail_payload(0, [(1, 1), (2, 2), BREAK]))
+        assert handler.trail_revision == revision
+
+        handler.parse_value(_trail_payload(2, [(3, 3), BREAK, BREAK]))
+        assert handler.trail_revision != revision
+
+    def test_oldest_points_go_first_past_the_cap(self, handler):
+        starts = range(0, MAX_TRAIL_POINTS + 3, 3)
+        for start in starts:
+            handler.parse_value(_trail_payload(start, [(1, 1), (2, 2), (3, 3)]))
+        last_index = starts[-1] + 2
+
+        kept = len(handler.path_history)
+        assert MAX_TRAIL_POINTS * 0.9 <= kept <= MAX_TRAIL_POINTS
+        # What is left is the newest stretch: the trail still ends with the
+        # last message's points.
+        assert handler.path_history[-3:] == [[10, 10], [20, 20], [30, 30]]
+        assert min(handler._trail) == last_index + 1 - kept
+
+
+class TestTrailReadBack:
+    """A stretch of the trail read back from the mower fills in the trail."""
+
+    def test_points_fill_in_by_number(self, handler):
+        handler.parse_value(_trail_payload(3, [(4, 4), BREAK, BREAK]))
+
+        assert handler.merge_trail(0, [(1, 1), (2, 2), (3, 3)]) is True
+
+        assert handler.path_history == [[10, 10], [20, 20], [30, 30], [40, 40]]
+
+    def test_breaks_come_through_but_never_replace_points(self, handler):
+        handler.merge_trail(0, [(1, 1), (32767, -32768), (3, 3)])
+        assert handler.path_history == [[10, 10], _BREAK_POINT, [30, 30]]
+
+        handler.merge_trail(0, [(32767, -32768)])
+        assert handler.path_history[0] == [10, 10]
+
+    def test_same_points_change_nothing(self, handler):
+        handler.merge_trail(0, [(1, 1)])
+        revision = handler.trail_revision
+
+        assert handler.merge_trail(0, [(1, 1)]) is False
+        assert handler.trail_revision == revision
+
+    def test_later_reports_continue_after_the_read_back(self, handler):
+        handler.merge_trail(0, [(1, 1)] * 100)
+
+        # A report numbered within the read-back stretch is no new session.
+        handler.parse_value(_trail_payload(99, [(5, 5), (6, 6), BREAK]))
+
+        assert len(handler.path_history) == 101
+
+
+def test_first_missing_trail_index(handler):
+    assert handler.first_missing_trail_index() == 0
+    handler.merge_trail(0, [(1, 1), (2, 2)])
+    assert handler.first_missing_trail_index() is None
+    handler.merge_trail(4, [(5, 5)])
+    assert handler.first_missing_trail_index() == 2

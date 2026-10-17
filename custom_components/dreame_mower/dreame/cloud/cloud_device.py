@@ -1,15 +1,24 @@
+import base64
 import logging
 import json
 import random
 import ssl
 from threading import Lock, Timer
 from paho.mqtt import client as mqtt_client
-from typing import Any, Optional, Tuple, Callable, Dict
+from typing import Any, Optional, Callable, Dict
 
 from .cloud_base import DreameMowerCloudBase
-from ..const import ActionIdentifier
 
 _LOGGER = logging.getLogger(__name__)
+
+# The kind of history a history request asks for: the records of an event.
+_HISTORY_TYPE_EVENT = 3
+
+# Where the cloud fetches a file from the device, and the code it answers with
+# when the device took too long to send it.
+_DEVICE_FILE_PATH = "file-bridge/user/getDeiviceFile"
+_DEVICE_FILE_TIMEOUT_CODE = 10500
+_JPEG_START = b"\xff\xd8"
 
 # Constants
 RECONNECT_DELAY_SECONDS = 10
@@ -57,12 +66,6 @@ class DreameMowerCloudDevice:
         return self._device_id
 
     @property
-    def object_name(self) -> str:
-        assert self._model is not None, "Model must be set before accessing object_name"
-        assert self._uid is not None, "UID must be set before accessing object_name"
-        return f"{self._model}/{self._uid}/{self._device_id}/0"
-
-    @property
     def connected(self) -> bool:
         return self._cloud_base.connected and self._mqtt_client_connected
 
@@ -84,7 +87,7 @@ class DreameMowerCloudDevice:
         self._mqtt_connected_callback = None
         self._mqtt_disconnected_callback = None
         
-        # Delegate to cloud base for auth and async cleanup
+        # Delegate to cloud base for auth cleanup
         self._cloud_base.disconnect()
 
     def _mqtt_reconnect_timer_cancel(self):
@@ -505,35 +508,8 @@ class DreameMowerCloudDevice:
             retry_count=0,
         )
 
-    def set_batch_device_datas(self, props) -> Any:
-        if not self._cloud_base.connected:
-            raise ConnectionError("set_batch_device_datas: Not connected. Call login() first.")
-                
-        api_response = self._cloud_base._api_call(
-            f"{self._cloud_base._api_strings[23]}/{self._cloud_base._api_strings[26]}/{self._cloud_base._api_strings[45]}",
-            {"did": self._device_id, self._cloud_base._api_strings[35]: props},
-        )
-        if api_response is None or "result" not in api_response:
-            return None
-        return api_response["result"]
-
     def get_properties(self, parameters: Any = None, retry_count: int = 1) -> Any:
         return self.send("get_properties", parameters=parameters, retry_count=retry_count)
-
-    def set_property(self, siid: int, piid: int, value: Any = None, retry_count: int = 2) -> Any:
-        return self.set_properties([
-            {
-                "did": str(self.device_id),
-                "siid": siid,
-                "piid": piid,
-                "value": value,
-            }
-        ], retry_count=retry_count)
-
-    def set_properties(self, parameters: Any = None, retry_count: int = 2) -> Any:
-        return self.send("set_properties", parameters=parameters, retry_count=retry_count)
-
-    
 
     def action(self, siid: int, aiid: int, parameters=[], retry_count: int = 2) -> Any:
         if parameters is None:
@@ -546,14 +522,62 @@ class DreameMowerCloudDevice:
             "in": parameters,
         }, retry_count=retry_count)
 
-    def execute_action(self, action: ActionIdentifier) -> bool:
-        """Execute a device action with consistent error handling and logging."""
-        try:
-            self.action(action.siid, action.aiid)
-            return True
-        except Exception as ex:
-            _LOGGER.error("%s action failed: %s", action.name, ex)
-            return False
+    def get_event_history(self, siid: int, eiid: int, since: int, limit: int) -> Optional[list]:
+        """Return the cloud's records of an event since a unix time, newest first.
+
+        Each record carries the event's arguments as a JSON string under
+        "history". Returns None when the cloud does not answer.
+        """
+        api = self._cloud_base._api_strings
+        response = self._cloud_base._api_call(
+            f"{api[23]}/{api[25]}/{api[43]}",
+            {
+                "did": self._device_id,
+                "siid": siid,
+                "eiid": eiid,
+                api[42]: _HISTORY_TYPE_EVENT,
+                "from": since,
+                "limit": limit,
+            },
+        )
+        if not response or response.get("code") != 0:
+            _LOGGER.debug("Event history of %s:%s not available: %s", siid, eiid, response)
+            return None
+        data = response.get("data") or {}
+        records = data.get("list")
+        return records if isinstance(records, list) else []
+
+    def get_device_file(self, filename: str, kind: str, timeout: float = 30) -> tuple[Optional[bytes], bool]:
+        """Fetch a file the device keeps, through the cloud, which asks the device for it.
+
+        Returns the file and whether a later try may still get it: the cloud
+        gives up on a device that takes too long to send the file, which a slow
+        connection to the device does, while a file the device does not have
+        fails at once.
+        """
+        status, answer = self._cloud_base.post_json(
+            _DEVICE_FILE_PATH,
+            {"did": str(self._device_id), "fileinfo": json.dumps({"filename": filename, "type": kind})},
+            timeout,
+        )
+        if status is None:
+            return None, True
+        if isinstance(answer, bytes):
+            if status == 200 and answer.startswith(_JPEG_START):
+                return answer, False
+            _LOGGER.debug("Device file %s answered %s with %s", filename, status, answer[:80])
+            return None, True
+        data = answer.get("data") if isinstance(answer, dict) else None
+        content = data.get("byte") if isinstance(data, dict) else None
+        if status == 200 and isinstance(content, str) and content:
+            try:
+                decoded = base64.b64decode(content)
+            except ValueError:
+                return None, False
+            return (decoded, False) if decoded.startswith(_JPEG_START) else (None, True)
+        code = answer.get("code") if isinstance(answer, dict) else None
+        _LOGGER.debug("Device file %s not received (%s): %s", filename, status, answer)
+        return None, code == _DEVICE_FILE_TIMEOUT_CODE
 
     def get_file_download_url(self, filename: str) -> Optional[str]:
         """Return a signed download URL for the given device file path.

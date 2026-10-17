@@ -47,7 +47,6 @@
       "invalid_account_type": "Tipo di account non valido selezionato."
     },
     "abort": {
-      "cannot_connect": "Impossibile connettersi.",
       "already_configured": "Questo dispositivo è già configurato."
     }
   },
@@ -58,10 +57,7 @@
         "description": "Connesso con {account} ({account_type}, {country}).\n\nConfigurare le impostazioni di notifica per l'integrazione del tosaerba Dreame / MOVA Mower.",
         "data": {
           "notify": "Tipi di notifica",
-          "map_rotation": "Rotazione mappa",
-          "map_show_title": "Mostra titolo mappa",
-          "map_show_legend": "Mostra legenda mappa",
-          "map_padding": "Margine mappa (pixel)"
+          "map_rotation": "Rotazione mappa"
         }
       }
     }
@@ -86,48 +82,8 @@
           "maintenance_paused": "In pausa al punto di manutenzione"
         }
       },
-      "charging_status": {
-        "name": "Stato di ricarica",
-        "state": {
-          "not_docked": "Non ancorato",
-          "charging": "In carica",
-          "not_charging": "Non in carica",
-          "charging_completed": "Ricarica completata",
-          "return_to_charge": "Torna alla carica",
-          "charging_paused_high_temperature": "Ricarica in pausa: temperatura della batteria troppo alta",
-          "charging_paused_low_temperature": "Ricarica in pausa: temperatura della batteria troppo bassa"
-        }
-      },
       "mowing_progress": {
         "name": "Falciatura progresso"
-      },
-      "bluetooth_connection": {
-        "name": "Bluetooth"
-      },
-      "dnd_status": {
-        "name": "Non disturbare"
-      },
-      "charging_schedule": {
-        "name": "Programma di ricarica"
-      },
-      "timezone": {
-        "name": "Fuso orario"
-      },
-      "device_code": {
-        "name": "Codice del dispositivo"
-      },
-      "current_task": {
-        "name": "Attività attuale",
-        "state": {
-          "idle": "Nessuna attività",
-          "starting": "Avvio",
-          "mowing": "Falciatura",
-          "paused": "In pausa",
-          "finished": "Completata",
-          "failed": "Fallita",
-          "exit": "Arrestata",
-          "returning_to_dock": "Ritorno alla stazione"
-        }
       },
       "consumable_blade_health": {
         "name": "Stato delle lame"
@@ -143,36 +99,6 @@
       },
       "account": {
         "name": "Account"
-      }
-    },
-    "camera": {
-      "map_camera": {
-        "name": "Mappa"
-      }
-    },
-    "button": {
-      "reset_blade": {
-        "name": "Azzera contatore lame"
-      },
-      "reset_brush": {
-        "name": "Azzera contatore spazzola"
-      },
-      "reset_robot_maintenance": {
-        "name": "Azzera contatore manutenzione"
-      },
-      "dock_without_stopping": {
-        "name": "Torna alla base senza fermare il compito"
-      },
-      "go_to_maintenance_point": {
-        "name": "Vai al punto di manutenzione"
-      }
-    },
-    "number": {
-      "cutting_height": {
-        "name": "Altezza di taglio"
-      },
-      "mowing_direction": {
-        "name": "Direzione di taglio"
       }
     },
     "switch": {
@@ -197,14 +123,20 @@
       "schedule": {
         "name": "Programmazione {number}"
       },
-      "edge_mowing_auto": {
-        "name": "Falciatura automatica dei bordi"
+      "frost_protection": {
+        "name": "Protezione antigelo"
       },
-      "edge_blade_offset": {
-        "name": "EdgeMaster"
+      "path_obstacle_avoidance": {
+        "name": "Evitamento ostacoli sui percorsi"
       },
-      "edge_mowing_safe": {
-        "name": "Falciatura dei bordi in sicurezza"
+      "auto_recharge_standby": {
+        "name": "Ricarica automatica dopo lo standby"
+      },
+      "ai_obstacle_photos": {
+        "name": "Fotografa gli ostacoli rilevati dall'IA"
+      },
+      "child_lock": {
+        "name": "Blocco bambini"
       }
     },
     "time": {
@@ -218,6 +150,9 @@
     "select": {
       "rain_delay": {
         "name": "Attesa dopo la pioggia"
+      },
+      "navigation_path": {
+        "name": "Percorso di navigazione"
       }
     }
   },
@@ -234,9 +169,50 @@
         "map_wide": "Un'unica impostazione per tutta la mappa",
         "per_zone": "Un'impostazione per zona"
       }
+    },
+    "mowing_efficiency": {
+      "options": {
+        "standard": "Standard",
+        "efficient": "Efficiente"
+      }
+    },
+    "turning_method": {
+      "options": {
+        "efficient": "Efficiente",
+        "lawn_care": "Cura del prato"
+      }
+    },
+    "ai_obstacle_kind": {
+      "options": {
+        "humans": "Persone",
+        "animals": "Animali",
+        "objects": "Oggetti"
+      }
     }
   },
   "services": {
+    "start_all_area_mowing": {
+      "name": "Avvia la rasatura di tutta l'area",
+      "description": "Rasa l'intera mappa attiva. Una sessione già in corso viene proseguita.",
+      "fields": {
+        "from_stop_point": {
+          "name": "Dal punto di arresto",
+          "description": "Dove un'attività incompiuta si è fermata in una zona: attivo, taglia solo il resto; disattivo, la taglia dall'inizio. Se omesso, il rasaerba non ne viene informato."
+        }
+      }
+    },
+    "end_task": {
+      "name": "Termina attività",
+      "description": "Termina l'attività di taglio in corso. Il tosaerba resta dov'è e ricorda dove si è fermata l'attività, così una successiva può riprendere da lì."
+    },
+    "stop_returning": {
+      "name": "Interrompi il rientro",
+      "description": "Ferma il tosaerba mentre rientra alla base. Resta dov'è."
+    },
+    "recharge": {
+      "name": "Ricarica",
+      "description": "Manda il tosaerba alla base per ricaricarsi. Un'attività di taglio in corso viene mantenuta e può essere proseguita in seguito."
+    },
     "start_zone_mowing": {
       "name": "Avvia la rasatura delle zone",
       "description": "Avvia la rasatura di una o più zone selezionate.",
@@ -244,6 +220,10 @@
         "zone_ids": {
           "name": "ID delle zone",
           "description": "Elenco degli ID delle zone da rasare, ad esempio [1, 3]."
+        },
+        "from_stop_point": {
+          "name": "Dal punto di arresto",
+          "description": "Dove un'attività incompiuta si è fermata in una zona: attivo, taglia solo il resto; disattivo, la taglia dall'inizio. Se omesso, il rasaerba non ne viene informato."
         }
       }
     },
@@ -267,61 +247,71 @@
         }
       }
     },
-    "set_cutting_height": {
-      "name": "Imposta l'altezza di taglio",
-      "description": "Imposta l'altezza di taglio per un'intera mappa o per una delle sue zone. Non tutti i modelli supportano la regolazione dell'altezza; l'intervallo disponibile dipende dal modello.",
+    "select_map": {
+      "name": "Seleziona mappa",
+      "description": "Fa lavorare il tosaerba su un'altra mappa. Non possibile mentre è in corso un'attività di taglio.",
       "fields": {
-        "height": {
-          "name": "Altezza di taglio",
-          "description": "Altezza di taglio in centimetri, con incrementi di 0,5 cm."
-        },
         "map_id": {
           "name": "ID mappa",
-          "description": "Mappa da modificare. Per impostazione predefinita, la mappa attiva. Gli ID disponibili sono nell'attributo «maps» dell'entità del robot dopo il caricamento della mappa."
-        },
-        "zone_id": {
-          "name": "ID zona",
-          "description": "Zona da modificare al posto dell'intera mappa. Attiva le impostazioni per zona: le altre zone mantengono la propria altezza e l'altezza generale della mappa non si applica più. Gli ID disponibili sono nell'attributo «zones» dell'entità del robot."
+          "description": "Mappa a cui passare. Gli ID delle mappe disponibili sono indicati nell'attributo maps dell'entità del tosaerba una volta caricata la mappa."
         }
       }
     },
-    "set_edge_mowing_settings": {
-      "name": "Imposta le opzioni di rasatura dei bordi",
-      "description": "Modifica le impostazioni di rasatura dei bordi per un'intera mappa o per una delle sue zone. Le impostazioni omesse mantengono il valore attuale. Se la mappa usa impostazioni per zona, le modifiche si applicano a tutte le zone perché il robot non usa più le impostazioni generali della mappa. Queste impostazioni sono disponibili anche come interruttori per la mappa attiva.",
+    "set_mowing_settings": {
+      "name": "Imposta le opzioni di taglio",
+      "description": "Modifica in una volta sola qualsiasi impostazione di taglio per un'intera mappa o per una delle sue zone. Le impostazioni omesse mantengono il valore attuale. Se la mappa usa impostazioni per zona, le modifiche si applicano a tutte le zone perché il robot non usa più le impostazioni generali della mappa. Le impostazioni che il robot non offre vengono rifiutate.",
       "fields": {
+        "efficiency": {
+          "name": "Efficienza di taglio",
+          "description": "Velocità di lavoro del robot. «Efficiente» taglia di più al giorno, con meno attenzione intorno agli ostacoli."
+        },
+        "cutting_height": {
+          "name": "Altezza di taglio",
+          "description": "Altezza di taglio in centimetri, con incrementi di 0,5 cm."
+        },
+        "mowing_direction": {
+          "name": "Direzione di taglio",
+          "description": "Direzione delle linee di taglio in gradi, come mostrata nell'app. Gli angoli da 180° in poi rappresentano le stesse linee dell'angolo inferiore di 180°."
+        },
+        "mowing_direction_mode": {
+          "name": "Modalità della direzione di taglio",
+          "description": "Indica se ogni sessione taglia nella stessa direzione o la ruota rispetto alla sessione precedente."
+        },
         "automatic_edge_mowing": {
           "name": "Rasatura automatica dei bordi",
           "description": "Indica se il robot rasa automaticamente i bordi dopo aver completato la rasatura dell'intera mappa o di una zona."
         },
         "safe_edge_mowing": {
           "name": "Rasatura sicura dei bordi",
-          "description": "Indica se il robot mantiene una piccola distanza dal limite del prato durante la rasatura dei bordi. Non disponibile su tutti i modelli."
+          "description": "Indica se il robot mantiene una piccola distanza dal limite del prato durante la rasatura dei bordi."
         },
         "edge_blade_offset": {
           "name": "Spostamento laterale del disco",
-          "description": "Indica se il disco di taglio si sposta lateralmente durante i passaggi sui bordi per tagliare più vicino al limite. Attivando l'opzione, i passaggi sui bordi aumentano da uno a due per coprire l'intero bordo."
+          "description": "Indica se il disco di taglio si sposta lateralmente durante i passaggi sui bordi per tagliare più vicino al limite. Attivando l'opzione, i passaggi sui bordi aumentano da uno a due."
         },
-        "map_id": {
-          "name": "ID mappa",
-          "description": "Mappa da modificare. Per impostazione predefinita, la mappa attiva. Gli ID disponibili sono nell'attributo «maps» dell'entità del robot dopo il caricamento della mappa."
+        "edge_obstacle_avoidance": {
+          "name": "Aggiramento degli ostacoli sui bordi",
+          "description": "Indica se il robot aggira gli ostacoli anche lungo i bordi, il che può lasciare lì un po' d'erba non tagliata. Si disattiva automaticamente quando né il LiDAR né la fotocamera riconoscono ostacoli."
         },
-        "zone_id": {
-          "name": "ID zona",
-          "description": "Zona da modificare al posto dell'intera mappa. Attiva le impostazioni per zona: le altre zone mantengono le proprie impostazioni e quelle generali della mappa non si applicano più. Gli ID disponibili sono nell'attributo «zones» dell'entità del robot."
-        }
-      }
-    },
-    "set_mowing_direction": {
-      "name": "Imposta la direzione di taglio",
-      "description": "Imposta la direzione delle linee di taglio per un'intera mappa o per una delle sue zone e il modo in cui cambia tra una sessione e l'altra. Se la mappa usa impostazioni per zona, le modifiche si applicano a tutte le zone perché il robot non usa più le impostazioni generali della mappa. Per la mappa attiva, queste impostazioni sono disponibili anche come numero e selettore.",
-      "fields": {
-        "angle": {
-          "name": "Angolo",
-          "description": "Direzione di taglio in gradi, come mostrata nell'app. Indica l'orientamento di una linea, non la direzione di marcia: gli angoli da 180° in poi rappresentano le stesse linee dell'angolo inferiore di 180°."
+        "lidar_obstacle_recognition": {
+          "name": "Riconoscimento ostacoli LiDAR",
+          "description": "Indica se il robot riconosce gli ostacoli con il LiDAR e li aggira senza toccarli. Disattivalo per permettere al robot di tagliare l'erba alta."
         },
-        "mode": {
-          "name": "Modalità di taglio",
-          "description": "Scegli se ogni sessione mantiene la stessa direzione di taglio o alterna rispetto alla sessione precedente."
+        "obstacle_height": {
+          "name": "Altezza di aggiramento degli ostacoli",
+          "description": "L'ostacolo più basso che il robot aggira, in centimetri."
+        },
+        "obstacle_distance": {
+          "name": "Distanza di aggiramento degli ostacoli",
+          "description": "Distanza che il robot mantiene dagli ostacoli, in centimetri. Una distanza minore può causare urti o graffi."
+        },
+        "ai_obstacle_recognition": {
+          "name": "Riconoscimento ostacoli con IA",
+          "description": "I tipi di ostacolo che la fotocamera riconosce e che il robot aggira. Con un elenco vuoto, l'aggiramento degli ostacoli è affidato al paraurti e al LiDAR."
+        },
+        "turning_method": {
+          "name": "Modalità di svolta",
+          "description": "Come il robot gira alla fine di una linea. «Cura del prato» gira più largo e preserva il prato, ma richiede un po' di spazio per girare. Disponibile solo con firmware più recenti."
         },
         "map_id": {
           "name": "ID mappa",
@@ -344,6 +334,368 @@
         "map_id": {
           "name": "ID mappa",
           "description": "Mappa da modificare. Per impostazione predefinita, la mappa attiva."
+        }
+      }
+    },
+    "set_no_go_zone": {
+      "name": "Imposta zona vietata",
+      "description": "Disegna una zona vietata sulla mappa corrente, o ne modifica una, in coordinate della mappa (millimetri, come sono indicate le zone della mappa). Restituisce l'ID della zona. Il tosaerba non si muove per questo, ma lo rifiuta mentre taglia o torna alla base.",
+      "fields": {
+        "shape": {
+          "name": "Forma",
+          "description": "Una linea che il tosaerba non attraversa, un rettangolo o un cerchio."
+        },
+        "points": {
+          "name": "Punti",
+          "description": "Le due estremità di una linea, due angoli opposti di un rettangolo o il centro di un cerchio, ciascuno come [x, y]."
+        },
+        "radius": {
+          "name": "Raggio",
+          "description": "Raggio di un cerchio in millimetri."
+        },
+        "zone_id": {
+          "name": "ID zona vietata",
+          "description": "La zona vietata da modificare invece di disegnarne una nuova."
+        }
+      }
+    },
+    "set_ignore_obstacle_area": {
+      "name": "Imposta area con ostacoli ignorati",
+      "description": "Disegna sulla mappa corrente un'area in cui il tosaerba si affida solo al paraurti e passa sopra gli ostacoli bassi, o ne modifica una. Restituisce l'ID dell'area. Il tosaerba non si muove per questo, ma lo rifiuta mentre taglia o torna alla base.",
+      "fields": {
+        "rect": {
+          "name": "Rettangolo",
+          "description": "Due angoli opposti come [x0, y0, x1, y1], in millimetri."
+        },
+        "area_id": {
+          "name": "ID area",
+          "description": "L'area da modificare invece di disegnarne una nuova."
+        }
+      }
+    },
+    "set_spot_area": {
+      "name": "Imposta area specifica",
+      "description": "Disegna un'area specifica sulla mappa corrente, o ne modifica una. Deve trovarsi all'interno di una sola zona. Restituisce l'ID dell'area. Il tosaerba non si muove per questo, ma lo rifiuta mentre taglia o torna alla base.",
+      "fields": {
+        "rect": {
+          "name": "Rettangolo",
+          "description": "Due angoli opposti come [x0, y0, x1, y1], in millimetri."
+        },
+        "area_id": {
+          "name": "ID area specifica",
+          "description": "L'area specifica da modificare invece di disegnarne una nuova."
+        }
+      }
+    },
+    "set_maintenance_point": {
+      "name": "Imposta punto di manutenzione",
+      "description": "Posiziona un punto di manutenzione sulla mappa corrente, o ne sposta uno. Restituisce l'ID del punto. Il tosaerba non si muove per questo, ma lo rifiuta mentre taglia o torna alla base.",
+      "fields": {
+        "x": {
+          "name": "X",
+          "description": "Dove si trova il punto, in millimetri."
+        },
+        "y": {
+          "name": "Y",
+          "description": "Dove si trova il punto, in millimetri."
+        },
+        "heading": {
+          "name": "Orientamento",
+          "description": "Verso dove guarda il rasaerba lì, in gradi. Se omesso, un punto spostato mantiene l'orientamento e uno nuovo guarda a 0 gradi."
+        },
+        "point_id": {
+          "name": "ID punto",
+          "description": "Il punto da spostare invece di posizionarne uno nuovo."
+        }
+      }
+    },
+    "delete_map_item": {
+      "name": "Elimina elemento della mappa",
+      "description": "Elimina una zona, un percorso, una zona vietata, un'area specifica, un punto di manutenzione o un'area con ostacoli ignorati dalla mappa corrente. Eliminando una zona si eliminano anche le sue programmazioni. Il tosaerba non si muove per questo, ma lo rifiuta mentre taglia o torna alla base.",
+      "fields": {
+        "kind": {
+          "name": "Tipo",
+          "description": "Il tipo di elemento."
+        },
+        "item_id": {
+          "name": "ID elemento",
+          "description": "L'ID dell'elemento."
+        }
+      }
+    },
+    "rename_zone": {
+      "name": "Rinomina zona",
+      "description": "Assegna a una zona della mappa corrente un nuovo nome di massimo 24 caratteri. Il tosaerba non si muove per questo, ma lo rifiuta mentre taglia o torna alla base.",
+      "fields": {
+        "zone_id": {
+          "name": "ID zona",
+          "description": "La zona da rinominare."
+        },
+        "name": {
+          "name": "Nome",
+          "description": "Il nuovo nome."
+        }
+      }
+    },
+    "split_zone": {
+      "name": "Dividi zona",
+      "description": "Divide in due una zona della mappa corrente lungo una linea che la attraversa. Le programmazioni che includono la zona vengono eliminate. Restituisce gli ID delle due zone. Il tosaerba non si muove per questo, ma lo rifiuta mentre taglia o torna alla base.",
+      "fields": {
+        "zone_id": {
+          "name": "ID zona",
+          "description": "La zona da dividere."
+        },
+        "line": {
+          "name": "Linea",
+          "description": "Le due estremità della linea come [x0, y0, x1, y1], in millimetri; deve attraversare tutta la zona."
+        }
+      }
+    },
+    "merge_zones": {
+      "name": "Unisci zone",
+      "description": "Unisce due zone adiacenti della mappa corrente in una sola. Restituisce l'ID della zona unita. Il tosaerba non si muove per questo, ma lo rifiuta mentre taglia o torna alla base.",
+      "fields": {
+        "zone_ids": {
+          "name": "ID delle zone",
+          "description": "Le due zone."
+        }
+      }
+    },
+    "rename_map": {
+      "name": "Rinomina mappa",
+      "description": "Assegna a una mappa un nuovo nome di massimo 24 caratteri. Il tosaerba non si muove per questo, ma lo rifiuta mentre taglia o torna alla base.",
+      "fields": {
+        "map_id": {
+          "name": "ID mappa",
+          "description": "La mappa da rinominare."
+        },
+        "name": {
+          "name": "Nome",
+          "description": "Il nuovo nome."
+        }
+      }
+    },
+    "clear_rain_protection": {
+      "name": "Disattiva la protezione pioggia",
+      "description": "Annulla la pioggia segnalata dal rasaerba, così un'attività di taglio avviata subito dopo viene eseguita anche se il sensore ha rilevato acqua. Avvia l'attività subito dopo; non provoca altre azioni."
+    },
+    "find_robot": {
+      "name": "Trova robot",
+      "description": "Fa emettere un suono al rasaerba, così lo si trova dal suono. Non si muove."
+    },
+    "clear_error": {
+      "name": "Cancella errore",
+      "description": "Cancella gli errori e gli avvisi segnalati dal rasaerba e lo lascia proseguire: un'attività in pausa riprende e un rasaerba fuori dalla base senza attività rientra. Il rasaerba può muoversi.",
+      "fields": {
+        "continue_task": {
+          "name": "Prosegui",
+          "description": "Riprendere l'attività, o rientrare, dopo aver cancellato gli errori. Disattivato li cancella soltanto."
+        }
+      }
+    },
+    "set_do_not_disturb": {
+      "name": "Imposta Non disturbare",
+      "description": "Attiva o disattiva Non disturbare, o ne cambia la fascia. Nella fascia non parte nessuna attività; un'attività in corso si mette in pausa all'inizio e il rasaerba rientra alla base.",
+      "fields": {
+        "enabled": {
+          "name": "Attivo",
+          "description": "Attivare o disattivare; se omesso, resta com'è."
+        },
+        "start": {
+          "name": "Inizio",
+          "description": "Quando inizia la fascia; se omesso, resta com'è."
+        },
+        "end": {
+          "name": "Fine",
+          "description": "Quando finisce la fascia, il giorno dopo se è prima dell'inizio; se omesso, resta com'è. Gli orari vanno dalle 00:01 alle 23:59."
+        }
+      }
+    },
+    "set_low_speed_at_night": {
+      "name": "Imposta velocità ridotta di notte",
+      "description": "Attiva o disattiva la velocità ridotta di notte, o ne cambia la fascia, in cui il rasaerba procede lentamente.",
+      "fields": {
+        "enabled": {
+          "name": "Attivo",
+          "description": "Attivare o disattivare; se omesso, resta com'è."
+        },
+        "start": {
+          "name": "Inizio",
+          "description": "Quando inizia la fascia; se omesso, resta com'è."
+        },
+        "end": {
+          "name": "Fine",
+          "description": "Quando finisce la fascia, il giorno dopo se è prima dell'inizio; se omesso, resta com'è. Gli orari vanno dalle 00:01 alle 23:59."
+        }
+      }
+    },
+    "set_start_from_stop_point": {
+      "name": "Imposta avvio dal punto di arresto",
+      "description": "Sceglie se una nuova attività può riprendere dove una incompiuta si è fermata e per quanti giorni un punto di arresto viene conservato. Disattivarlo cancella i punti di arresto del rasaerba.",
+      "fields": {
+        "enabled": {
+          "name": "Attivo",
+          "description": "Attivare o disattivare; se omesso, resta com'è."
+        },
+        "days": {
+          "name": "Giorni",
+          "description": "Per quanti giorni viene conservato un punto di arresto, da 1 a 7; se omesso, resta com'è."
+        }
+      }
+    },
+    "set_light": {
+      "name": "Imposta luce",
+      "description": "Cambia quando si accendono le luci del rasaerba: solo in un periodo proprio o tutto il giorno, e in quali stati. Ciò che è omesso resta com'è.",
+      "fields": {
+        "custom_period": {
+          "name": "Periodo proprio",
+          "description": "Limitare le luci al periodo dall'inizio alla fine."
+        },
+        "start": {
+          "name": "Inizio",
+          "description": "Quando inizia il periodo."
+        },
+        "end": {
+          "name": "Fine",
+          "description": "Quando finisce il periodo."
+        },
+        "standby": {
+          "name": "In standby",
+          "description": "Luce o sorveglianza in standby."
+        },
+        "working": {
+          "name": "Al lavoro",
+          "description": "Luce durante il lavoro."
+        },
+        "charging": {
+          "name": "In carica",
+          "description": "Luce durante la carica."
+        },
+        "error": {
+          "name": "In errore",
+          "description": "Luce quando il rasaerba segnala un errore."
+        }
+      }
+    },
+    "set_human_presence_alert": {
+      "name": "Imposta avviso presenza umana",
+      "description": "Cambia l'avviso dato quando la fotocamera del rasaerba vede una persona: se è attivo, quanto è sensibile, quando sorveglia, come avvisa e con quale frequenza. Ciò che è omesso resta com'è.",
+      "fields": {
+        "enabled": {
+          "name": "Attivo",
+          "description": "Attivare o disattivare l'avviso."
+        },
+        "sensitivity": {
+          "name": "Sensibilità",
+          "description": "Con quale facilità viene riconosciuta una persona."
+        },
+        "standby": {
+          "name": "In standby",
+          "description": "Luce o sorveglianza in standby."
+        },
+        "mowing": {
+          "name": "Durante il taglio",
+          "description": "Sorvegliare durante il taglio."
+        },
+        "returning": {
+          "name": "Al rientro",
+          "description": "Sorvegliare durante il rientro alla base."
+        },
+        "patrolling": {
+          "name": "In pattuglia",
+          "description": "Sorvegliare durante la pattuglia."
+        },
+        "voice": {
+          "name": "Parlare e notificare",
+          "description": "Il rasaerba parla e parte una notifica."
+        },
+        "photo": {
+          "name": "Scattare una foto",
+          "description": "Viene scattata una foto della persona, che va nell'album dell'app."
+        },
+        "interval": {
+          "name": "Intervallo",
+          "description": "Al massimo un avviso in questi minuti, sui rasaerba che distanziano gli avvisi."
+        }
+      }
+    },
+    "set_robot_voice": {
+      "name": "Imposta voce",
+      "description": "Cambia il volume della voce del rasaerba e gli avvisi che pronuncia. Ciò che è omesso resta com'è.",
+      "fields": {
+        "volume": {
+          "name": "Volume",
+          "description": "Da 0 a 100."
+        },
+        "regular": {
+          "name": "Avvisi normali",
+          "description": "Pronunciare gli avvisi normali."
+        },
+        "work_status": {
+          "name": "Stato di lavoro",
+          "description": "Annunciare lo stato di lavoro."
+        },
+        "special_status": {
+          "name": "Stati speciali",
+          "description": "Annunciare gli stati speciali."
+        },
+        "error_status": {
+          "name": "Errori",
+          "description": "Annunciare gli errori."
+        }
+      }
+    },
+    "reset_consumable": {
+      "name": "Azzera consumabile",
+      "description": "Fa ripartire il conteggio di un consumabile, ad esempio dopo la sostituzione delle lame o della spazzola di pulizia della base, o dopo la manutenzione del rasaerba.",
+      "fields": {
+        "item": {
+          "name": "Consumabile",
+          "description": "Le lame, la spazzola di pulizia della base o la manutenzione del rasaerba."
+        }
+      }
+    },
+    "go_to_maintenance_point": {
+      "name": "Vai al punto di manutenzione",
+      "description": "Invia il rasaerba a un punto di manutenzione della mappa attuale, dove attende la pulizia o la manutenzione. Il rasaerba ci si sposta.",
+      "fields": {
+        "point_id": {
+          "name": "Punto di manutenzione",
+          "description": "L'id di un punto di manutenzione della mappa attiva."
+        }
+      }
+    },
+    "ignore_obstacle": {
+      "name": "Ignora ostacolo",
+      "description": "Fa dimenticare al rasaerba un ostacolo riconosciuto dalla sua fotocamera, che non compare più sulla mappa. Non si può annullare. Il rasaerba non si muove per farlo, ma lo rifiuta mentre taglia.",
+      "fields": {
+        "obstacle_id": {
+          "name": "Ostacolo",
+          "description": "L'id dell'ostacolo nel rasaerba; la scheda della mappa lo compila quando vi si ignora un ostacolo."
+        }
+      }
+    },
+    "backup_map": {
+      "name": "Esegui backup della mappa",
+      "description": "Salva un backup della mappa corrente, sostituendo quello precedente. Il tosaerba non si muove per questo, ma lo rifiuta mentre taglia o torna alla base."
+    },
+    "restore_map": {
+      "name": "Ripristina mappa",
+      "description": "Ripristina la mappa attuale dal suo backup oppure, con uno slot, riporta una mappa eliminata dal backup rimasto nel suo slot vuoto. Programmi e impostazioni di taglio della mappa possono essere azzerati. Il rasaerba non si muove per farlo, ma lo rifiuta mentre taglia o rientra alla base.",
+      "fields": {
+        "slot": {
+          "name": "Slot",
+          "description": "Lo slot di mappa vuoto, contato da 1, il cui backup riporta una mappa eliminata. Ometterlo per ripristinare la mappa attuale."
+        }
+      }
+    },
+    "delete_map": {
+      "name": "Elimina mappa",
+      "description": "Elimina una mappa con tutto ciò che contiene. Il suo backup resta nello slot vuoto, da dove restore_map la riporta; senza backup bisogna creare una nuova mappa nell'app, guidando il rasaerba. Il rasaerba non si muove per farlo, ma lo rifiuta mentre taglia o rientra alla base.",
+      "fields": {
+        "map_id": {
+          "name": "ID mappa",
+          "description": "La mappa da eliminare."
         }
       }
     }

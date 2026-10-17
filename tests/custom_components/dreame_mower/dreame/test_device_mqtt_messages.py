@@ -10,8 +10,8 @@ Key aspects tested:
 - Property notifications: Verifies callbacks are triggered correctly
 - Parametrized tests: Easy to add new message types from future issues
 
-When adding new message types discovered in issues, add them to the parametrized test
-to ensure they are properly handled and don't create unhandled_mqtt notifications.
+When adding new message types, add them to the parametrized tests to ensure they
+are properly handled.
 """
 
 import pytest
@@ -68,51 +68,6 @@ class TestDeviceMqttPropertyUpdate:
                 "status",
                 lambda v: v == 13
             ),
-            (  # Issue #37: 2:65 dm::TASK_SLAM_RELOCATE (mova.mower.g2420a fw 4.3.6_0325, observed when mower gets stuck)
-                {
-                    "id": 2068,
-                    "method": "properties_changed",
-                    "params": [{"did": "-1******61", "piid": 65, "siid": 2, "value": "dm::TASK_SLAM_RELOCATE"}]
-                },
-                "service2_property_65",
-                lambda v: v == "dm::TASK_SLAM_RELOCATE"
-            ),
-            (  # 2:65 dm::TASK_NAV_DIVIDE_REGION (dreame.mower.g2408 fw 4.3.6_0447)
-                {
-                    "id": 341,
-                    "method": "properties_changed",
-                    "params": [{"did": "-1******95", "piid": 65, "siid": 2, "value": "dm::TASK_NAV_DIVIDE_REGION"}]
-                },
-                "service2_property_65",
-                lambda v: v == "dm::TASK_NAV_DIVIDE_REGION"
-            ),
-            (  # Issue #68: 2:65 dm::TASK_NAV_CRUISE_POINT (mova.mower.g2529b fw 4.3.6_0169)
-                {
-                    "id": 201,
-                    "method": "properties_changed",
-                    "params": [{"did": "-1******36", "piid": 65, "siid": 2, "value": "dm::TASK_NAV_CRUISE_POINT"}]
-                },
-                "service2_property_65",
-                lambda v: v == "dm::TASK_NAV_CRUISE_POINT"
-            ),
-            (  # Issue #93: 2:65 dm::TASK_SLAM_RELOCATE_OFFDOCK (dreame.mower.p2255 fw 4.3.6_1542)
-                {
-                    "id": 206,
-                    "method": "properties_changed",
-                    "params": [{"did": "-1******55", "piid": 65, "siid": 2, "value": "dm::TASK_SLAM_RELOCATE_OFFDOCK"}]
-                },
-                "service2_property_65",
-                lambda v: v == "dm::TASK_SLAM_RELOCATE_OFFDOCK"
-            ),
-            (  # Issue #81: 2:65 TASK_NAV_CHECK without dm:: prefix (dreame.mower.g2541e fw 4.3.6_0407)
-                {
-                    "id": 651,
-                    "method": "properties_changed",
-                    "params": [{"did": "-1******99", "piid": 65, "siid": 2, "value": "TASK_NAV_CHECK"}]
-                },
-                "service2_property_65",
-                lambda v: v == "TASK_NAV_CHECK"
-            ),
             (  # Issue #51: 1:4 13-byte pose format (mova.mower.g2529d fw 4.3.6_0169)
                 {
                     "id": 244,
@@ -142,33 +97,6 @@ class TestDeviceMqttPropertyUpdate:
                 "mowing_coordinates",
                 # 20-bit pose: x=379, y=126 (scaled by _POSE_SCALE=10)
                 lambda v: v["x"] == 3790 and v["y"] == 1260
-            ),
-            (  # Issue #44: 5:100 unknown property (dreame.mower.g2568a fw 4.3.6_0212)
-                {
-                    "id": 122,
-                    "method": "properties_changed",
-                    "params": [{"did": "-1******34", "piid": 100, "siid": 5, "value": 5}]
-                },
-                "service5_property_100",
-                lambda v: v["value_100"] == 5
-            ),
-            (  # Issue #90: 5:100 string value with time_diff suffix (mova.mower.g2529d fw 4.3.6_0231)
-                {
-                    "id": 299,
-                    "method": "properties_changed",
-                    "params": [{"did": "-1******76", "piid": 100, "siid": 5, "value": "6 time_diff=-0.995"}]
-                },
-                "service5_property_100",
-                lambda v: v["value_100"] == 6
-            ),
-            (  # Issue #42: 2:56 multi-zone status array with inactive (-1) entries (mova.mower.g2529b fw 4.3.6_0169)
-                {
-                    "id": 325,
-                    "method": "properties_changed",
-                    "params": [{"did": "-1******39", "piid": 56, "siid": 2, "value": {"status": [[1,-1],[2,0],[3,-1],[4,-1]]}}]
-                },
-                "mower_control_status",
-                lambda v: v["action"] == "continue" and v["status"] == 0
             ),
             (  # Issue #40: 3:2 charging status 16 = charging paused low temperature (mova.mower.g2529b)
                 {
@@ -235,7 +163,7 @@ class TestDeviceMqttPropertyUpdate:
 
 
 class TestDeviceMqttSilentlyAcknowledged:
-    """Test properties that are silently acknowledged (no HA notification, no unhandled_mqtt)."""
+    """Test properties that are silently acknowledged."""
 
     @pytest.fixture
     def device(self):
@@ -379,18 +307,76 @@ class TestDeviceMqttSilentlyAcknowledged:
                 },
                 "issue #71: 6:1 value 200 (dreame.mower.g2541e fw 4.3.6_0407)"
             ),
+            (  # 2:65 dm::TASK_SLAM_RELOCATE (mova.mower.g2420a fw 4.3.6_0325)
+                {
+                    "id": 2068,
+                    "method": "properties_changed",
+                    "params": [{"did": "-1******61", "piid": 65, "siid": 2, "value": "dm::TASK_SLAM_RELOCATE"}]
+                },
+                "2:65 dm::TASK_SLAM_RELOCATE (mova.mower.g2420a fw 4.3.6_0325)"
+            ),
+            (  # 2:65 dm::TASK_NAV_DIVIDE_REGION (dreame.mower.g2408 fw 4.3.6_0447)
+                {
+                    "id": 341,
+                    "method": "properties_changed",
+                    "params": [{"did": "-1******95", "piid": 65, "siid": 2, "value": "dm::TASK_NAV_DIVIDE_REGION"}]
+                },
+                "2:65 dm::TASK_NAV_DIVIDE_REGION (dreame.mower.g2408 fw 4.3.6_0447)"
+            ),
+            (  # 2:65 dm::TASK_NAV_CRUISE_POINT (mova.mower.g2529b fw 4.3.6_0169)
+                {
+                    "id": 201,
+                    "method": "properties_changed",
+                    "params": [{"did": "-1******36", "piid": 65, "siid": 2, "value": "dm::TASK_NAV_CRUISE_POINT"}]
+                },
+                "2:65 dm::TASK_NAV_CRUISE_POINT (mova.mower.g2529b fw 4.3.6_0169)"
+            ),
+            (  # 2:65 dm::TASK_SLAM_RELOCATE_OFFDOCK (dreame.mower.p2255 fw 4.3.6_1542)
+                {
+                    "id": 206,
+                    "method": "properties_changed",
+                    "params": [{"did": "-1******55", "piid": 65, "siid": 2, "value": "dm::TASK_SLAM_RELOCATE_OFFDOCK"}]
+                },
+                "2:65 dm::TASK_SLAM_RELOCATE_OFFDOCK (dreame.mower.p2255 fw 4.3.6_1542)"
+            ),
+            (  # 2:65 TASK_NAV_CHECK without dm:: prefix (dreame.mower.g2541e fw 4.3.6_0407)
+                {
+                    "id": 651,
+                    "method": "properties_changed",
+                    "params": [{"did": "-1******99", "piid": 65, "siid": 2, "value": "TASK_NAV_CHECK"}]
+                },
+                "2:65 TASK_NAV_CHECK without dm:: prefix (dreame.mower.g2541e fw 4.3.6_0407)"
+            ),
+            (  # 5:100 unknown property (dreame.mower.g2568a fw 4.3.6_0212)
+                {
+                    "id": 122,
+                    "method": "properties_changed",
+                    "params": [{"did": "-1******34", "piid": 100, "siid": 5, "value": 5}]
+                },
+                "5:100 unknown property (dreame.mower.g2568a fw 4.3.6_0212)"
+            ),
+            (  # 5:100 string value with time_diff suffix (mova.mower.g2529d fw 4.3.6_0231)
+                {
+                    "id": 299,
+                    "method": "properties_changed",
+                    "params": [{"did": "-1******76", "piid": 100, "siid": 5, "value": "6 time_diff=-0.995"}]
+                },
+                "5:100 string value with time_diff suffix (mova.mower.g2529d fw 4.3.6_0231)"
+            ),
+            (  # 2:56 multi-zone status array with inactive (-1) entries (mova.mower.g2529b fw 4.3.6_0169)
+                {
+                    "id": 325,
+                    "method": "properties_changed",
+                    "params": [{"did": "-1******39", "piid": 56, "siid": 2, "value": {"status": [[1,-1],[2,0],[3,-1],[4,-1]]}}]
+                },
+                "2:56 multi-zone status array with inactive (-1) entries (mova.mower.g2529b fw 4.3.6_0169)"
+            ),
         ],
     )
     def test_silently_acknowledged_mqtt_messages(self, device, mqtt_message, description):
-        """Verify silently-acknowledged properties don't generate unhandled_mqtt notifications."""
-        notifications = []
-        device.register_property_callback(lambda name, value: notifications.append((name, value)))
-
-        device._handle_message(mqtt_message)
-
-        unhandled = [name for name, _ in notifications if name == "unhandled_mqtt"]
-        assert unhandled == [], \
-            f"[{description}] Unexpected unhandled_mqtt notification(s): {unhandled}"
+        """Verify silently-acknowledged properties count as handled."""
+        for param in mqtt_message["params"]:
+            assert device._handle_mqtt_property_update(param) is True, f"[{description}] not handled"
 
 
 class TestDreameSwbotDeviceMqtt:
@@ -440,15 +426,9 @@ class TestDreameSwbotDeviceMqtt:
         ],
     )
     def test_pool_robot_silently_handled(self, pool_device, mqtt_message, description):
-        """Verify DreameSwbotDevice handles known messages without unhandled_mqtt."""
-        notifications = []
-        pool_device.register_property_callback(lambda name, value: notifications.append((name, value)))
-
-        pool_device._handle_message(mqtt_message)
-
-        unhandled = [name for name, _ in notifications if name == "unhandled_mqtt"]
-        assert unhandled == [], \
-            f"[{description}] Unexpected unhandled_mqtt notification(s): {unhandled}"
+        """Verify DreameSwbotDevice handles known messages."""
+        for param in mqtt_message["params"]:
+            assert pool_device._handle_mqtt_property_update(param) is True, f"[{description}] not handled"
 
     def test_pool_robot_battery_value(self, pool_device):
         """Verify battery value is correctly extracted from 3:1 property."""
@@ -536,7 +516,7 @@ class TestDreameSwbotDeviceMqtt:
         assert pool_device.status == "idle"
 
     def test_pool_robot_event_clean_finish(self, pool_device):
-        """siid 20 / eiid 1 (CLEAN_FINISH) raises an info notification, not unhandled."""
+        """siid 20 / eiid 1 (CLEAN_FINISH) raises an info notification."""
         notifications = []
         pool_device.register_property_callback(lambda name, value: notifications.append((name, value)))
 
@@ -546,7 +526,6 @@ class TestDreameSwbotDeviceMqtt:
             "params": {"siid": 20, "piid": 0, "eiid": 1, "arguments": []},
         })
 
-        assert "unhandled_mqtt" not in [name for name, _ in notifications]
         info = [v for name, v in notifications if name == "device_code_info"]
         assert len(info) == 1
         assert info[0]["code"] == "CLEAN_FINISH"

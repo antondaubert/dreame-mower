@@ -1,3 +1,50 @@
+start_all_area_mowing:
+  name: Start all-area mowing
+  description: >-
+    Start mowing the whole active map. A mowing session that is already running
+    is continued.
+  target:
+    entity:
+      integration: dreame_mower
+      domain: lawn_mower
+  fields:
+    from_stop_point:
+      name: From the stop point
+      description: >-
+        Where an unfinished task stopped in a zone: on, mow only the rest of
+        it; off, mow it from the beginning. Left out, the mower is not told.
+      required: false
+      selector:
+        boolean:
+
+end_task:
+  name: End task
+  description: >-
+    End the running mowing task. The mower stays where it is, and keeps where
+    the task stopped so a later task can continue from there.
+  target:
+    entity:
+      integration: dreame_mower
+      domain: lawn_mower
+
+stop_returning:
+  name: Stop returning
+  description: Stop the mower on its way back to the station. It stays where it is.
+  target:
+    entity:
+      integration: dreame_mower
+      domain: lawn_mower
+
+recharge:
+  name: Recharge
+  description: >-
+    Send the mower to its station to charge. A running mowing task is kept, so
+    it can be continued afterwards.
+  target:
+    entity:
+      integration: dreame_mower
+      domain: lawn_mower
+
 start_zone_mowing:
   name: Start zone mowing
   description: Start mowing for one or more explicit zone IDs.
@@ -11,6 +58,14 @@ start_zone_mowing:
       description: List of zone IDs to mow, for example [1, 3].
       required: true
       example: [1, 3]
+    from_stop_point:
+      name: From the stop point
+      description: >-
+        Where an unfinished task stopped in a zone: on, mow only the rest of
+        it; off, mow it from the beginning. Left out, the mower is not told.
+      required: false
+      selector:
+        boolean:
 
 start_edge_mowing:
   name: Start edge mowing
@@ -43,21 +98,54 @@ start_spot_mowing:
       required: true
       example: [2, 4]
 
-set_cutting_height:
-  name: Set cutting height
-  description: >-
-    Set the cutting height for a whole map, or for a single zone of it. Not
-    every model supports adjusting the cutting height, and the range depends on
-    the model.
+select_map:
+  name: Select map
+  description: Make another map the one the mower works on. Not possible while a mowing task is in progress.
   target:
     entity:
       integration: dreame_mower
       domain: lawn_mower
   fields:
-    height:
-      name: Cutting height
-      description: Cutting height in centimeters, in steps of 0.5 cm.
+    map_id:
+      name: Map ID
+      description: >-
+        Map to switch to. Available map IDs are exposed in the mower entity's
+        maps attribute once the map has been fetched.
       required: true
+      example: 2
+
+set_mowing_settings:
+  name: Set mowing settings
+  description: >-
+    Change any of the mowing settings of a whole map, or of a single zone of it,
+    in one go. Every setting left out keeps the value it has. A map that follows
+    its per-zone settings gets the change written into every zone as well, since
+    the mower no longer reads its map-wide settings. Settings a mower does not
+    offer are refused.
+  target:
+    entity:
+      integration: dreame_mower
+      domain: lawn_mower
+  fields:
+    efficiency:
+      name: Mowing efficiency
+      description: >-
+        How fast the mower works. Efficient mows more per day, with less care
+        around obstacles.
+      required: false
+      example: standard
+      selector:
+        select:
+          translation_key: mowing_efficiency
+          options:
+            - label: Standard
+              value: standard
+            - label: Efficient
+              value: efficient
+    cutting_height:
+      name: Cutting height
+      description: Cutting height in centimetres, in steps of 0.5 cm.
+      required: false
       example: 5
       selector:
         number:
@@ -65,101 +153,11 @@ set_cutting_height:
           max: 10
           step: 0.5
           unit_of_measurement: cm
-    map_id:
-      name: Map ID
+    mowing_direction:
+      name: Mowing direction
       description: >-
-        Map to change. Defaults to the active map. Available map IDs are exposed
-        in the mower entity's maps attribute once the map has been fetched.
-      required: false
-      example: 2
-    zone_id:
-      name: Zone ID
-      description: >-
-        Zone to change instead of the whole map. Setting a zone also switches
-        the map to per-zone mowing settings, so the other zones keep their own
-        heights and the map-wide height stops applying. Available zone IDs are
-        exposed in the mower entity's zones attribute.
-      required: false
-      example: 3
-
-set_edge_mowing_settings:
-  name: Set edge mowing settings
-  description: >-
-    Switch the edge mowing settings for a whole map, or for a single zone of it.
-    Every setting left out keeps the value it has. A map that follows its
-    per-zone settings gets the change written into every zone as well, since the
-    mower no longer reads its map-wide settings. The same settings are available
-    as switch entities for the active map.
-  target:
-    entity:
-      integration: dreame_mower
-      domain: lawn_mower
-  fields:
-    automatic_edge_mowing:
-      name: Automatic edge mowing
-      description: >-
-        Whether the mower mows the edges on its own once all-area or zone mowing
-        has finished.
-      required: false
-      example: true
-      selector:
-        boolean:
-    safe_edge_mowing:
-      name: Safe edge mowing
-      description: >-
-        Whether the mower keeps a small buffer from the lawn boundary while it
-        mows the edges. Not every model offers this setting.
-      required: false
-      example: false
-      selector:
-        boolean:
-    edge_blade_offset:
-      name: Edge blade offset
-      description: >-
-        Whether the blade disc shifts to the side for the edge laps so the mower
-        cuts closer to the boundary. Switching this on also raises a single edge
-        lap to two, which the offset disc needs to cover the edge.
-      required: false
-      example: true
-      selector:
-        boolean:
-    map_id:
-      name: Map ID
-      description: >-
-        Map to change. Defaults to the active map. Available map IDs are exposed
-        in the mower entity's maps attribute once the map has been fetched.
-      required: false
-      example: 2
-    zone_id:
-      name: Zone ID
-      description: >-
-        Zone to change instead of the whole map. Setting a zone also switches the
-        map to per-zone mowing settings, so the other zones keep their own
-        settings and the map-wide ones stop applying. Available zone IDs are
-        exposed in the mower entity's zones attribute.
-      required: false
-      example: 3
-
-set_mowing_direction:
-  name: Set mowing direction
-  description: >-
-    Set the direction the mower drives its lanes in for a whole map, or for a
-    single zone of it, and how that direction carries from one session to the
-    next. A map that follows its per-zone settings gets the change written into
-    every zone as well, since the mower no longer reads its map-wide settings.
-    The same settings are available as a number and a select entity for the
-    active map.
-  target:
-    entity:
-      integration: dreame_mower
-      domain: lawn_mower
-  fields:
-    angle:
-      name: Angle
-      description: >-
-        The direction in degrees, as the app shows it. A direction is a line
-        rather than a heading, so anything from 180 on names the same lanes as
-        the angle half a turn below it.
+        The direction of the lanes in degrees, as the app shows it. Anything from
+        180 on names the same lanes as the angle half a turn below it.
       required: false
       example: 45
       selector:
@@ -168,8 +166,8 @@ set_mowing_direction:
           max: 359
           step: 1
           unit_of_measurement: "°"
-    mode:
-      name: Mode
+    mowing_direction_mode:
+      name: Mowing direction mode
       description: >-
         Whether every session mows in the same direction, or turns against the
         session before it.
@@ -185,6 +183,113 @@ set_mowing_direction:
               value: crisscross
             - label: Chequerboard, turning 90° each session
               value: chequerboard
+    automatic_edge_mowing:
+      name: Automatic edge mowing
+      description: >-
+        Whether the mower mows the edges on its own once all-area or zone mowing
+        has finished.
+      required: false
+      example: true
+      selector:
+        boolean:
+    safe_edge_mowing:
+      name: Safe edge mowing
+      description: >-
+        Whether the mower keeps a small buffer from the lawn boundary while it
+        mows the edges.
+      required: false
+      example: false
+      selector:
+        boolean:
+    edge_blade_offset:
+      name: Edge blade offset
+      description: >-
+        Whether the blade disc shifts to the side for the edge laps so the mower
+        cuts closer to the boundary. Switching this on also raises a single edge
+        lap to two.
+      required: false
+      example: true
+      selector:
+        boolean:
+    edge_obstacle_avoidance:
+      name: Obstacle avoidance on edges
+      description: >-
+        Whether the mower steers around obstacles along the edges too, which may
+        leave some grass uncut there. It goes off by itself once neither the
+        LiDAR nor the camera recognises obstacles.
+      required: false
+      example: true
+      selector:
+        boolean:
+    lidar_obstacle_recognition:
+      name: LiDAR obstacle recognition
+      description: >-
+        Whether the mower recognises obstacles with its LiDAR and avoids them
+        without touching them. Switch it off to let the mower clear overgrown
+        grass.
+      required: false
+      example: true
+      selector:
+        boolean:
+    obstacle_height:
+      name: Obstacle avoidance height
+      description: The lowest obstacle the mower avoids, in centimetres.
+      required: false
+      example: 20
+      selector:
+        select:
+          options:
+            - "5"
+            - "10"
+            - "15"
+            - "20"
+    obstacle_distance:
+      name: Obstacle avoidance distance
+      description: >-
+        How far the mower keeps away from obstacles, in centimetres. A shorter
+        distance may lead to collisions or scrapes.
+      required: false
+      example: 15
+      selector:
+        select:
+          options:
+            - "10"
+            - "15"
+            - "20"
+    ai_obstacle_recognition:
+      name: AI obstacle recognition
+      description: >-
+        The obstacle kinds the camera recognises and the mower avoids. An empty
+        list leaves avoiding obstacles to the bumper and the LiDAR.
+      required: false
+      example: '["humans", "animals"]'
+      selector:
+        select:
+          multiple: true
+          translation_key: ai_obstacle_kind
+          options:
+            - label: Humans
+              value: humans
+            - label: Animals
+              value: animals
+            - label: Objects
+              value: objects
+    turning_method:
+      name: Turning method
+      description: >-
+        How the mower turns at the end of a lane. Lawn care turns wider and
+        spares the lawn, but needs some room to turn. Only newer firmware
+        offers it.
+      required: false
+      example: lawn_care
+      selector:
+        select:
+          translation_key: turning_method
+          options:
+            - label: Efficient
+              value: efficient
+            - label: Lawn care
+              value: lawn_care
     map_id:
       name: Map ID
       description: Map to change. Defaults to the active map.
@@ -229,3 +334,691 @@ set_mowing_preference_mode:
       description: Map to change. Defaults to the active map.
       required: false
       example: 2
+
+set_no_go_zone:
+  name: Set no-go zone
+  description: >-
+    Draw a no-go zone on the current map, or change one, in map coordinates (millimetres, as the map's zones are given). Returns the zone's id. The mower does not move for it, but refuses it while it mows or returns to its station.
+  target:
+    entity:
+      integration: dreame_mower
+      domain: lawn_mower
+  fields:
+    shape:
+      name: Shape
+      description: >-
+        A line the mower does not cross, a rectangle or a circle.
+      required: true
+      example: rectangle
+      selector:
+        select:
+          options:
+            - line
+            - rectangle
+            - circle
+    points:
+      name: Points
+      description: >-
+        A line's two ends, a rectangle's two opposite corners, or a circle's centre, each as [x, y].
+      required: true
+      example: '[[-3800, -6000], [-3400, -5600]]'
+      selector:
+        object:
+    radius:
+      name: Radius
+      description: >-
+        A circle's radius in millimetres.
+      required: false
+      example: 500
+      selector:
+        number:
+          mode: box
+    zone_id:
+      name: No-go zone ID
+      description: >-
+        The no-go zone to change instead of drawing a new one.
+      required: false
+      example: 101
+      selector:
+        number:
+          mode: box
+
+set_ignore_obstacle_area:
+  name: Set ignore-obstacles area
+  description: >-
+    Draw an area on the current map where the mower only relies on its bumper and drives over low obstacles, or change one. Returns the area's id. The mower does not move for it, but refuses it while it mows or returns to its station.
+  target:
+    entity:
+      integration: dreame_mower
+      domain: lawn_mower
+  fields:
+    rect:
+      name: Rectangle
+      description: >-
+        Two opposite corners as [x0, y0, x1, y1], in millimetres.
+      required: true
+      example: '[-3800, -6000, -3400, -5600]'
+      selector:
+        object:
+    area_id:
+      name: Area ID
+      description: >-
+        The area to change instead of drawing a new one.
+      required: false
+      example: 1
+      selector:
+        number:
+          mode: box
+
+set_spot_area:
+  name: Set spot area
+  description: >-
+    Draw a spot area on the current map, or change one. It must lie within one zone. Returns the spot area's id. The mower does not move for it, but refuses it while it mows or returns to its station.
+  target:
+    entity:
+      integration: dreame_mower
+      domain: lawn_mower
+  fields:
+    rect:
+      name: Rectangle
+      description: >-
+        Two opposite corners as [x0, y0, x1, y1], in millimetres.
+      required: true
+      example: '[-3800, -6000, -3400, -5600]'
+      selector:
+        object:
+    area_id:
+      name: Spot area ID
+      description: >-
+        The spot area to change instead of drawing a new one.
+      required: false
+      example: 1
+      selector:
+        number:
+          mode: box
+
+set_maintenance_point:
+  name: Set maintenance point
+  description: >-
+    Place a maintenance point on the current map, or move one. Returns the point's id. The mower does not move for it, but refuses it while it mows or returns to its station.
+  target:
+    entity:
+      integration: dreame_mower
+      domain: lawn_mower
+  fields:
+    x:
+      name: X
+      description: >-
+        Where the point lies, in millimetres.
+      required: true
+      example: -3500
+      selector:
+        number:
+          mode: box
+    y:
+      name: Y
+      description: >-
+        Where the point lies, in millimetres.
+      required: true
+      example: -5700
+      selector:
+        number:
+          mode: box
+    heading:
+      name: Heading
+      description: >-
+        Which way the mower faces there, in degrees. Left out, a moved point keeps
+        its heading and a new one faces 0 degrees.
+      required: false
+      example: 90
+      selector:
+        number:
+          min: 0
+          max: 360
+          unit_of_measurement: "°"
+    point_id:
+      name: Point ID
+      description: >-
+        The point to move instead of placing a new one.
+      required: false
+      example: 1
+      selector:
+        number:
+          mode: box
+
+delete_map_item:
+  name: Delete map item
+  description: >-
+    Delete a zone, path, no-go zone, spot area, maintenance point or ignore-obstacles area of the current map. Deleting a zone also drops its schedules. The mower does not move for it, but refuses it while it mows or returns to its station.
+  target:
+    entity:
+      integration: dreame_mower
+      domain: lawn_mower
+  fields:
+    kind:
+      name: Kind
+      description: >-
+        What kind of item it is.
+      required: true
+      example: no_go_zone
+      selector:
+        select:
+          options:
+            - zone
+            - path
+            - no_go_zone
+            - spot_area
+            - maintenance_point
+            - ignore_obstacle_area
+    item_id:
+      name: Item ID
+      description: >-
+        The item's id.
+      required: true
+      example: 101
+      selector:
+        number:
+          mode: box
+
+rename_zone:
+  name: Rename zone
+  description: >-
+    Give a zone of the current map a new name of up to 24 characters. The mower does not move for it, but refuses it while it mows or returns to its station.
+  target:
+    entity:
+      integration: dreame_mower
+      domain: lawn_mower
+  fields:
+    zone_id:
+      name: Zone ID
+      description: >-
+        The zone to rename.
+      required: true
+      example: 1
+      selector:
+        number:
+          mode: box
+    name:
+      name: Name
+      description: >-
+        The new name.
+      required: true
+      example: Front lawn
+      selector:
+        text:
+
+split_zone:
+  name: Split zone
+  description: >-
+    Split a zone of the current map in two along a line across it. The schedules that name the zone are dropped. Returns the ids of the two zones. The mower does not move for it, but refuses it while it mows or returns to its station.
+  target:
+    entity:
+      integration: dreame_mower
+      domain: lawn_mower
+  fields:
+    zone_id:
+      name: Zone ID
+      description: >-
+        The zone to split.
+      required: true
+      example: 1
+      selector:
+        number:
+          mode: box
+    line:
+      name: Line
+      description: >-
+        The line's two ends as [x0, y0, x1, y1], in millimetres; it should reach across the zone.
+      required: true
+      example: '[-5000, -9000, -5000, 1000]'
+      selector:
+        object:
+
+merge_zones:
+  name: Merge zones
+  description: >-
+    Merge two neighbouring zones of the current map into one. Returns the merged zone's id. The mower does not move for it, but refuses it while it mows or returns to its station.
+  target:
+    entity:
+      integration: dreame_mower
+      domain: lawn_mower
+  fields:
+    zone_ids:
+      name: Zone IDs
+      description: >-
+        The two zones.
+      required: true
+      example: '[1, 2]'
+      selector:
+        object:
+
+rename_map:
+  name: Rename map
+  description: >-
+    Give a map a new name of up to 24 characters. The mower does not move for it, but refuses it while it mows or returns to its station.
+  target:
+    entity:
+      integration: dreame_mower
+      domain: lawn_mower
+  fields:
+    map_id:
+      name: Map ID
+      description: >-
+        The map to rename.
+      required: true
+      example: 1
+      selector:
+        number:
+          mode: box
+    name:
+      name: Name
+      description: >-
+        The new name.
+      required: true
+      example: Garden
+      selector:
+        text:
+
+clear_rain_protection:
+  name: Clear rain protection
+  description: >-
+    Clear the rain the mower reports, so a mowing task started next runs even
+    though its sensor saw water. Start the task right after; the mower takes
+    no other action from it.
+  target:
+    entity:
+      integration: dreame_mower
+      domain: lawn_mower
+
+find_robot:
+  name: Find robot
+  description: >-
+    Have the mower call out, so it can be found by its sound. It does not move.
+  target:
+    entity:
+      integration: dreame_mower
+      domain: lawn_mower
+
+clear_error:
+  name: Clear error
+  description: >-
+    Clear the errors and warnings the mower reports, then let it go on: a
+    paused task resumes, and a mower standing outside its station without a
+    task drives home. The mower may move.
+  target:
+    entity:
+      integration: dreame_mower
+      domain: lawn_mower
+  fields:
+    continue_task:
+      name: Continue
+      description: >-
+        Resume the task, or drive home, once the errors are cleared. Off only
+        clears them.
+      default: true
+      selector:
+        boolean:
+
+set_do_not_disturb:
+  name: Set Do Not Disturb
+  description: >-
+    Switch Do Not Disturb on or off, or change its window. No task starts in the
+    window; a task that runs when it begins pauses and the mower returns to its
+    station.
+  target:
+    entity:
+      integration: dreame_mower
+      domain: lawn_mower
+  fields:
+    enabled:
+      name: Enabled
+      description: Switch it on or off; left out, it stays as it is.
+      required: false
+      selector:
+        boolean:
+    start:
+      name: Start
+      description: When the window starts; left out, it stays as it is.
+      required: false
+      selector:
+        time:
+    end:
+      name: End
+      description: When the window ends, on the next day when it is earlier than the start; left out, it stays as it is. Times lie between 00:01 and 23:59.
+      required: false
+      selector:
+        time:
+
+set_low_speed_at_night:
+  name: Set low speed at night
+  description: >-
+    Switch the low speed at night on or off, or change its window, in which the
+    mower drives slowly.
+  target:
+    entity:
+      integration: dreame_mower
+      domain: lawn_mower
+  fields:
+    enabled:
+      name: Enabled
+      description: Switch it on or off; left out, it stays as it is.
+      required: false
+      selector:
+        boolean:
+    start:
+      name: Start
+      description: When the window starts; left out, it stays as it is.
+      required: false
+      selector:
+        time:
+    end:
+      name: End
+      description: When the window ends, on the next day when it is earlier than the start; left out, it stays as it is. Times lie between 00:01 and 23:59.
+      required: false
+      selector:
+        time:
+
+set_start_from_stop_point:
+  name: Set start from stop point
+  description: >-
+    Choose whether a new task can go on from where an unfinished one stopped,
+    and for how many days a stop point is kept. Switching it off clears the
+    stop points the mower holds.
+  target:
+    entity:
+      integration: dreame_mower
+      domain: lawn_mower
+  fields:
+    enabled:
+      name: Enabled
+      description: Switch it on or off; left out, it stays as it is.
+      required: false
+      selector:
+        boolean:
+    days:
+      name: Days
+      description: How many days a stop point is kept, 1 to 7; left out, it stays as it is.
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 7
+          mode: slider
+
+set_light:
+  name: Set light
+  description: >-
+    Change when the mower's lights are on: only within a custom period or all
+    day, and in which states. Whatever is left out stays as it is.
+  target:
+    entity:
+      integration: dreame_mower
+      domain: lawn_mower
+  fields:
+    custom_period:
+      name: Custom period
+      description: Keep the lights to the period from start to end.
+      required: false
+      selector:
+        boolean:
+    start:
+      name: Start
+      description: When the period starts.
+      required: false
+      selector:
+        time:
+    end:
+      name: End
+      description: When the period ends.
+      required: false
+      selector:
+        time:
+    standby:
+      name: In standby
+      description: Light while the mower stands by.
+      required: false
+      selector:
+        boolean:
+    working:
+      name: While working
+      description: Light while the mower works.
+      required: false
+      selector:
+        boolean:
+    charging:
+      name: While charging
+      description: Light while the mower charges.
+      required: false
+      selector:
+        boolean:
+    error:
+      name: On errors
+      description: Light while the mower reports an error.
+      required: false
+      selector:
+        boolean:
+
+set_human_presence_alert:
+  name: Set human presence alert
+  description: >-
+    Change the alert the mower gives when its camera sees a person: whether it
+    is on, how sensitive it is, when it watches, how it reports and how often.
+    Whatever is left out stays as it is.
+  target:
+    entity:
+      integration: dreame_mower
+      domain: lawn_mower
+  fields:
+    enabled:
+      name: Enabled
+      description: Switch the alert on or off.
+      required: false
+      selector:
+        boolean:
+    sensitivity:
+      name: Sensitivity
+      description: How readily a person is recognised.
+      required: false
+      selector:
+        select:
+          options:
+            - low
+            - medium
+            - high
+    standby:
+      name: In standby
+      description: Watch while the mower stands by.
+      required: false
+      selector:
+        boolean:
+    mowing:
+      name: While mowing
+      description: Watch while the mower mows.
+      required: false
+      selector:
+        boolean:
+    returning:
+      name: While returning
+      description: Watch while the mower returns to its station.
+      required: false
+      selector:
+        boolean:
+    patrolling:
+      name: While patrolling
+      description: Watch while the mower patrols.
+      required: false
+      selector:
+        boolean:
+    voice:
+      name: Speak and notify
+      description: The mower speaks, and a notification goes out.
+      required: false
+      selector:
+        boolean:
+    photo:
+      name: Take a photo
+      description: A photo of the person is taken and goes to the app's album.
+      required: false
+      selector:
+        boolean:
+    interval:
+      name: Interval
+      description: At most one alert in this many minutes, on mowers that space their alerts.
+      required: false
+      selector:
+        select:
+          options:
+            - "3"
+            - "10"
+            - "20"
+
+set_robot_voice:
+  name: Set robot voice
+  description: >-
+    Change the volume of the mower's voice and the kinds of prompt it speaks.
+    Whatever is left out stays as it is.
+  target:
+    entity:
+      integration: dreame_mower
+      domain: lawn_mower
+  fields:
+    volume:
+      name: Volume
+      description: From 0 to 100.
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 5
+          mode: slider
+    regular:
+      name: Regular notifications
+      description: Speak regular notifications.
+      required: false
+      selector:
+        boolean:
+    work_status:
+      name: Work status
+      description: Speak about the work status.
+      required: false
+      selector:
+        boolean:
+    special_status:
+      name: Special status
+      description: Speak about special states.
+      required: false
+      selector:
+        boolean:
+    error_status:
+      name: Errors
+      description: Speak about errors.
+      required: false
+      selector:
+        boolean:
+
+reset_consumable:
+  name: Reset consumable
+  description: >-
+    Start a consumable's count over, as after replacing the blades or the
+    station's cleaning brush, or after servicing the mower.
+  target:
+    entity:
+      integration: dreame_mower
+      domain: lawn_mower
+  fields:
+    item:
+      name: Consumable
+      description: The blades, the station's cleaning brush, or the mower's maintenance.
+      required: true
+      selector:
+        select:
+          options:
+            - blade
+            - brush
+            - robot
+
+go_to_maintenance_point:
+  name: Go to maintenance point
+  description: >-
+    Send the mower to a maintenance point of the current map, where it waits
+    for cleaning or servicing. The mower drives there.
+  target:
+    entity:
+      integration: dreame_mower
+      domain: lawn_mower
+  fields:
+    point_id:
+      name: Maintenance point
+      description: The id of a maintenance point of the active map.
+      required: true
+      selector:
+        number:
+          mode: box
+
+ignore_obstacle:
+  name: Ignore obstacle
+  description: >-
+    Have the mower forget an obstacle its camera recognised, so it no longer
+    shows on the map. This cannot be undone. The mower does not move for it,
+    but refuses it while it mows.
+  target:
+    entity:
+      integration: dreame_mower
+      domain: lawn_mower
+  fields:
+    obstacle_id:
+      name: Obstacle
+      description: >-
+        The mower's id of the obstacle; the map card fills it in when an
+        obstacle is ignored there.
+      required: true
+      selector:
+        text:
+
+backup_map:
+  name: Back up map
+  description: >-
+    Back the current map up, replacing the backup it had. The mower does not move for it, but refuses it while it mows or returns to its station.
+  target:
+    entity:
+      integration: dreame_mower
+      domain: lawn_mower
+
+restore_map:
+  name: Restore map
+  description: >-
+    Put the current map back as its backup has it, or with a slot bring a deleted map back from the backup kept in its empty slot. The map's schedules and mowing settings may be reset. The mower does not move for it, but refuses it while it mows or returns to its station.
+  target:
+    entity:
+      integration: dreame_mower
+      domain: lawn_mower
+  fields:
+    slot:
+      name: Slot
+      description: >-
+        The empty map slot, numbered from 1, whose backup brings a deleted map back. Leave it out to restore the current map.
+      selector:
+        number:
+          min: 1
+          max: 10
+          mode: box
+
+delete_map:
+  name: Delete map
+  description: >-
+    Delete a map with everything on it. The map's backup is kept in its empty slot, from where restore_map brings it back; without a backup a new map has to be mapped in the app, driving the mower. The mower does not move for it, but refuses it while it mows or returns to its station.
+  target:
+    entity:
+      integration: dreame_mower
+      domain: lawn_mower
+  fields:
+    map_id:
+      name: Map ID
+      description: >-
+        The map to delete.
+      required: true
+      example: 2
+      selector:
+        number:
+          mode: box

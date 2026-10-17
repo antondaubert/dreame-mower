@@ -5,10 +5,12 @@
 # This script runs comprehensive tests on the codebase:
 # 1. pytest - Runs all unit tests (tests/ directory)
 # 2. mypy (main) - Type checks main codebase (custom_components/)
-# 3. mypy (dev) - Type checks development scripts (dev/)
+# 3. node --check - Syntax check of the map card's modules (skipped without node)
+# 4. node --test - Tests of the map card (tests/frontend/, skipped without node)
 #
 # Usage: ./run_test.sh
-# Requirements: Virtual environment with pytest and mypy installed at .venv/
+# Requirements: Virtual environment with pytest and mypy installed at .venv/;
+# for the card tests, node and its packages (npm ci)
 #
 # Exit codes:
 # 0 - All tests passed
@@ -26,10 +28,11 @@ NC='\033[0m' # No Color
 # Track results and counts
 PYTEST_RESULT=0
 MYPY_MAIN_RESULT=0
-MYPY_DEV_RESULT=0
+CARD_RESULT=0
+CARD_TEST_RESULT=0
+CARD_DIR="custom_components/dreame_mower/frontend"
 TEST_COUNT=""
 MAIN_FILE_COUNT=""
-DEV_FILE_COUNT=""
 
 print_header() {
     echo
@@ -90,29 +93,35 @@ else
     MYPY_MAIN_RESULT=1
 fi
 
-# 3. Run mypy on dev directory (bypassing exclusions)
-if [ -d "dev" ]; then
-    DEV_PY_FILES=$(find dev -name "*.py" -type f)
-    if [ -n "$DEV_PY_FILES" ]; then
-        print_header "Running mypy on dev directory"
-        if MYPY_DEV_OUTPUT=$(.venv/bin/mypy $DEV_PY_FILES 2>&1); then
-            # Extract file count from success message
-            DEV_FILE_COUNT=$(echo "$MYPY_DEV_OUTPUT" | grep -o 'Success: no issues found in [0-9]\+ source files' | grep -o '[0-9]\+')
-            if [ -n "$DEV_FILE_COUNT" ]; then
-                echo -e "${GREEN}✅ mypy dev - $DEV_FILE_COUNT files${NC}"
-            else
-                print_success "mypy dev"
-            fi
+# 3. Syntax check of the map card
+print_header "Checking the map card"
+if command -v node >/dev/null 2>&1; then
+    for CARD_JS in "$CARD_DIR"/*.js; do
+        if node --check "$CARD_JS"; then
+            print_success "node --check $(basename "$CARD_JS")"
         else
-            print_error "mypy dev"
-            echo "$MYPY_DEV_OUTPUT"
-            MYPY_DEV_RESULT=1
+            print_error "node --check $(basename "$CARD_JS")"
+            CARD_RESULT=1
         fi
+    done
+else
+    print_warning "node not found; skipping the syntax check of $CARD_DIR"
+fi
+
+# 4. Tests of the map card
+print_header "Testing the map card"
+if command -v node >/dev/null 2>&1; then
+    if [ ! -d "node_modules/jsdom" ]; then
+        print_error "card tests: their packages are missing; run npm ci"
+        CARD_TEST_RESULT=1
+    elif npm test --silent; then
+        print_success "card tests"
     else
-        echo -e "${YELLOW}⚠️ No Python files found in dev/ directory${NC}"
+        print_error "card tests"
+        CARD_TEST_RESULT=1
     fi
 else
-    echo -e "${YELLOW}⚠️ dev/ directory not found${NC}"
+    print_warning "node not found; skipping the card tests"
 fi
 
 # Print summary
@@ -138,24 +147,22 @@ else
     print_error "mypy (main codebase)"
 fi
 
-if [ -d "dev" ] && find dev/ -name "*.py" -print -quit | grep -q .; then
-    if [ $MYPY_DEV_RESULT -eq 0 ]; then
-        if [ -n "$DEV_FILE_COUNT" ]; then
-            echo -e "${GREEN}✅ mypy (dev/ directory) - $DEV_FILE_COUNT files PASSED${NC}"
-        else
-            print_success "mypy (dev/ directory)"
-        fi
-    else
-        print_error "mypy (dev/ directory)"
-    fi
+if [ $CARD_RESULT -eq 0 ]; then
+    print_success "map card syntax"
 else
-    print_warning "mypy (dev/ directory) - SKIPPED (no .py files)"
+    print_error "map card syntax"
+fi
+
+if [ $CARD_TEST_RESULT -eq 0 ]; then
+    print_success "map card tests"
+else
+    print_error "map card tests"
 fi
 
 echo "============================================================"
 
 # Overall result
-TOTAL_ERRORS=$((PYTEST_RESULT + MYPY_MAIN_RESULT + MYPY_DEV_RESULT))
+TOTAL_ERRORS=$((PYTEST_RESULT + MYPY_MAIN_RESULT + CARD_RESULT + CARD_TEST_RESULT))
 
 if [ $TOTAL_ERRORS -eq 0 ]; then
     echo -e "${GREEN}🎉 All tests PASSED!${NC}"

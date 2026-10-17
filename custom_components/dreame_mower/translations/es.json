@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Elija el tipo de cuenta",
-        "description": "Seleccione su cuenta de tipo para la integración de la cortadora de sueño.",
+        "description": "Seleccione su tipo de cuenta para la integración Dreame Mower.",
         "data": {
           "account_type": "Tipo de cuenta"
         }
@@ -35,7 +35,7 @@
           "name": "Nombre del dispositivo",
           "notify": "Tipos de notificación"
         },
-        "description": "Configure el nombre del dispositivo de la cortadora de sueño y las preferencias de notificación."
+        "description": "Configure el nombre del dispositivo Dreame Mower y las preferencias de notificación."
       }
     },
     "error": {
@@ -43,25 +43,21 @@
       "unsupported": "Este modelo de dispositivo no es compatible con esta integración.",
       "credentials_incomplete": "El nombre de usuario, la contraseña y el país son obligatorios.",
       "login_error": "Error de inicio de sesión. Comprueba tu nombre de usuario y contraseña. Asegúrate de haber seleccionado el tipo de cuenta correcto (Dreamehome vs MOVAhome).",
-      "no_devices": "No se encontró ninguna cortadora compatible en esta cuenta. Asegúrate de haber elegido el tipo de cuenta correcto (MOVAhome para dispositivos MOVA, Dreamehome para Dreame) y de que el dispositivo esté añadido en esa aplicación. También puedes probar con otro país de servidor.",
+      "no_devices": "No se encontró ningún cortacésped compatible en esta cuenta. Asegúrate de haber elegido el tipo de cuenta correcto (MOVAhome para dispositivos MOVA, Dreamehome para Dreame) y de que el dispositivo esté añadido en esa aplicación. También puedes probar con otro país de servidor.",
       "invalid_account_type": "Tipo de cuenta no válido seleccionado."
     },
     "abort": {
-      "cannot_connect": "No se conectó.",
       "already_configured": "Este dispositivo ya está configurado."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Opción",
-        "description": "Conectado con {account} ({account_type}, {country}).\n\nConfigurar la configuración de notificación para la integración de los cortacésped Dreame.",
+        "title": "Opciones",
+        "description": "Conectado con {account} ({account_type}, {country}).\n\nElija qué notificaciones desea recibir de su cortacésped Dreame.",
         "data": {
           "notify": "Tipos de notificación",
-          "map_rotation": "Rotación del mapa",
-          "map_show_title": "Mostrar título del mapa",
-          "map_show_legend": "Mostrar leyenda del mapa",
-          "map_padding": "Margen del mapa (píxeles)"
+          "map_rotation": "Rotación del mapa"
         }
       }
     }
@@ -86,48 +82,8 @@
           "maintenance_paused": "En pausa en el punto de mantenimiento"
         }
       },
-      "charging_status": {
-        "name": "Estado de carga",
-        "state": {
-          "not_docked": "No atracado",
-          "charging": "Carga",
-          "not_charging": "No cargando",
-          "charging_completed": "Carga completada",
-          "return_to_charge": "Volver al cargo",
-          "charging_paused_high_temperature": "Carga pausada: temperatura de batería demasiado alta",
-          "charging_paused_low_temperature": "Carga pausada: temperatura de batería demasiado baja"
-        }
-      },
       "mowing_progress": {
         "name": "Progreso de corte"
-      },
-      "bluetooth_connection": {
-        "name": "Bluetooth"
-      },
-      "dnd_status": {
-        "name": "No molestar"
-      },
-      "charging_schedule": {
-        "name": "Horario de carga"
-      },
-      "timezone": {
-        "name": "Zona horaria"
-      },
-      "device_code": {
-        "name": "Código de dispositivo"
-      },
-      "current_task": {
-        "name": "Tarea actual",
-        "state": {
-          "idle": "Sin tarea",
-          "starting": "Iniciando",
-          "mowing": "Segando",
-          "paused": "En pausa",
-          "finished": "Finalizada",
-          "failed": "Fallida",
-          "exit": "Detenida",
-          "returning_to_dock": "Regresando a la estación"
-        }
       },
       "consumable_blade_health": {
         "name": "Estado de cuchillas"
@@ -143,36 +99,6 @@
       },
       "account": {
         "name": "Cuenta"
-      }
-    },
-    "camera": {
-      "map_camera": {
-        "name": "Mapa"
-      }
-    },
-    "button": {
-      "reset_blade": {
-        "name": "Restablecer contador de cuchillas"
-      },
-      "reset_brush": {
-        "name": "Restablecer contador de cepillo"
-      },
-      "reset_robot_maintenance": {
-        "name": "Restablecer contador de mantenimiento"
-      },
-      "dock_without_stopping": {
-        "name": "Acoplar sin detener la tarea"
-      },
-      "go_to_maintenance_point": {
-        "name": "Ir al punto de mantenimiento"
-      }
-    },
-    "number": {
-      "cutting_height": {
-        "name": "Altura de corte"
-      },
-      "mowing_direction": {
-        "name": "Dirección de corte"
       }
     },
     "switch": {
@@ -197,14 +123,20 @@
       "schedule": {
         "name": "Programación {number}"
       },
-      "edge_mowing_auto": {
-        "name": "Corte automático de bordes"
+      "frost_protection": {
+        "name": "Protección contra heladas"
       },
-      "edge_blade_offset": {
-        "name": "EdgeMaster"
+      "path_obstacle_avoidance": {
+        "name": "Evitar obstáculos en los caminos"
       },
-      "edge_mowing_safe": {
-        "name": "Corte seguro de bordes"
+      "auto_recharge_standby": {
+        "name": "Recarga automática tras espera"
+      },
+      "ai_obstacle_photos": {
+        "name": "Fotografiar obstáculos detectados por IA"
+      },
+      "child_lock": {
+        "name": "Bloqueo infantil"
       }
     },
     "time": {
@@ -218,6 +150,9 @@
     "select": {
       "rain_delay": {
         "name": "Espera tras la lluvia"
+      },
+      "navigation_path": {
+        "name": "Ruta de navegación"
       }
     }
   },
@@ -234,9 +169,50 @@
         "map_wide": "Un ajuste para todo el mapa",
         "per_zone": "Un ajuste por zona"
       }
+    },
+    "mowing_efficiency": {
+      "options": {
+        "standard": "Estándar",
+        "efficient": "Eficiente"
+      }
+    },
+    "turning_method": {
+      "options": {
+        "efficient": "Eficiente",
+        "lawn_care": "Cuidado del césped"
+      }
+    },
+    "ai_obstacle_kind": {
+      "options": {
+        "humans": "Personas",
+        "animals": "Animales",
+        "objects": "Objetos"
+      }
     }
   },
   "services": {
+    "start_all_area_mowing": {
+      "name": "Iniciar corte de toda el área",
+      "description": "Corta todo el mapa activo. Una sesión de corte en curso se reanuda.",
+      "fields": {
+        "from_stop_point": {
+          "name": "Desde el punto de parada",
+          "description": "Donde una tarea sin terminar se detuvo en una zona: activado, cortar solo lo que falta; desactivado, cortarla desde el principio. Si se omite, no se le indica nada al cortacésped."
+        }
+      }
+    },
+    "end_task": {
+      "name": "Finalizar tarea",
+      "description": "Finaliza la tarea de corte en curso. El cortacésped se queda donde está y recuerda dónde se detuvo para que una tarea posterior pueda continuar desde allí."
+    },
+    "stop_returning": {
+      "name": "Detener regreso",
+      "description": "Detiene el cortacésped de camino a la base. Se queda donde está."
+    },
+    "recharge": {
+      "name": "Recargar",
+      "description": "Envía el cortacésped a su base para cargar. Una tarea de corte en curso se conserva para poder continuarla después."
+    },
     "start_zone_mowing": {
       "name": "Iniciar el corte de zonas",
       "description": "Inicia el corte de una o varias zonas seleccionadas.",
@@ -244,6 +220,10 @@
         "zone_ids": {
           "name": "ID de zonas",
           "description": "Lista de ID de las zonas que se van a cortar; por ejemplo, [1, 3]."
+        },
+        "from_stop_point": {
+          "name": "Desde el punto de parada",
+          "description": "Donde una tarea sin terminar se detuvo en una zona: activado, cortar solo lo que falta; desactivado, cortarla desde el principio. Si se omite, no se le indica nada al cortacésped."
         }
       }
     },
@@ -267,61 +247,71 @@
         }
       }
     },
-    "set_cutting_height": {
-      "name": "Ajustar la altura de corte",
-      "description": "Ajusta la altura de corte para todo un mapa o una de sus zonas. No todos los modelos permiten ajustar la altura; el intervalo disponible depende del modelo.",
+    "select_map": {
+      "name": "Seleccionar mapa",
+      "description": "Hace que el cortacésped trabaje en otro mapa. No es posible mientras haya una tarea de corte en curso.",
       "fields": {
-        "height": {
-          "name": "Altura de corte",
-          "description": "Altura de corte en centímetros, en pasos de 0,5 cm."
-        },
         "map_id": {
           "name": "ID del mapa",
-          "description": "Mapa que se va a modificar. De forma predeterminada, el mapa activo. Los ID disponibles aparecen en el atributo «maps» de la entidad del cortacésped cuando se ha cargado el mapa."
-        },
-        "zone_id": {
-          "name": "ID de zona",
-          "description": "Zona que se va a modificar en lugar de todo el mapa. Esto activa los ajustes por zona: las demás zonas mantienen su propia altura y deja de aplicarse la altura general del mapa. Los ID disponibles aparecen en el atributo «zones» de la entidad del cortacésped."
+          "description": "Mapa al que cambiar. Los ID de mapa disponibles aparecen en el atributo maps de la entidad del cortacésped una vez cargado el mapa."
         }
       }
     },
-    "set_edge_mowing_settings": {
-      "name": "Configurar el corte de bordes",
-      "description": "Cambia los ajustes del corte de bordes para todo un mapa o una de sus zonas. Los ajustes omitidos conservan su valor actual. Si el mapa usa ajustes por zona, los cambios se aplican a todas las zonas porque el cortacésped deja de usar los ajustes generales del mapa. Estos ajustes también están disponibles como interruptores para el mapa activo.",
+    "set_mowing_settings": {
+      "name": "Configurar los ajustes de corte",
+      "description": "Cambia a la vez cualquiera de los ajustes de corte para todo un mapa o una de sus zonas. Los ajustes omitidos conservan su valor actual. Si el mapa usa ajustes por zona, los cambios se aplican a todas las zonas porque el cortacésped deja de usar los ajustes generales del mapa. Se rechazan los ajustes que el cortacésped no ofrece.",
       "fields": {
+        "efficiency": {
+          "name": "Eficiencia de corte",
+          "description": "Rapidez con la que trabaja el cortacésped. «Eficiente» corta más al día, con menos cuidado alrededor de los obstáculos."
+        },
+        "cutting_height": {
+          "name": "Altura de corte",
+          "description": "Altura de corte en centímetros, en pasos de 0,5 cm."
+        },
+        "mowing_direction": {
+          "name": "Dirección de corte",
+          "description": "Dirección de las líneas en grados, tal como aparece en la aplicación. Los ángulos a partir de 180° representan las mismas líneas que el ángulo situado 180° por debajo."
+        },
+        "mowing_direction_mode": {
+          "name": "Modo de dirección de corte",
+          "description": "Indica si cada sesión corta en la misma dirección o la gira respecto a la sesión anterior."
+        },
         "automatic_edge_mowing": {
           "name": "Corte automático de bordes",
           "description": "Indica si el cortacésped corta los bordes automáticamente al terminar el corte de todo el mapa o de una zona."
         },
         "safe_edge_mowing": {
           "name": "Corte seguro de bordes",
-          "description": "Indica si el cortacésped mantiene un pequeño margen respecto al límite del césped al cortar los bordes. No está disponible en todos los modelos."
+          "description": "Indica si el cortacésped mantiene un pequeño margen respecto al límite del césped al cortar los bordes."
         },
         "edge_blade_offset": {
           "name": "Desplazamiento lateral del disco",
-          "description": "Indica si el disco de corte se desplaza lateralmente en las pasadas por los bordes para cortar más cerca del límite. Al activar esta opción, las pasadas por los bordes también aumentan de una a dos para cubrir todo el borde."
+          "description": "Indica si el disco de corte se desplaza lateralmente en las pasadas por los bordes para cortar más cerca del límite. Al activar esta opción, las pasadas por los bordes también aumentan de una a dos."
         },
-        "map_id": {
-          "name": "ID del mapa",
-          "description": "Mapa que se va a modificar. De forma predeterminada, el mapa activo. Los ID disponibles aparecen en el atributo «maps» de la entidad del cortacésped cuando se ha cargado el mapa."
+        "edge_obstacle_avoidance": {
+          "name": "Esquivar obstáculos en los bordes",
+          "description": "Indica si el cortacésped también esquiva los obstáculos a lo largo de los bordes, lo que puede dejar algo de césped sin cortar allí. Se desactiva automáticamente cuando ni el LiDAR ni la cámara reconocen obstáculos."
         },
-        "zone_id": {
-          "name": "ID de zona",
-          "description": "Zona que se va a modificar en lugar de todo el mapa. Esto activa los ajustes por zona: las demás zonas mantienen sus propios ajustes y dejan de aplicarse los ajustes generales del mapa. Los ID disponibles aparecen en el atributo «zones» de la entidad del cortacésped."
-        }
-      }
-    },
-    "set_mowing_direction": {
-      "name": "Configurar la dirección de corte",
-      "description": "Configura la dirección de las líneas de corte para todo un mapa o una de sus zonas, y cómo cambia entre sesiones. Si el mapa usa ajustes por zona, los cambios se aplican a todas las zonas porque el cortacésped deja de usar los ajustes generales del mapa. Estos ajustes también están disponibles como número y selector para el mapa activo.",
-      "fields": {
-        "angle": {
-          "name": "Ángulo",
-          "description": "Dirección de corte en grados, tal como aparece en la aplicación. Es la orientación de una línea, no el rumbo de marcha: los ángulos a partir de 180° representan las mismas líneas que el ángulo situado 180° por debajo."
+        "lidar_obstacle_recognition": {
+          "name": "Reconocimiento de obstáculos por LiDAR",
+          "description": "Indica si el cortacésped reconoce los obstáculos con su LiDAR y los esquiva sin tocarlos. Desactívalo para que el cortacésped pueda cortar césped crecido."
         },
-        "mode": {
-          "name": "Modo de corte",
-          "description": "Elige si cada sesión mantiene la misma dirección de corte o la alterna respecto a la sesión anterior."
+        "obstacle_height": {
+          "name": "Altura de esquiva de obstáculos",
+          "description": "El obstáculo más bajo que esquiva el cortacésped, en centímetros."
+        },
+        "obstacle_distance": {
+          "name": "Distancia de esquiva de obstáculos",
+          "description": "Distancia que el cortacésped mantiene respecto a los obstáculos, en centímetros. Una distancia menor puede provocar choques o roces."
+        },
+        "ai_obstacle_recognition": {
+          "name": "Reconocimiento de obstáculos por IA",
+          "description": "Tipos de obstáculos que la cámara reconoce y que el cortacésped esquiva. Con una lista vacía, esquivar los obstáculos queda a cargo del parachoques y el LiDAR."
+        },
+        "turning_method": {
+          "name": "Método de giro",
+          "description": "Cómo gira el cortacésped al final de cada línea. «Cuidado del césped» gira más abierto y protege el césped, pero necesita algo de espacio para girar. Solo disponible con firmware reciente."
         },
         "map_id": {
           "name": "ID del mapa",
@@ -344,6 +334,368 @@
         "map_id": {
           "name": "ID del mapa",
           "description": "Mapa que se va a modificar. De forma predeterminada, el mapa activo."
+        }
+      }
+    },
+    "set_no_go_zone": {
+      "name": "Definir zona prohibida",
+      "description": "Dibuja una zona prohibida en el mapa actual, o cambia una, en coordenadas del mapa (milímetros, como se indican las zonas del mapa). Devuelve el ID de la zona. El cortacésped no se mueve para ello, pero lo rechaza mientras corta o vuelve a la base.",
+      "fields": {
+        "shape": {
+          "name": "Forma",
+          "description": "Una línea que el cortacésped no cruza, un rectángulo o un círculo."
+        },
+        "points": {
+          "name": "Puntos",
+          "description": "Los dos extremos de una línea, dos esquinas opuestas de un rectángulo o el centro de un círculo, cada uno como [x, y]."
+        },
+        "radius": {
+          "name": "Radio",
+          "description": "Radio de un círculo en milímetros."
+        },
+        "zone_id": {
+          "name": "ID de zona prohibida",
+          "description": "La zona prohibida que se va a cambiar en lugar de dibujar una nueva."
+        }
+      }
+    },
+    "set_ignore_obstacle_area": {
+      "name": "Definir zona de obstáculos ignorados",
+      "description": "Dibuja una zona en el mapa actual donde el cortacésped solo confía en su parachoques y pasa por encima de obstáculos bajos, o cambia una. Devuelve el ID de la zona. El cortacésped no se mueve para ello, pero lo rechaza mientras corta o vuelve a la base.",
+      "fields": {
+        "rect": {
+          "name": "Rectángulo",
+          "description": "Dos esquinas opuestas como [x0, y0, x1, y1], en milímetros."
+        },
+        "area_id": {
+          "name": "ID de zona",
+          "description": "La zona que se va a cambiar en lugar de dibujar una nueva."
+        }
+      }
+    },
+    "set_spot_area": {
+      "name": "Definir zona puntual",
+      "description": "Dibuja una zona puntual en el mapa actual, o cambia una. Debe estar dentro de una sola zona. Devuelve el ID de la zona puntual. El cortacésped no se mueve para ello, pero lo rechaza mientras corta o vuelve a la base.",
+      "fields": {
+        "rect": {
+          "name": "Rectángulo",
+          "description": "Dos esquinas opuestas como [x0, y0, x1, y1], en milímetros."
+        },
+        "area_id": {
+          "name": "ID de zona puntual",
+          "description": "La zona puntual que se va a cambiar en lugar de dibujar una nueva."
+        }
+      }
+    },
+    "set_maintenance_point": {
+      "name": "Definir punto de mantenimiento",
+      "description": "Coloca un punto de mantenimiento en el mapa actual, o mueve uno. Devuelve el ID del punto. El cortacésped no se mueve para ello, pero lo rechaza mientras corta o vuelve a la base.",
+      "fields": {
+        "x": {
+          "name": "X",
+          "description": "Dónde está el punto, en milímetros."
+        },
+        "y": {
+          "name": "Y",
+          "description": "Dónde está el punto, en milímetros."
+        },
+        "heading": {
+          "name": "Orientación",
+          "description": "Hacia dónde mira el cortacésped allí, en grados. Si se omite, un punto movido conserva su orientación y uno nuevo mira a 0 grados."
+        },
+        "point_id": {
+          "name": "ID del punto",
+          "description": "El punto que se va a mover en lugar de colocar uno nuevo."
+        }
+      }
+    },
+    "delete_map_item": {
+      "name": "Eliminar elemento del mapa",
+      "description": "Elimina una zona, un camino, una zona prohibida, una zona puntual, un punto de mantenimiento o una zona de obstáculos ignorados del mapa actual. Al eliminar una zona también se eliminan sus programaciones. El cortacésped no se mueve para ello, pero lo rechaza mientras corta o vuelve a la base.",
+      "fields": {
+        "kind": {
+          "name": "Tipo",
+          "description": "Qué tipo de elemento es."
+        },
+        "item_id": {
+          "name": "ID del elemento",
+          "description": "El ID del elemento."
+        }
+      }
+    },
+    "rename_zone": {
+      "name": "Renombrar zona",
+      "description": "Da a una zona del mapa actual un nuevo nombre de hasta 24 caracteres. El cortacésped no se mueve para ello, pero lo rechaza mientras corta o vuelve a la base.",
+      "fields": {
+        "zone_id": {
+          "name": "ID de zona",
+          "description": "La zona que se va a renombrar."
+        },
+        "name": {
+          "name": "Nombre",
+          "description": "El nuevo nombre."
+        }
+      }
+    },
+    "split_zone": {
+      "name": "Dividir zona",
+      "description": "Divide en dos una zona del mapa actual a lo largo de una línea que la atraviesa. Se eliminan las programaciones que incluyen la zona. Devuelve los ID de las dos zonas. El cortacésped no se mueve para ello, pero lo rechaza mientras corta o vuelve a la base.",
+      "fields": {
+        "zone_id": {
+          "name": "ID de zona",
+          "description": "La zona que se va a dividir."
+        },
+        "line": {
+          "name": "Línea",
+          "description": "Los dos extremos de la línea como [x0, y0, x1, y1], en milímetros; debe atravesar la zona."
+        }
+      }
+    },
+    "merge_zones": {
+      "name": "Unir zonas",
+      "description": "Une dos zonas vecinas del mapa actual en una sola. Devuelve el ID de la zona resultante. El cortacésped no se mueve para ello, pero lo rechaza mientras corta o vuelve a la base.",
+      "fields": {
+        "zone_ids": {
+          "name": "ID de zonas",
+          "description": "Las dos zonas."
+        }
+      }
+    },
+    "rename_map": {
+      "name": "Renombrar mapa",
+      "description": "Da a un mapa un nuevo nombre de hasta 24 caracteres. El cortacésped no se mueve para ello, pero lo rechaza mientras corta o vuelve a la base.",
+      "fields": {
+        "map_id": {
+          "name": "ID del mapa",
+          "description": "El mapa que se va a renombrar."
+        },
+        "name": {
+          "name": "Nombre",
+          "description": "El nuevo nombre."
+        }
+      }
+    },
+    "clear_rain_protection": {
+      "name": "Anular la protección contra lluvia",
+      "description": "Anula la lluvia que informa el cortacésped para que una tarea de corte iniciada a continuación se ejecute aunque el sensor haya detectado agua. Inicia la tarea justo después; no provoca ninguna otra acción."
+    },
+    "find_robot": {
+      "name": "Encontrar robot",
+      "description": "Hace que el cortacésped emita un sonido para encontrarlo. No se mueve."
+    },
+    "clear_error": {
+      "name": "Borrar error",
+      "description": "Borra los errores y avisos que informa el cortacésped y le deja seguir: una tarea en pausa se reanuda y un cortacésped fuera de su estación sin tarea vuelve a casa. El cortacésped puede moverse.",
+      "fields": {
+        "continue_task": {
+          "name": "Continuar",
+          "description": "Reanudar la tarea o volver a casa tras borrar los errores. Desactivado solo los borra."
+        }
+      }
+    },
+    "set_do_not_disturb": {
+      "name": "Configurar No molestar",
+      "description": "Activa o desactiva No molestar, o cambia su franja. En la franja no empieza ninguna tarea; una tarea en curso se pausa al comenzar y el cortacésped vuelve a la estación.",
+      "fields": {
+        "enabled": {
+          "name": "Activado",
+          "description": "Activar o desactivar; si se omite, queda como está."
+        },
+        "start": {
+          "name": "Inicio",
+          "description": "Cuándo empieza la franja; si se omite, queda como está."
+        },
+        "end": {
+          "name": "Fin",
+          "description": "Cuándo termina la franja, al día siguiente si es anterior al inicio; si se omite, queda como está. Las horas van de 00:01 a 23:59."
+        }
+      }
+    },
+    "set_low_speed_at_night": {
+      "name": "Configurar velocidad baja nocturna",
+      "description": "Activa o desactiva la velocidad baja nocturna, o cambia su franja, en la que el cortacésped avanza despacio.",
+      "fields": {
+        "enabled": {
+          "name": "Activado",
+          "description": "Activar o desactivar; si se omite, queda como está."
+        },
+        "start": {
+          "name": "Inicio",
+          "description": "Cuándo empieza la franja; si se omite, queda como está."
+        },
+        "end": {
+          "name": "Fin",
+          "description": "Cuándo termina la franja, al día siguiente si es anterior al inicio; si se omite, queda como está. Las horas van de 00:01 a 23:59."
+        }
+      }
+    },
+    "set_start_from_stop_point": {
+      "name": "Configurar inicio desde punto de parada",
+      "description": "Elige si una tarea nueva puede seguir donde se detuvo una sin terminar y cuántos días se guarda un punto de parada. Desactivarlo borra los puntos de parada del cortacésped.",
+      "fields": {
+        "enabled": {
+          "name": "Activado",
+          "description": "Activar o desactivar; si se omite, queda como está."
+        },
+        "days": {
+          "name": "Días",
+          "description": "Cuántos días se guarda un punto de parada, de 1 a 7; si se omite, queda como está."
+        }
+      }
+    },
+    "set_light": {
+      "name": "Configurar luz",
+      "description": "Cambia cuándo se encienden las luces del cortacésped: solo en un periodo propio o todo el día, y en qué estados. Lo omitido queda como está.",
+      "fields": {
+        "custom_period": {
+          "name": "Periodo propio",
+          "description": "Limitar las luces al periodo de inicio a fin."
+        },
+        "start": {
+          "name": "Inicio",
+          "description": "Cuándo empieza el periodo."
+        },
+        "end": {
+          "name": "Fin",
+          "description": "Cuándo termina el periodo."
+        },
+        "standby": {
+          "name": "En espera",
+          "description": "Luz o vigilancia mientras el cortacésped espera."
+        },
+        "working": {
+          "name": "Trabajando",
+          "description": "Luz mientras el cortacésped trabaja."
+        },
+        "charging": {
+          "name": "Cargando",
+          "description": "Luz mientras el cortacésped carga."
+        },
+        "error": {
+          "name": "En errores",
+          "description": "Luz mientras el cortacésped informa de un error."
+        }
+      }
+    },
+    "set_human_presence_alert": {
+      "name": "Configurar alerta de presencia humana",
+      "description": "Cambia el aviso que da el cortacésped cuando su cámara ve a una persona: si está activo, su sensibilidad, cuándo vigila, cómo avisa y con qué frecuencia. Lo omitido queda como está.",
+      "fields": {
+        "enabled": {
+          "name": "Activado",
+          "description": "Activar o desactivar el aviso."
+        },
+        "sensitivity": {
+          "name": "Sensibilidad",
+          "description": "Con qué facilidad se reconoce a una persona."
+        },
+        "standby": {
+          "name": "En espera",
+          "description": "Luz o vigilancia mientras el cortacésped espera."
+        },
+        "mowing": {
+          "name": "Cortando",
+          "description": "Vigilar mientras corta."
+        },
+        "returning": {
+          "name": "Volviendo",
+          "description": "Vigilar mientras vuelve a la estación."
+        },
+        "patrolling": {
+          "name": "Patrullando",
+          "description": "Vigilar mientras patrulla."
+        },
+        "voice": {
+          "name": "Hablar y notificar",
+          "description": "El cortacésped habla y se envía una notificación."
+        },
+        "photo": {
+          "name": "Tomar una foto",
+          "description": "Se toma una foto de la persona y va al álbum de la app."
+        },
+        "interval": {
+          "name": "Intervalo",
+          "description": "Como mucho un aviso en tantos minutos, en cortacéspedes que espacian sus avisos."
+        }
+      }
+    },
+    "set_robot_voice": {
+      "name": "Configurar voz",
+      "description": "Cambia el volumen de la voz del cortacésped y los avisos que pronuncia. Lo omitido queda como está.",
+      "fields": {
+        "volume": {
+          "name": "Volumen",
+          "description": "De 0 a 100."
+        },
+        "regular": {
+          "name": "Avisos normales",
+          "description": "Pronunciar avisos normales."
+        },
+        "work_status": {
+          "name": "Estado de trabajo",
+          "description": "Hablar del estado de trabajo."
+        },
+        "special_status": {
+          "name": "Estados especiales",
+          "description": "Hablar de estados especiales."
+        },
+        "error_status": {
+          "name": "Errores",
+          "description": "Hablar de errores."
+        }
+      }
+    },
+    "reset_consumable": {
+      "name": "Restablecer consumible",
+      "description": "Reinicia el recuento de un consumible, como tras cambiar las cuchillas o el cepillo de limpieza de la estación, o tras el mantenimiento del cortacésped.",
+      "fields": {
+        "item": {
+          "name": "Consumible",
+          "description": "Las cuchillas, el cepillo de limpieza de la estación o el mantenimiento del cortacésped."
+        }
+      }
+    },
+    "go_to_maintenance_point": {
+      "name": "Ir al punto de mantenimiento",
+      "description": "Envía el cortacésped a un punto de mantenimiento del mapa actual, donde espera para limpieza o mantenimiento. El cortacésped se desplaza hasta allí.",
+      "fields": {
+        "point_id": {
+          "name": "Punto de mantenimiento",
+          "description": "El id de un punto de mantenimiento del mapa activo."
+        }
+      }
+    },
+    "ignore_obstacle": {
+      "name": "Ignorar obstáculo",
+      "description": "Hace que el cortacésped olvide un obstáculo que reconoció su cámara, para que deje de aparecer en el mapa. No se puede deshacer. El cortacésped no se mueve para ello, pero lo rechaza mientras corta.",
+      "fields": {
+        "obstacle_id": {
+          "name": "Obstáculo",
+          "description": "El id del obstáculo en el cortacésped; la tarjeta del mapa lo rellena al ignorar allí un obstáculo."
+        }
+      }
+    },
+    "backup_map": {
+      "name": "Hacer copia de seguridad del mapa",
+      "description": "Guarda una copia de seguridad del mapa actual y reemplaza la que tenía. El cortacésped no se mueve para ello, pero lo rechaza mientras corta o vuelve a la base."
+    },
+    "restore_map": {
+      "name": "Restaurar mapa",
+      "description": "Restaura el mapa actual tal como lo tiene su copia de seguridad o, con una ranura, recupera un mapa borrado de la copia que quedó en su ranura vacía. Los horarios y ajustes de corte del mapa pueden restablecerse. El cortacésped no se mueve para ello, pero lo rechaza mientras corta o vuelve a la estación.",
+      "fields": {
+        "slot": {
+          "name": "Ranura",
+          "description": "La ranura de mapa vacía, contando desde 1, cuya copia recupera un mapa borrado. Omítela para restaurar el mapa actual."
+        }
+      }
+    },
+    "delete_map": {
+      "name": "Eliminar mapa",
+      "description": "Borra un mapa con todo lo que contiene. Su copia de seguridad queda en la ranura vacía, desde donde restore_map lo recupera; sin copia hay que crear un mapa nuevo en la app, conduciendo el cortacésped. El cortacésped no se mueve para ello, pero lo rechaza mientras corta o vuelve a la estación.",
+      "fields": {
+        "map_id": {
+          "name": "ID del mapa",
+          "description": "El mapa que se va a eliminar."
         }
       }
     }

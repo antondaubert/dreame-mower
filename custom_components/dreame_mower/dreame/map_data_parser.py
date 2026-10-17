@@ -10,13 +10,9 @@ import json
 import logging
 import math
 import re
-import time
 from dataclasses import dataclass, field
 
 _LOGGER = logging.getLogger(__name__)
-
-# Sentinel value in M_PATH data marking a path segment break
-_PATH_SENTINEL = (32767, -32768)
 
 # Zone/area shapeType values that need geometric expansion before rendering.
 # Polygon shapes (0 and others) already carry their full vertex list.
@@ -33,12 +29,9 @@ class MowerZone:
     zone_id: int
     path: list[tuple[int, int]]
     name: str = ""
-    zone_type: int = 0
     shape_type: int = 0
     angle: float = 0.0
     area: float = 0
-    time: int = 0
-    etime: int = 0
 
 
 @dataclass
@@ -46,7 +39,6 @@ class MowerPath:
     """A navigation path between zones."""
     path_id: int
     path: list[tuple[int, int]]
-    path_type: int = 0
 
 
 @dataclass
@@ -54,7 +46,6 @@ class MowerContour:
     """A contour entry used for boundary or edge mowing."""
     contour_id: tuple[int, int]
     path: list[tuple[int, int]]
-    contour_type: int = 0
     shape_type: int = 0
 
 
@@ -76,6 +67,9 @@ class MowerMaintenancePoint:
     point_id: int
     x: int
     y: int
+    # Which way the mower faces once there, in degrees; None when the map
+    # does not say.
+    heading: float | None = None
 
 
 @dataclass
@@ -106,19 +100,14 @@ class MowerMapBoundary:
 
 
 @dataclass
-class MowerMowPath:
-    """Mowing path trace — the actual trail the mower followed."""
-    zone_id: int
-    segments: list[list[tuple[int, int]]]
-
-
-@dataclass
 class MowerVectorMap:
     """Complete vector map data for a mower, fetched from batch API."""
     zones: list[MowerZone] = field(default_factory=list)
     spot_areas: list[MowerSpotArea] = field(default_factory=list)
     maintenance_points: list[MowerMaintenancePoint] = field(default_factory=list)
     forbidden_areas: list[MowerZone] = field(default_factory=list)
+    # Areas the mower mows without avoiding obstacles in them.
+    ignore_obstacle_areas: list[MowerZone] = field(default_factory=list)
     paths: list[MowerPath] = field(default_factory=list)
     contours: list[MowerContour] = field(default_factory=list)
     boundary: MowerMapBoundary | None = None
@@ -129,10 +118,8 @@ class MowerVectorMap:
     # The hash the mower reports for this map: empty for a slot that holds none,
     # None when the source does not say.
     md5sum: str | None = None
-    mow_paths: list[MowerMowPath] = field(default_factory=list)
     available_maps: list[MowerAvailableMap] = field(default_factory=list)
     current_map_id: int | None = None
-    last_updated: float | None = None
     maps: dict[int, MowerVectorMap] = field(default_factory=dict, repr=False)
 
 
@@ -149,7 +136,7 @@ def reassemble_map_chunks(batch_data: dict, prefix: str) -> str | None:
 
     Args:
         batch_data: dict from get_batch_device_datas response
-        prefix: key prefix to match, e.g. "MAP" or "M_PATH"
+        prefix: key prefix to match, e.g. "MAP"
 
     Returns:
         Concatenated string, or None if no matching keys found.
@@ -183,11 +170,10 @@ def _extract_path_coords(path_list: list) -> list[tuple[int, int]]:
 def _circle_polygon(path: list[tuple[int, int]]) -> list[tuple[int, int]]:
     """Approximate a circle/ellipse (two opposite bounding-box corners) as a polygon.
 
-    SVG has native <circle>/<ellipse>, but the downstream render pipeline
-    (scaling, bounds-fitting, map rotation, svg_polygon) is purely point-list
-    based and carries no shape metadata. Expanding to a polygon here lets the
-    circle flow through that machinery unchanged instead of threading a
-    centre+radii descriptor through every stage.
+    Everything downstream (the map card, rotation and bounds-fitting) works
+    on point lists and carries no shape metadata.
+    Expanding to a polygon here lets the circle flow through unchanged instead
+    of threading a centre+radii descriptor through every stage.
     """
     (x1, y1), (x2, y2) = path[0], path[1]
     cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
@@ -267,11 +253,8 @@ def parse_mower_map(map_json: str | dict) -> MowerVectorMap:
             zone_id=zone_id,
             path=_extract_path_coords(zone_data.get("path", [])),
             name=zone_data.get("name", ""),
-            zone_type=zone_data.get("type", 0),
             shape_type=zone_data.get("shapeType", 0),
             area=zone_data.get("area", 0),
-            time=zone_data.get("time", 0),
-            etime=zone_data.get("etime", 0),
         ))
 
     # Parse spot-mowing areas
@@ -294,10 +277,12 @@ def parse_mower_map(map_json: str | dict) -> MowerVectorMap:
         if not path:
             _LOGGER.debug("Maintenance point %s carries no position", point_id)
             continue
+        heading = point_data.get("heading")
         vmap.maintenance_points.append(MowerMaintenancePoint(
             point_id=int(point_id),
             x=path[0][0],
             y=path[0][1],
+            heading=float(heading) if isinstance(heading, (int, float)) else None,
         ))
 
     # Parse forbidden areas
@@ -307,9 +292,18 @@ def parse_mower_map(map_json: str | dict) -> MowerVectorMap:
             zone_id=zone_id,
             path=_extract_path_coords(zone_data.get("path", [])),
             name=zone_data.get("name", ""),
-            zone_type=zone_data.get("type", 0),
             shape_type=zone_data.get("shapeType", 0),
             angle=zone_data.get("angle", 0) or 0.0,
+        ))
+
+    # Parse the areas the mower mows without avoiding obstacles
+    for entry in _parse_polygon_list(data.get("notObsAreas", {})):
+        area_id, area_data = entry[0], entry[1]
+        vmap.ignore_obstacle_areas.append(MowerZone(
+            zone_id=int(area_id),
+            path=_extract_path_coords(area_data.get("path", [])),
+            shape_type=area_data.get("shapeType", 0),
+            angle=area_data.get("angle", 0) or 0.0,
         ))
 
     # Parse navigation paths between zones
@@ -318,7 +312,6 @@ def parse_mower_map(map_json: str | dict) -> MowerVectorMap:
         vmap.paths.append(MowerPath(
             path_id=path_id,
             path=_extract_path_coords(path_data.get("path", [])),
-            path_type=path_data.get("type", 0),
         ))
 
     # Parse contours used by edge mowing
@@ -327,7 +320,6 @@ def parse_mower_map(map_json: str | dict) -> MowerVectorMap:
         vmap.contours.append(MowerContour(
             contour_id=_extract_contour_id(contour_id),
             path=_extract_path_coords(contour_data.get("path", [])),
-            contour_type=contour_data.get("type", 0),
             shape_type=contour_data.get("shapeType", 0),
         ))
 
@@ -345,7 +337,6 @@ def parse_mower_map(map_json: str | dict) -> MowerVectorMap:
     vmap.map_id = _map_id_from_index(vmap.map_index)
     md5sum = data.get("md5sum")
     vmap.md5sum = md5sum if isinstance(md5sum, str) else None
-    vmap.last_updated = time.time()
 
     return vmap
 
@@ -363,6 +354,8 @@ _ITEM_CONTOUR = 7
 # A point the mower reports with this type is a maintenance point; any other
 # type is a point it cruises to.
 _POINT_TYPE_CLEAN = 1
+# A point's heading counts hundredths of a half turn: 50 is 90 degrees.
+_POINT_HEADING_DEGREES = 1.8
 
 _SHAPE_POINT = 5
 _SHAPE_SPOT_AREA = 7
@@ -485,6 +478,10 @@ def convert_device_map(document: dict, map_index: int, md5sum: str) -> dict:
 
         if item_type in (_ITEM_CLEAN_POINT, _ITEM_CRUISE_POINT):
             entry["shapeType"] = _SHAPE_POINT
+            # The third value of a point is the heading, in hundredths of a half turn.
+            position = item.get("point") or []
+            if len(position) > 2 and isinstance(position[2], (int, float)) and not isinstance(position[2], bool):
+                entry["heading"] = round(position[2] * _POINT_HEADING_DEGREES, 1) % 360
         elif len(entry["path"]) < 2:
             continue
 
@@ -495,8 +492,6 @@ def convert_device_map(document: dict, map_index: int, md5sum: str) -> dict:
                 default_name += "_"
             entry.update(
                 name=item.get("name") or default_name,
-                time=item.get("time"),
-                etime=item.get("etime", item.get("time")),
                 area=item.get("area"),
             )
             collections["mowingAreas"][item["id"]] = entry
@@ -512,15 +507,12 @@ def convert_device_map(document: dict, map_index: int, md5sum: str) -> dict:
             entry.update(
                 shapeType=_SHAPE_SPOT_AREA,
                 name=item.get("name", ""),
-                time=item.get("time"),
-                etime=item.get("etime", item.get("time")),
                 area=item.get("area"),
             )
             collections["spotAreas"][item["id"]] = entry
         elif item_type == _ITEM_CLEAN_POINT:
             collections["cleanPoints"][item["id"]] = entry
         elif item_type == _ITEM_CRUISE_POINT:
-            entry.update(time=item.get("time"), etime=item.get("etime", item.get("time")))
             collections["cruisePoints"][item["id"]] = entry
         elif item_type == _ITEM_NOT_OBSTACLE_AREA:
             entry["shapeType"] = _SHAPE_RECTANGLE
@@ -576,146 +568,95 @@ def convert_device_map(document: dict, map_index: int, md5sum: str) -> dict:
     return converted
 
 
-def parse_mow_paths(batch_data: dict) -> list[MowerMowPath]:
-    """Parse M_PATH.* keys from batch data into MowerMowPath objects.
+def parse_obstacles(entries: list) -> list[dict]:
+    """Turn the mower's list of obstacles it ran into into outlines on the map.
 
-    M_PATH data is chunked across numbered keys (M_PATH.0, M_PATH.1, ...)
-    just like MAP data. The chunks must be reassembled into a single string.
-    M_PATH.info contains the split position for multi-map data.
-
-    The reassembled string contains [x,y] coordinate pairs with
-    [32767,-32768] sentinels marking segment breaks.
-
-    Args:
-        batch_data: dict from get_batch_device_datas response
-
-    Returns:
-        List of MowerMowPath objects (one per zone, zone_id=0).
+    An entry is ``{"id", "type", "data": [[x, y], ...]}`` in the map
+    document's units; the result is in map units, placed at the centre of the
+    outline.
     """
-    raw = reassemble_map_chunks(batch_data, "M_PATH")
-    if not raw:
-        return []
+    obstacles: list[dict] = []
+    for entry in entries:
+        if not isinstance(entry, dict) or not isinstance(entry.get("data"), list):
+            continue
+        try:
+            points = [(int(x) * _DEVICE_COORDINATE_SCALE, int(y) * _DEVICE_COORDINATE_SCALE) for x, y in entry["data"]]
+            if not points:
+                continue
+            obstacles.append({
+                "id": int(entry.get("id", len(obstacles))),
+                "type": int(entry.get("type", 0)),
+                "x": round(sum(x for x, _ in points) / len(points)),
+                "y": round(sum(y for _, y in points) / len(points)),
+                "polygon": [value for point in points for value in point],
+            })
+        except (TypeError, ValueError):
+            continue
+    return obstacles
 
-    # M_PATH.info is the split position (like MAP.info)
-    info = batch_data.get("M_PATH.info", "")
+
+def _percent(value: object) -> int | None:
+    """A confidence in percent, from a percentage or from a fraction of one."""
+    if not isinstance(value, (int, float, str)):
+        return None
     try:
-        split_pos = int(info) if info.isdigit() else 0
-    except (ValueError, AttributeError):
-        split_pos = 0
-
-    if split_pos > 0 and split_pos < len(raw):
-        raw = raw[split_pos:]
-
-    if not raw.strip() or raw.strip() == "[]":
-        return []
-
-    # Extract all [x,y] coordinate pairs using regex.
-    # M_PATH coordinates are at 1/10th scale compared to zone coordinates
-    # (decimeters vs centimeters), so we scale by 10 after sentinel detection.
-    pair_pattern = re.compile(r"\[(-?\d+),(-?\d+)\]")
-    raw_pairs = [(int(m.group(1)), int(m.group(2))) for m in pair_pattern.finditer(raw)]
-
-    if not raw_pairs:
-        return []
-
-    # Split on sentinel into segments, then scale coordinates
-    segments: list[list[tuple[int, int]]] = []
-    current_segment: list[tuple[int, int]] = []
-    for p in raw_pairs:
-        if p == _PATH_SENTINEL:
-            if current_segment:
-                segments.append(current_segment)
-                current_segment = []
-        else:
-            current_segment.append((p[0] * 10, p[1] * 10))
-
-    if current_segment:
-        segments.append(current_segment)
-
-    if segments:
-        return [MowerMowPath(zone_id=0, segments=segments)]
-
-    return []
+        number = float(value)
+        if isinstance(value, float) and number <= 1:
+            number *= 100
+        return round(number)
+    except (TypeError, ValueError, OverflowError):
+        return None
 
 
-def vector_map_to_map_data(vector_map: MowerVectorMap) -> dict:
-    """Convert a MowerVectorMap into the dict format expected by generate_svg_map_image.
+def parse_ai_obstacles(entries: list) -> list[dict]:
+    """Turn the mower's list of recognised obstacles into positions on the map.
 
-    This bridges the batch API vector map data into the existing rendering pipeline
-    so we don't need a separate SVG generator for vector maps.
-
-    Returns:
-        Dict with "map", "obstacle", "trajectory", and "start" keys.
+    An entry is either ``[xs, ys, confidence, type, image, ignored, id]``, the
+    outline of the obstacle in map units, or ``[x, y, confidence, type]``, a
+    single point. An obstacle the user chose to ignore is left out; the rest
+    are placed at the centre of their outline, with how sure the mower is of
+    the kind (in percent) and the name of the photo it took, if any. An
+    outline also gives the box around it, ``bounds`` [x0, y0, x1, y1], and the
+    mower's own id, which an obstacle needs to be ignored (``ignorable``).
     """
-    # Build a lookup of mow_paths keyed by zone_id for fast matching
-    mow_paths_by_zone: dict[int, MowerMowPath] = {}
-    for mp in vector_map.mow_paths:
-        mow_paths_by_zone.setdefault(mp.zone_id, mp)
-
-    sentinel = [2147483647, 2147483647]
-
-    map_items = []
-    for zone in vector_map.zones:
-        data = [[x, y] for x, y in zone.path]
-
-        # Build track from matching mow_path segments, joined with sentinels
-        track: list[list[int]] = []
-        zone_mp = mow_paths_by_zone.get(zone.zone_id)
-        if zone_mp:
-            for i, seg in enumerate(zone_mp.segments):
-                if i > 0:
-                    track.append(sentinel)
-                track.extend([x, y] for x, y in seg)
-
-        map_items.append({
-            "data": data,
-            "track": track,
-            "id": zone.zone_id,
-            "name": zone.name,
-            "area": zone.area,
-        })
-
-    # If mow_paths have zone_id=0 (unassigned), attach to all zones or as standalone
-    mp_unassigned = mow_paths_by_zone.get(0)
-    if mp_unassigned and not any(z.zone_id == 0 for z in vector_map.zones):
-        track = []
-        for i, seg in enumerate(mp_unassigned.segments):
-            if i > 0:
-                track.append(sentinel)
-            track.extend([x, y] for x, y in seg)
-        # Attach to first zone if it exists, otherwise create a standalone entry
-        if map_items:
-            map_items[0]["track"] = track
-        else:
-            map_items.append({"data": [], "track": track})
-
-    obstacles = []
-    for fa in vector_map.forbidden_areas:
-        polygon = resolve_zone_polygon(fa.shape_type, fa.angle, fa.path)
-        obstacles.append({
-            "data": [[x, y] for x, y in polygon],
-            "id": fa.zone_id,
-            "type": 0,
-        })
-
-    # Add navigation paths as type=1 map items (inter-zone connections)
-    for nav_path in vector_map.paths:
-        map_items.append({
-            "data": [[x, y] for x, y in nav_path.path],
-            "track": [],
-            "id": nav_path.path_id,
-            "name": "",
-            "type": 1,
-        })
-
-    start = int(vector_map.last_updated) if vector_map.last_updated else 0
-
-    return {
-        "map": map_items,
-        "obstacle": obstacles,
-        "trajectory": [],
-        "start": start,
-    }
+    obstacles: list[dict] = []
+    for index, entry in enumerate(entries):
+        if not isinstance(entry, (list, tuple)) or len(entry) < 4:
+            continue
+        try:
+            if isinstance(entry[0], (list, tuple)):
+                xs = [float(value) for value in entry[0]]
+                ys = [float(value) for value in entry[1]]
+                if not xs or len(xs) != len(ys):
+                    continue
+                if len(entry) > 5 and entry[5]:
+                    continue
+                x, y = sum(xs) / len(xs), sum(ys) / len(ys)
+                ignorable = len(entry) > 6 and isinstance(entry[6], (int, str)) and not isinstance(entry[6], bool) and entry[6] != ""
+                obstacle_id = entry[6] if ignorable else index
+                image = entry[4] if len(entry) > 4 and isinstance(entry[4], str) and entry[4] else None
+                bounds: list[int] | None = [round(min(xs)), round(min(ys)), round(max(xs)), round(max(ys))]
+            else:
+                x, y = float(entry[0]), float(entry[1])
+                image = entry[4] if len(entry) > 4 and isinstance(entry[4], str) and entry[4] else None
+                obstacle_id = image or index
+                ignorable = False
+                bounds = None
+            obstacles.append(
+                {
+                    "id": obstacle_id,
+                    "type": int(entry[3]),
+                    "x": round(x),
+                    "y": round(y),
+                    "confidence": _percent(entry[2]),
+                    "image": image,
+                    "bounds": bounds,
+                    "ignorable": ignorable,
+                }
+            )
+        except (TypeError, ValueError):
+            continue
+    return obstacles
 
 
 def parse_cached_maps(batch_data: dict) -> list[MowerVectorMap]:
@@ -779,10 +720,7 @@ def has_map(vmap: MowerVectorMap) -> bool:
     return vmap.md5sum != "" or bool(vmap.zones)
 
 
-def assemble_vector_map(
-    parsed_maps: list[MowerVectorMap],
-    mow_paths: list[MowerMowPath],
-) -> MowerVectorMap | None:
+def assemble_vector_map(parsed_maps: list[MowerVectorMap]) -> MowerVectorMap | None:
     """Combine the maps of a mower into the root entry the device works from.
 
     The root is the primary map (mapIndex 0), or the first map when there is
@@ -807,7 +745,6 @@ def assemble_vector_map(
     parsed_maps_by_id = {vmap.map_id: vmap for vmap in ordered_maps}
     for vmap in ordered_maps:
         vmap.available_maps = available_maps
-        vmap.mow_paths = mow_paths
 
     primary_map.maps = parsed_maps_by_id
     return primary_map
@@ -822,7 +759,6 @@ def parse_batch_map_data(batch_data: dict) -> MowerVectorMap | None:
     2. Parses the JSON array (may contain multiple maps by mapIndex)
     3. Drops the slots that hold no map
     4. Returns the primary map (mapIndex 0) with all maps attached for active-map resolution
-    5. Attaches mowing paths from M_PATH.* keys
 
     Args:
         batch_data: Full response dict from get_batch_device_datas
@@ -831,4 +767,4 @@ def parse_batch_map_data(batch_data: dict) -> MowerVectorMap | None:
         MowerVectorMap for the primary map, with all parsed maps attached for active-map resolution.
     """
     parsed_maps = [vmap for vmap in parse_cached_maps(batch_data) if has_map(vmap)]
-    return assemble_vector_map(parsed_maps, parse_mow_paths(batch_data))
+    return assemble_vector_map(parsed_maps)

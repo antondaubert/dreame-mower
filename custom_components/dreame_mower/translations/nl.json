@@ -14,7 +14,7 @@
           "password": "Wachtwoord",
           "country": "Serverland"
         },
-        "description": "Log in op de DreeHome Cloud."
+        "description": "Log in op de Dreamehome-cloud."
       },
       "mova": {
         "data": {
@@ -22,20 +22,20 @@
           "password": "Wachtwoord",
           "country": "Serverland"
         },
-        "description": "Log in op de Movahome -wolk."
+        "description": "Log in op de MOVAhome-cloud."
       },
       "devices": {
         "data": {
           "devices": "Ondersteunde apparaten"
         },
-        "description": "Selecteer het Dree Mower -apparaat dat u wilt instellen."
+        "description": "Selecteer het Dreame Mower-apparaat dat u wilt instellen."
       },
       "options": {
         "data": {
           "name": "Apparaatnaam",
           "notify": "Types van meldingen"
         },
-        "description": "Configureer uw Dree Mower -apparaatnaam en meldingsvoorkeuren."
+        "description": "Configureer de apparaatnaam en meldingsvoorkeuren van uw Dreame Mower."
       }
     },
     "error": {
@@ -47,7 +47,6 @@
       "invalid_account_type": "Ongeldig accounttype geselecteerd."
     },
     "abort": {
-      "cannot_connect": "Kan geen verbinding maken.",
       "already_configured": "Dit apparaat is al geconfigureerd."
     }
   },
@@ -58,10 +57,7 @@
         "description": "Verbonden met {account} ({account_type}, {country}).\n\nConfigureer meldingsinstellingen voor de integratie van Dreame Mower.",
         "data": {
           "notify": "Types van meldingen",
-          "map_rotation": "Kaartrotatie",
-          "map_show_title": "Kaarttitel weergeven",
-          "map_show_legend": "Kaartlegenda weergeven",
-          "map_padding": "Kaartopvulling (pixels)"
+          "map_rotation": "Kaartrotatie"
         }
       }
     }
@@ -86,48 +82,8 @@
           "maintenance_paused": "Gepauzeerd bij onderhoudspunt"
         }
       },
-      "charging_status": {
-        "name": "Laadstatus",
-        "state": {
-          "not_docked": "Niet aangemeerd",
-          "charging": "Laad-",
-          "not_charging": "Niet opladen",
-          "charging_completed": "Opladen voltooid",
-          "return_to_charge": "Keer terug naar de kosten",
-          "charging_paused_high_temperature": "Opladen gepauzeerd: batterijtemperatuur te hoog",
-          "charging_paused_low_temperature": "Opladen gepauzeerd: batterijtemperatuur te laag"
-        }
-      },
       "mowing_progress": {
         "name": "Maaier vooruitgang"
-      },
-      "bluetooth_connection": {
-        "name": "Bluetooth"
-      },
-      "dnd_status": {
-        "name": "Niet storen"
-      },
-      "charging_schedule": {
-        "name": "Laadschema"
-      },
-      "timezone": {
-        "name": "Tijdzone"
-      },
-      "device_code": {
-        "name": "Apparaatcode"
-      },
-      "current_task": {
-        "name": "Huidige taak",
-        "state": {
-          "idle": "Geen taak",
-          "starting": "Starten",
-          "mowing": "Maaien",
-          "paused": "Gepauzeerd",
-          "finished": "Voltooid",
-          "failed": "Mislukt",
-          "exit": "Gestopt",
-          "returning_to_dock": "Terug naar het station"
-        }
       },
       "consumable_blade_health": {
         "name": "Messenstaat"
@@ -143,36 +99,6 @@
       },
       "account": {
         "name": "Account"
-      }
-    },
-    "camera": {
-      "map_camera": {
-        "name": "Kaart"
-      }
-    },
-    "button": {
-      "reset_blade": {
-        "name": "Mestenteller resetten"
-      },
-      "reset_brush": {
-        "name": "Borstelenteller resetten"
-      },
-      "reset_robot_maintenance": {
-        "name": "Onderhoudsteller resetten"
-      },
-      "dock_without_stopping": {
-        "name": "Dokken zonder taak te stoppen"
-      },
-      "go_to_maintenance_point": {
-        "name": "Naar onderhoudspunt rijden"
-      }
-    },
-    "number": {
-      "cutting_height": {
-        "name": "Maaihoogte"
-      },
-      "mowing_direction": {
-        "name": "Maairichting"
       }
     },
     "switch": {
@@ -197,14 +123,20 @@
       "schedule": {
         "name": "Schema {number}"
       },
-      "edge_mowing_auto": {
-        "name": "Automatisch randen maaien"
+      "frost_protection": {
+        "name": "Vorstbeveiliging"
       },
-      "edge_blade_offset": {
-        "name": "EdgeMaster"
+      "path_obstacle_avoidance": {
+        "name": "Obstakels ontwijken op paden"
       },
-      "edge_mowing_safe": {
-        "name": "Veilig maaien van randen"
+      "auto_recharge_standby": {
+        "name": "Automatisch opladen na stand-by"
+      },
+      "ai_obstacle_photos": {
+        "name": "Foto's van door AI herkende obstakels"
+      },
+      "child_lock": {
+        "name": "Kinderslot"
       }
     },
     "time": {
@@ -218,6 +150,9 @@
     "select": {
       "rain_delay": {
         "name": "Wachttijd na regen"
+      },
+      "navigation_path": {
+        "name": "Navigatieroute"
       }
     }
   },
@@ -234,9 +169,50 @@
         "map_wide": "Eén instelling voor de hele kaart",
         "per_zone": "Een instelling per zone"
       }
+    },
+    "mowing_efficiency": {
+      "options": {
+        "standard": "Standaard",
+        "efficient": "Efficiënt"
+      }
+    },
+    "turning_method": {
+      "options": {
+        "efficient": "Efficiënt",
+        "lawn_care": "Gazonvriendelijk"
+      }
+    },
+    "ai_obstacle_kind": {
+      "options": {
+        "humans": "Mensen",
+        "animals": "Dieren",
+        "objects": "Objecten"
+      }
     }
   },
   "services": {
+    "start_all_area_mowing": {
+      "name": "Hele oppervlak maaien",
+      "description": "Maait de hele actieve kaart. Een maaisessie die al loopt wordt voortgezet.",
+      "fields": {
+        "from_stop_point": {
+          "name": "Vanaf het stoppunt",
+          "description": "Waar een onvoltooide taak in een zone stopte: aan, alleen de rest maaien; uit, vanaf het begin maaien. Weggelaten krijgt de maaier niets te horen."
+        }
+      }
+    },
+    "end_task": {
+      "name": "Taak beëindigen",
+      "description": "Beëindigt de lopende maaitaak. De maaier blijft waar hij is en onthoudt waar de taak stopte, zodat een latere taak daar verder kan gaan."
+    },
+    "stop_returning": {
+      "name": "Terugkeer stoppen",
+      "description": "Stopt de maaier op weg naar het station. Hij blijft waar hij is."
+    },
+    "recharge": {
+      "name": "Opladen",
+      "description": "Stuurt de maaier naar het station om op te laden. Een lopende maaitaak blijft bewaard en kan daarna worden voortgezet."
+    },
     "start_zone_mowing": {
       "name": "Zonemaaien starten",
       "description": "Start het maaien van een of meer geselecteerde zones.",
@@ -244,6 +220,10 @@
         "zone_ids": {
           "name": "Zone-ID's",
           "description": "Lijst met te maaien zone-ID's, bijvoorbeeld [1, 3]."
+        },
+        "from_stop_point": {
+          "name": "Vanaf het stoppunt",
+          "description": "Waar een onvoltooide taak in een zone stopte: aan, alleen de rest maaien; uit, vanaf het begin maaien. Weggelaten krijgt de maaier niets te horen."
         }
       }
     },
@@ -267,61 +247,71 @@
         }
       }
     },
-    "set_cutting_height": {
-      "name": "Maaihoogte instellen",
-      "description": "Stelt de maaihoogte in voor een hele kaart of een zone daarvan. Niet elk model ondersteunt hoogteaanpassing; het beschikbare bereik is afhankelijk van het model.",
+    "select_map": {
+      "name": "Kaart kiezen",
+      "description": "Laat de maaier op een andere kaart werken. Niet mogelijk terwijl er een maaitaak loopt.",
       "fields": {
-        "height": {
-          "name": "Maaihoogte",
-          "description": "Maaihoogte in centimeters, in stappen van 0,5 cm."
-        },
         "map_id": {
           "name": "Kaart-ID",
-          "description": "Kaart om te wijzigen. Standaard de actieve kaart. Beschikbare ID's staan na het ophalen van de kaart in het attribuut 'maps' van de maaier-entiteit."
-        },
-        "zone_id": {
-          "name": "Zone-ID",
-          "description": "Zone om te wijzigen in plaats van de hele kaart. Hiermee worden zone-instellingen ingeschakeld: andere zones behouden hun eigen hoogte en de kaartbrede hoogte is niet langer van toepassing. Beschikbare ID's staan in het attribuut 'zones' van de maaier-entiteit."
+          "description": "Kaart waarnaar gewisseld wordt. De beschikbare kaart-ID's staan in het maps-attribuut van de maaier-entiteit zodra de kaart is opgehaald."
         }
       }
     },
-    "set_edge_mowing_settings": {
-      "name": "Instellingen voor randmaaien",
-      "description": "Wijzigt de instellingen voor randmaaien voor een hele kaart of een zone daarvan. Niet opgegeven instellingen behouden hun huidige waarde. Als de kaart zone-instellingen gebruikt, worden wijzigingen op alle zones toegepast omdat de maaier de kaartbrede instellingen dan niet meer gebruikt. Deze instellingen zijn ook beschikbaar als schakelaars voor de actieve kaart.",
+    "set_mowing_settings": {
+      "name": "Maai-instellingen instellen",
+      "description": "Wijzigt in één keer willekeurige maai-instellingen voor een hele kaart of een zone daarvan. Niet opgegeven instellingen behouden hun huidige waarde. Als de kaart zone-instellingen gebruikt, worden wijzigingen op alle zones toegepast omdat de maaier de kaartbrede instellingen dan niet meer gebruikt. Instellingen die een maaier niet biedt, worden geweigerd.",
       "fields": {
+        "efficiency": {
+          "name": "Maai-efficiëntie",
+          "description": "Hoe snel de maaier werkt. 'Efficiënt' maait meer per dag, met minder zorg rond obstakels."
+        },
+        "cutting_height": {
+          "name": "Maaihoogte",
+          "description": "Maaihoogte in centimeters, in stappen van 0,5 cm."
+        },
+        "mowing_direction": {
+          "name": "Maairichting",
+          "description": "De richting van de maaibanen in graden, zoals weergegeven in de app. Hoeken vanaf 180° beschrijven dezelfde banen als de hoek die 180° lager ligt."
+        },
+        "mowing_direction_mode": {
+          "name": "Maairichtingsmodus",
+          "description": "Of elke sessie in dezelfde richting maait of de richting draait ten opzichte van de vorige sessie."
+        },
         "automatic_edge_mowing": {
           "name": "Automatisch randmaaien",
           "description": "Of de maaier de randen automatisch maait nadat het maaien van de hele kaart of een zone is voltooid."
         },
         "safe_edge_mowing": {
           "name": "Veilig randmaaien",
-          "description": "Of de maaier tijdens het randmaaien een kleine afstand tot de gazonrand houdt. Niet op elk model beschikbaar."
+          "description": "Of de maaier tijdens het randmaaien een kleine afstand tot de gazonrand houdt."
         },
         "edge_blade_offset": {
           "name": "Zijdelingse verschuiving van de maaischijf",
-          "description": "Of de maaischijf tijdens randpasses zijwaarts verschuift om dichter langs de rand te maaien. Hierdoor wordt het aantal randpasses ook verhoogd van één naar twee, zodat de verschoven schijf de rand volledig kan maaien."
+          "description": "Of de maaischijf tijdens randpasses zijwaarts verschuift om dichter langs de rand te maaien. Hierdoor wordt het aantal randpasses ook verhoogd van één naar twee."
         },
-        "map_id": {
-          "name": "Kaart-ID",
-          "description": "Kaart om te wijzigen. Standaard de actieve kaart. Beschikbare ID's staan na het ophalen van de kaart in het attribuut 'maps' van de maaier-entiteit."
+        "edge_obstacle_avoidance": {
+          "name": "Obstakels ontwijken langs randen",
+          "description": "Of de maaier ook langs de randen obstakels ontwijkt, waardoor daar wat gras ongemaaid kan blijven. Wordt vanzelf uitgeschakeld zodra noch de LiDAR noch de camera obstakels herkent."
         },
-        "zone_id": {
-          "name": "Zone-ID",
-          "description": "Zone om te wijzigen in plaats van de hele kaart. Hiermee worden zone-instellingen ingeschakeld: andere zones behouden hun eigen instellingen en de kaartbrede instellingen zijn niet langer van toepassing. Beschikbare ID's staan in het attribuut 'zones' van de maaier-entiteit."
-        }
-      }
-    },
-    "set_mowing_direction": {
-      "name": "Maairichting instellen",
-      "description": "Stelt de richting van de maaibanen in voor een hele kaart of een zone daarvan, en hoe die richting tussen sessies verandert. Als de kaart zone-instellingen gebruikt, worden wijzigingen op alle zones toegepast omdat de maaier de kaartbrede instellingen dan niet meer gebruikt. Voor de actieve kaart zijn deze instellingen ook beschikbaar als getal en keuzelijst.",
-      "fields": {
-        "angle": {
-          "name": "Hoek",
-          "description": "Maairichting in graden, zoals weergegeven in de app. Dit is de oriëntatie van een lijn, niet de rijrichting: hoeken vanaf 180° beschrijven dezelfde banen als de hoek die 180° lager ligt."
+        "lidar_obstacle_recognition": {
+          "name": "LiDAR-obstakelherkenning",
+          "description": "Of de maaier obstakels met zijn LiDAR herkent en ze ontwijkt zonder ze te raken. Schakel dit uit om de maaier hoog gras te laten maaien."
         },
-        "mode": {
-          "name": "Maaiwijze",
-          "description": "Kies of elke sessie dezelfde maairichting gebruikt of afwisselt ten opzichte van de vorige sessie."
+        "obstacle_height": {
+          "name": "Hoogte voor obstakelontwijking",
+          "description": "Het laagste obstakel dat de maaier ontwijkt, in centimeters."
+        },
+        "obstacle_distance": {
+          "name": "Afstand voor obstakelontwijking",
+          "description": "Hoeveel afstand de maaier tot obstakels houdt, in centimeters. Een kortere afstand kan tot botsingen of schrammen leiden."
+        },
+        "ai_obstacle_recognition": {
+          "name": "AI-obstakelherkenning",
+          "description": "De soorten obstakels die de camera herkent en die de maaier ontwijkt. Bij een lege lijst wordt het ontwijken van obstakels overgelaten aan de bumper en de LiDAR."
+        },
+        "turning_method": {
+          "name": "Keermethode",
+          "description": "Hoe de maaier aan het einde van een baan keert. 'Gazonvriendelijk' keert ruimer en spaart het gazon, maar heeft wat ruimte nodig om te keren. Alleen beschikbaar met nieuwere firmware."
         },
         "map_id": {
           "name": "Kaart-ID",
@@ -344,6 +334,368 @@
         "map_id": {
           "name": "Kaart-ID",
           "description": "Kaart om te wijzigen. Standaard de actieve kaart."
+        }
+      }
+    },
+    "set_no_go_zone": {
+      "name": "Verboden zone instellen",
+      "description": "Tekent een verboden zone op de huidige kaart, of wijzigt er een, in kaartcoördinaten (millimeters, zoals de zones van de kaart worden opgegeven). Geeft de ID van de zone terug. De maaier rijdt hiervoor niet, maar weigert het terwijl hij maait of naar het station terugkeert.",
+      "fields": {
+        "shape": {
+          "name": "Vorm",
+          "description": "Een lijn die de maaier niet oversteekt, een rechthoek of een cirkel."
+        },
+        "points": {
+          "name": "Punten",
+          "description": "De twee uiteinden van een lijn, twee tegenover elkaar liggende hoeken van een rechthoek of het middelpunt van een cirkel, elk als [x, y]."
+        },
+        "radius": {
+          "name": "Straal",
+          "description": "Straal van een cirkel in millimeters."
+        },
+        "zone_id": {
+          "name": "Verboden-zone-ID",
+          "description": "De verboden zone die gewijzigd wordt in plaats van een nieuwe te tekenen."
+        }
+      }
+    },
+    "set_ignore_obstacle_area": {
+      "name": "Gebied met genegeerde obstakels instellen",
+      "description": "Tekent een gebied op de huidige kaart waar de maaier alleen op zijn bumper vertrouwt en over lage obstakels rijdt, of wijzigt er een. Geeft de ID van het gebied terug. De maaier rijdt hiervoor niet, maar weigert het terwijl hij maait of naar het station terugkeert.",
+      "fields": {
+        "rect": {
+          "name": "Rechthoek",
+          "description": "Twee tegenover elkaar liggende hoeken als [x0, y0, x1, y1], in millimeters."
+        },
+        "area_id": {
+          "name": "Gebieds-ID",
+          "description": "Het gebied dat gewijzigd wordt in plaats van een nieuw te tekenen."
+        }
+      }
+    },
+    "set_spot_area": {
+      "name": "Plek instellen",
+      "description": "Tekent een plek op de huidige kaart, of wijzigt er een. Die moet binnen één zone liggen. Geeft de ID van de plek terug. De maaier rijdt hiervoor niet, maar weigert het terwijl hij maait of naar het station terugkeert.",
+      "fields": {
+        "rect": {
+          "name": "Rechthoek",
+          "description": "Twee tegenover elkaar liggende hoeken als [x0, y0, x1, y1], in millimeters."
+        },
+        "area_id": {
+          "name": "Plek-ID",
+          "description": "De plek die gewijzigd wordt in plaats van een nieuwe te tekenen."
+        }
+      }
+    },
+    "set_maintenance_point": {
+      "name": "Onderhoudspunt instellen",
+      "description": "Plaatst een onderhoudspunt op de huidige kaart, of verplaatst er een. Geeft de ID van het punt terug. De maaier rijdt hiervoor niet, maar weigert het terwijl hij maait of naar het station terugkeert.",
+      "fields": {
+        "x": {
+          "name": "X",
+          "description": "Waar het punt ligt, in millimeters."
+        },
+        "y": {
+          "name": "Y",
+          "description": "Waar het punt ligt, in millimeters."
+        },
+        "heading": {
+          "name": "Richting",
+          "description": "Welke kant de maaier daar op kijkt, in graden. Weggelaten houdt een verplaatst punt zijn richting en kijkt een nieuw punt naar 0 graden."
+        },
+        "point_id": {
+          "name": "Punt-ID",
+          "description": "Het punt dat verplaatst wordt in plaats van een nieuw te plaatsen."
+        }
+      }
+    },
+    "delete_map_item": {
+      "name": "Kaartonderdeel verwijderen",
+      "description": "Verwijdert een zone, pad, verboden zone, plek, onderhoudspunt of gebied met genegeerde obstakels van de huidige kaart. Bij het verwijderen van een zone vervallen ook de schema's ervan. De maaier rijdt hiervoor niet, maar weigert het terwijl hij maait of naar het station terugkeert.",
+      "fields": {
+        "kind": {
+          "name": "Soort",
+          "description": "Om wat voor onderdeel het gaat."
+        },
+        "item_id": {
+          "name": "Onderdeel-ID",
+          "description": "De ID van het onderdeel."
+        }
+      }
+    },
+    "rename_zone": {
+      "name": "Zone hernoemen",
+      "description": "Geeft een zone van de huidige kaart een nieuwe naam van maximaal 24 tekens. De maaier rijdt hiervoor niet, maar weigert het terwijl hij maait of naar het station terugkeert.",
+      "fields": {
+        "zone_id": {
+          "name": "Zone-ID",
+          "description": "De zone die hernoemd wordt."
+        },
+        "name": {
+          "name": "Naam",
+          "description": "De nieuwe naam."
+        }
+      }
+    },
+    "split_zone": {
+      "name": "Zone splitsen",
+      "description": "Splitst een zone van de huidige kaart in tweeën langs een lijn die er dwars doorheen loopt. De schema's waarin de zone voorkomt, vervallen. Geeft de ID's van de twee zones terug. De maaier rijdt hiervoor niet, maar weigert het terwijl hij maait of naar het station terugkeert.",
+      "fields": {
+        "zone_id": {
+          "name": "Zone-ID",
+          "description": "De zone die gesplitst wordt."
+        },
+        "line": {
+          "name": "Lijn",
+          "description": "De twee uiteinden van de lijn als [x0, y0, x1, y1], in millimeters; de lijn moet dwars over de zone lopen."
+        }
+      }
+    },
+    "merge_zones": {
+      "name": "Zones samenvoegen",
+      "description": "Voegt twee aangrenzende zones van de huidige kaart samen tot één. Geeft de ID van de samengevoegde zone terug. De maaier rijdt hiervoor niet, maar weigert het terwijl hij maait of naar het station terugkeert.",
+      "fields": {
+        "zone_ids": {
+          "name": "Zone-ID's",
+          "description": "De twee zones."
+        }
+      }
+    },
+    "rename_map": {
+      "name": "Kaart hernoemen",
+      "description": "Geeft een kaart een nieuwe naam van maximaal 24 tekens. De maaier rijdt hiervoor niet, maar weigert het terwijl hij maait of naar het station terugkeert.",
+      "fields": {
+        "map_id": {
+          "name": "Kaart-ID",
+          "description": "De kaart die hernoemd wordt."
+        },
+        "name": {
+          "name": "Naam",
+          "description": "De nieuwe naam."
+        }
+      }
+    },
+    "clear_rain_protection": {
+      "name": "Regenbescherming opheffen",
+      "description": "Heft de door de maaier gemelde regen op, zodat een daarna gestarte maaitaak uitgevoerd wordt, ook al heeft de sensor water gezien. Start de taak direct daarna; verder doet dit niets."
+    },
+    "find_robot": {
+      "name": "Robot zoeken",
+      "description": "Laat de maaier geluid maken, zodat hij aan zijn geluid te vinden is. Hij beweegt niet."
+    },
+    "clear_error": {
+      "name": "Fout wissen",
+      "description": "Wist de fouten en waarschuwingen die de maaier meldt en laat hem doorgaan: een gepauzeerde taak wordt hervat en een maaier die zonder taak buiten zijn station staat, rijdt naar huis. De maaier kan bewegen.",
+      "fields": {
+        "continue_task": {
+          "name": "Doorgaan",
+          "description": "De taak hervatten, of naar huis rijden, nadat de fouten zijn gewist. Uit wist ze alleen."
+        }
+      }
+    },
+    "set_do_not_disturb": {
+      "name": "Niet storen instellen",
+      "description": "Zet Niet storen aan of uit, of wijzigt het tijdvenster. In het venster start geen taak; een lopende taak pauzeert bij het begin en de maaier keert terug naar het station.",
+      "fields": {
+        "enabled": {
+          "name": "Ingeschakeld",
+          "description": "Aan- of uitzetten; weggelaten blijft het zoals het is."
+        },
+        "start": {
+          "name": "Begin",
+          "description": "Wanneer het venster begint; weggelaten blijft het zoals het is."
+        },
+        "end": {
+          "name": "Einde",
+          "description": "Wanneer het venster eindigt, de volgende dag als het vóór het begin ligt; weggelaten blijft het zoals het is. Tijden liggen tussen 00:01 en 23:59."
+        }
+      }
+    },
+    "set_low_speed_at_night": {
+      "name": "Langzaam rijden 's nachts instellen",
+      "description": "Zet langzaam rijden 's nachts aan of uit, of wijzigt het tijdvenster waarin de maaier langzaam rijdt.",
+      "fields": {
+        "enabled": {
+          "name": "Ingeschakeld",
+          "description": "Aan- of uitzetten; weggelaten blijft het zoals het is."
+        },
+        "start": {
+          "name": "Begin",
+          "description": "Wanneer het venster begint; weggelaten blijft het zoals het is."
+        },
+        "end": {
+          "name": "Einde",
+          "description": "Wanneer het venster eindigt, de volgende dag als het vóór het begin ligt; weggelaten blijft het zoals het is. Tijden liggen tussen 00:01 en 23:59."
+        }
+      }
+    },
+    "set_start_from_stop_point": {
+      "name": "Starten vanaf stoppunt instellen",
+      "description": "Kiest of een nieuwe taak verder kan gaan waar een onvoltooide stopte, en hoeveel dagen een stoppunt bewaard blijft. Uitzetten wist de stoppunten van de maaier.",
+      "fields": {
+        "enabled": {
+          "name": "Ingeschakeld",
+          "description": "Aan- of uitzetten; weggelaten blijft het zoals het is."
+        },
+        "days": {
+          "name": "Dagen",
+          "description": "Hoeveel dagen een stoppunt bewaard blijft, 1 tot 7; weggelaten blijft het zoals het is."
+        }
+      }
+    },
+    "set_light": {
+      "name": "Licht instellen",
+      "description": "Wijzigt wanneer de lampen van de maaier branden: alleen in een eigen periode of de hele dag, en in welke toestanden. Wat weggelaten wordt, blijft zoals het is.",
+      "fields": {
+        "custom_period": {
+          "name": "Eigen periode",
+          "description": "De lampen beperken tot de periode van begin tot eind."
+        },
+        "start": {
+          "name": "Begin",
+          "description": "Wanneer de periode begint."
+        },
+        "end": {
+          "name": "Einde",
+          "description": "Wanneer de periode eindigt."
+        },
+        "standby": {
+          "name": "In stand-by",
+          "description": "Licht of opletten in stand-by."
+        },
+        "working": {
+          "name": "Tijdens werk",
+          "description": "Licht tijdens het werk."
+        },
+        "charging": {
+          "name": "Tijdens laden",
+          "description": "Licht tijdens het laden."
+        },
+        "error": {
+          "name": "Bij fouten",
+          "description": "Licht zolang de maaier een fout meldt."
+        }
+      }
+    },
+    "set_human_presence_alert": {
+      "name": "Melding bij personen instellen",
+      "description": "Wijzigt de melding wanneer de camera van de maaier een persoon ziet: of die aan staat, hoe gevoelig, wanneer hij oplet, hoe hij meldt en hoe vaak. Wat weggelaten wordt, blijft zoals het is.",
+      "fields": {
+        "enabled": {
+          "name": "Ingeschakeld",
+          "description": "De melding aan- of uitzetten."
+        },
+        "sensitivity": {
+          "name": "Gevoeligheid",
+          "description": "Hoe snel een persoon wordt herkend."
+        },
+        "standby": {
+          "name": "In stand-by",
+          "description": "Licht of opletten in stand-by."
+        },
+        "mowing": {
+          "name": "Tijdens maaien",
+          "description": "Opletten tijdens het maaien."
+        },
+        "returning": {
+          "name": "Bij terugkeer",
+          "description": "Opletten bij terugkeer naar het station."
+        },
+        "patrolling": {
+          "name": "Tijdens patrouille",
+          "description": "Opletten tijdens het patrouilleren."
+        },
+        "voice": {
+          "name": "Spreken en melden",
+          "description": "De maaier spreekt en er gaat een melding uit."
+        },
+        "photo": {
+          "name": "Foto maken",
+          "description": "Er wordt een foto van de persoon gemaakt, die in het album van de app komt."
+        },
+        "interval": {
+          "name": "Interval",
+          "description": "Hoogstens één melding in zoveel minuten, bij maaiers die hun meldingen spreiden."
+        }
+      }
+    },
+    "set_robot_voice": {
+      "name": "Stem instellen",
+      "description": "Wijzigt het volume van de stem van de maaier en welke meldingen hij uitspreekt. Wat weggelaten wordt, blijft zoals het is.",
+      "fields": {
+        "volume": {
+          "name": "Volume",
+          "description": "Van 0 tot 100."
+        },
+        "regular": {
+          "name": "Gewone meldingen",
+          "description": "Gewone meldingen uitspreken."
+        },
+        "work_status": {
+          "name": "Werkstatus",
+          "description": "De werkstatus melden."
+        },
+        "special_status": {
+          "name": "Bijzondere toestanden",
+          "description": "Bijzondere toestanden melden."
+        },
+        "error_status": {
+          "name": "Fouten",
+          "description": "Fouten melden."
+        }
+      }
+    },
+    "reset_consumable": {
+      "name": "Verbruiksonderdeel resetten",
+      "description": "Begint de telling van een verbruiksonderdeel opnieuw, zoals na het vervangen van de messen of de reinigingsborstel van het station, of na onderhoud van de maaier.",
+      "fields": {
+        "item": {
+          "name": "Verbruiksonderdeel",
+          "description": "De messen, de reinigingsborstel van het station of het onderhoud van de maaier."
+        }
+      }
+    },
+    "go_to_maintenance_point": {
+      "name": "Naar onderhoudspunt",
+      "description": "Stuurt de maaier naar een onderhoudspunt van de huidige kaart, waar hij wacht op reiniging of onderhoud. De maaier rijdt erheen.",
+      "fields": {
+        "point_id": {
+          "name": "Onderhoudspunt",
+          "description": "Het id van een onderhoudspunt van de actieve kaart."
+        }
+      }
+    },
+    "ignore_obstacle": {
+      "name": "Obstakel negeren",
+      "description": "Laat de maaier een obstakel vergeten dat zijn camera herkende, zodat het niet meer op de kaart staat. Dit kan niet ongedaan worden gemaakt. De maaier beweegt hiervoor niet, maar weigert het tijdens het maaien.",
+      "fields": {
+        "obstacle_id": {
+          "name": "Obstakel",
+          "description": "Het id van het obstakel bij de maaier; de kaartkaart vult het in wanneer daar een obstakel wordt genegeerd."
+        }
+      }
+    },
+    "backup_map": {
+      "name": "Back-up van kaart maken",
+      "description": "Maakt een back-up van de huidige kaart en vervangt daarmee de vorige back-up. De maaier rijdt hiervoor niet, maar weigert het terwijl hij maait of naar het station terugkeert."
+    },
+    "restore_map": {
+      "name": "Kaart herstellen",
+      "description": "Zet de huidige kaart terug zoals de back-up hem heeft, of haalt met een plaats een verwijderde kaart terug uit de back-up die in zijn lege plaats bleef. Schema's en maaiinstellingen van de kaart kunnen worden teruggezet. De maaier beweegt hiervoor niet, maar weigert het tijdens het maaien of terugkeren naar het station.",
+      "fields": {
+        "slot": {
+          "name": "Plaats",
+          "description": "De lege kaartplaats, geteld vanaf 1, waarvan de back-up een verwijderde kaart terughaalt. Weglaten om de huidige kaart terug te zetten."
+        }
+      }
+    },
+    "delete_map": {
+      "name": "Kaart verwijderen",
+      "description": "Verwijdert een kaart met alles erop. De back-up blijft in de lege plaats, van waaruit restore_map hem terughaalt; zonder back-up moet in de app een nieuwe kaart worden gereden. De maaier beweegt hiervoor niet, maar weigert het tijdens het maaien of terugkeren naar het station.",
+      "fields": {
+        "map_id": {
+          "name": "Kaart-ID",
+          "description": "De kaart die verwijderd wordt."
         }
       }
     }

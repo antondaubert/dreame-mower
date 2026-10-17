@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from collections.abc import Callable
+from datetime import datetime, timedelta, timezone
 import logging
 import time
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
@@ -29,7 +31,8 @@ from .config_flow import (
     NOTIFICATION_WARNING,
     NOTIFICATION_ERROR,
 )
-from .dreame.device import DreameMowerDevice, DreameSwbotDevice, MowingMode
+from .dreame.device import DreameMowerDevice, DreameSwbotDevice
+from .dreame.map_scene import stripe_angle
 from .dreame.property import (
     DEVICE_CODE_ERROR_PROPERTY_NAME,
     DEVICE_CODE_WARNING_PROPERTY_NAME,
@@ -40,23 +43,38 @@ from .dreame.property import (
 )
 from .dreame.const import (
     CURRENT_MAP_ID_PROPERTY_NAME,
-    EDGE_BLADE_OFFSET_KEY,
+    DEVICE_SETTINGS_HUMAN_PRESENCE_KEY,
+    DEVICE_SETTINGS_LANGUAGE_KEY,
+    DEVICE_SETTINGS_LIGHT_KEY,
+    DEVICE_SETTINGS_VOICE_PROMPTS_KEY,
+    DEVICE_SETTINGS_VOLUME_KEY,
+    HUMAN_PRESENCE_INTERVALS_MINUTES,
+    HUMAN_PRESENCE_MODES,
+    HUMAN_PRESENCE_SENSITIVITIES,
+    LIGHT_SCENES,
+    VOICE_LANGUAGES,
+    VOICE_PROMPTS,
+    DEVICE_SETTINGS_STOP_POINT_KEY,
+    DEVICE_SETTINGS_TIME_ZONE_KEY,
+    STOP_POINT_DAYS_RANGE,
     EDGE_MOWING_AUTO_KEY,
-    EDGE_MOWING_SAFE_KEY,
     FIRMWARE_INSTALL_STATE_PROPERTY,
     FirmwareInstallState,
+    POSE_COVERAGE_PROPERTY,
     POWER_STATE_PROPERTY,
+    SERVICE1_PROPERTY_51,
     RAIN_DEVICE_CODES,
     SCHEDULING_SUMMARY_PROPERTY,
     DeviceStatus,
     MOWING_DIRECTION_ANGLE_KEY,
-    MOWING_DIRECTION_MODE_KEY,
-    MowingDirectionMode,
+    MOWING_PREFERENCE_GLOBAL_AREA_ID,
     MowingPreferenceMode,
     STATUS_PROPERTY,
     supports_cutting_height,
 )
+from .dreame.device import CONSUMABLE_COUNTER_TOTAL_MINUTES
 from .dreame.property.property_misc import (
+    PROPERTY_1_1_TASK_STATUS_NAME,
     PROPERTY_1_1_ACTIVE_CODES_NAME,
     SETTINGS_CHANGED_PROPERTY_NAME,
 )
@@ -71,9 +89,44 @@ _SETTINGS_WRITE_ECHO_SECONDS = 5.0
 _WRITE_DEVICE_SETTINGS = "device_settings"
 _WRITE_MOWING_PREFERENCES = "mowing_preferences"
 
+def zone_settings(coordinator: DreameMowerCoordinator) -> list[dict[str, Any]]:
+    """The stripe angle and cutting height each zone of the active map is mowed with.
+
+    A map that applies one record to all its zones gives every zone the
+    map-wide values; otherwise each zone keeps its own.
+    """
+    per_zone = coordinator.mowing_preference_mode == MowingPreferenceMode.PER_ZONE
+    map_direction = coordinator.mowing_direction
+    map_height = coordinator.cutting_height
+    zone_directions = coordinator.zone_mowing_directions
+    zone_heights = coordinator.zone_cutting_heights
+    settings = []
+    for zone in coordinator.zones:
+        zone_id = int(zone["id"])
+        direction = zone_directions.get(zone_id) if per_zone else map_direction
+        height = zone_heights.get(zone_id) if per_zone else map_height
+        settings.append(
+            {
+                "id": zone_id,
+                "stripe_angle": stripe_angle(direction[MOWING_DIRECTION_ANGLE_KEY] if direction else None),
+                "height": height,
+            }
+        )
+    return settings
+
+
+# While the mower drives, the device only keeps reporting its position and
+# trail when it is asked for them now and then.
+POSE_COVERAGE_REQUEST_INTERVAL = timedelta(seconds=120)
+# The station states of a mower on its way home.
+_DRIVING_HOME = frozenset({"pause_docking", "finish_docking", "docking_in_base"})
+
+# The kind of task the heartbeat's work mode stands for while the mower mows.
+_SESSION_TASK_MODES = {0: "all_area", 1: "edge", 2: "zone", 3: "spot", 7: "patrol", 8: "patrol", 9: "patrol"}
+
 _LOGGER = logging.getLogger(__name__)
 
-class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
+class DreameMowerCoordinator(DataUpdateCoordinator[None]):
     """Coordinator for Dreame Mower implementation."""
 
     def __init__(
@@ -97,18 +150,31 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             entry.data[CONF_ACCOUNT_TYPE],
             entry.data[CONF_COUNTRY],
             hass.config.config_dir)
-        self._selected_mowing_mode = MowingMode.ALL_AREA
-        self._selected_contour_id: tuple[int, int] | None = None
-        self._selected_zone_id: int | None = None
-        self._selected_spot_area_id: int | None = None
-        self._selected_maintenance_point_id: int | None = None
         self._consumable_values: list[int] | None = None
         self._charging_settings: dict[str, Any] | None = None
         self._rain_settings: dict[str, Any] | None = None
         self._anti_theft_settings: dict[str, Any] | None = None
+        # The whole settings record as the mower last reported it, by key.
+        self._device_settings: dict[str, Any] | None = None
         self._rain_protection_end_timestamp: int | None = None
         self._last_writes: dict[str, float] = {}
         self._preference_refresh: asyncio.Task[bool] | None = None
+        self._pose_keepalive: Callable[[], None] | None = None
+        self._trail_read: asyncio.Task[None] | None = None
+        # Entities that exist only for settings the mower turns out to offer
+        # wait for the reads that tell.
+        self._probed = False
+        self._probe_cancelled = False
+        self._probe_waiters: list[Callable[[], None]] = []
+        # Set when setup skipped the reads of an offline mower: the entry is
+        # set up again once the mower is back.
+        self.reload_when_online = False
+        # Called when the entry unloads, e.g. to tell open map cards.
+        self.shutdown_callbacks: list[Callable[[], None]] = []
+        # The running mowing session: when it became active and what kind of
+        # task it runs, kept while the mower charges in between.
+        self._session_started: datetime | None = None
+        self._session_task_mode: str | None = None
 
         # Initialize coordinator with no automatic polling (device will push updates)
         super().__init__(
@@ -121,35 +187,9 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         
         # Register callback to receive device property updates
         self.device.register_property_callback(self._handle_device_update)
-        
 
-
-    async def _async_update_data(self) -> dict[str, Any]:
-        """Update data. This method is required by DataUpdateCoordinator."""
-        return {
-            "name": self.device_name,
-            "connected": self.device_connected,
-            "online": self.device_online,
-            "last_update": self.last_update,
-            "mac": self.device_mac,
-            "model": self.device_model,
-            "serial": self.device_serial,
-            "firmware": self.device_firmware,
-            "manufacturer": self.device_manufacturer,
-            "battery_percent": self.device_battery_percent,
-            "status": self.device_status,
-            "bluetooth_connected": self.device_bluetooth_connected,
-            "charging_status": self.device_charging_status,
-            "current_task_data": self.current_task_data,
-            "task_status": self.device_task_status,
-            "mowing_progress_percent": self.mowing_progress_percent,
-            "current_area_sqm": self.current_area_sqm,
-            "total_area_sqm": self.total_area_sqm,
-            "mower_coordinates": self.mower_coordinates,
-            "current_segment": self.current_segment,
-            "mower_heading": self.mower_heading,
-            "mowing_path_history": self.mowing_path_history,
-        }
+    async def _async_update_data(self) -> None:
+        """Nothing to fetch: the device pushes its state, and entities read it from here."""
 
     @property
     def device_type(self) -> str:
@@ -182,6 +222,14 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return self.entry.data[CONF_MODEL]
 
     @property
+    def supports_start_from_stop_point(self) -> bool:
+        """Return whether a new task can be told to go on from where an unfinished one stopped.
+
+        Dreame mowers take it with the start; others resume in their own way.
+        """
+        return self.device_type != DEVICE_TYPE_SWBOT and self.device_model.startswith("dreame.mower.")
+
+    @property
     def device_serial(self) -> str:
         """Return device serial number from config entry."""
         return self.entry.data[CONF_SERIAL]
@@ -205,11 +253,6 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def device_firmware(self) -> str:
         """Return device firmware version."""
         return self.device.firmware
-
-    @property
-    def device_update_available(self) -> bool:
-        """Return whether a firmware update is available."""
-        return self.device.firmware_update_available
 
     @property
     def device_latest_firmware(self) -> str | None:
@@ -242,11 +285,6 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return "Dreametech™"
 
     @property
-    def last_update(self) -> str:
-        """Return last update timestamp."""
-        return self.device.last_update.isoformat()
-
-    @property
     def device_battery_percent(self) -> int | None:
         """Return device battery percentage."""
         return self.device.battery_percent
@@ -260,51 +298,6 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def device_status_code(self) -> int:
         """Return raw device status code."""
         return self.device.status_code
-
-    @property
-    def device_bluetooth_connected(self) -> bool | None:
-        """Return Bluetooth connection status."""
-        return self.device.bluetooth_connected
-
-    @property
-    def device_charging_status(self) -> str | None:
-        """Return charging status (mapped text)."""
-        return self.device.charging_status
-
-    @property
-    def current_task_data(self) -> dict | None:
-        """Return current task data from TaskHandler."""
-        return self.device.current_task_data
-
-    @property
-    def device_task_status(self) -> str | None:
-        """Return the current mowing task status decoded from the heartbeat."""
-        return self.device.task_status
-
-    @property
-    def device_code(self) -> int | None:
-        """Return current device code (2:2)."""
-        return self.device.device_code
-
-    @property
-    def device_code_name(self) -> str | None:
-        """Return device code name."""
-        return self.device.device_code_name
-
-    @property
-    def device_code_description(self) -> str | None:
-        """Return device code description."""
-        return self.device.device_code_description
-
-    @property
-    def device_code_is_error(self) -> bool | None:
-        """Return True if device code represents an error."""
-        return self.device.device_code_is_error
-
-    @property
-    def device_code_is_warning(self) -> bool | None:
-        """Return True if device code represents a warning."""
-        return self.device.device_code_is_warning
 
     @property
     def mowing_progress_percent(self) -> float | None:
@@ -322,26 +315,6 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return self.device.total_area_sqm
 
     @property
-    def mower_coordinates(self) -> tuple[int, int] | None:
-        """Return current mower coordinates as (x, y) tuple."""
-        return self.device.mower_coordinates
-
-    @property
-    def current_segment(self) -> int | None:
-        """Return current mowing segment/lane index."""
-        return self.device.current_segment
-
-    @property
-    def mower_heading(self) -> float | None:
-        """Return current mower heading in degrees."""
-        return self.device.mower_heading
-
-    @property
-    def mowing_path_history(self) -> list[list[int]]:
-        """Return path history for visualization (list of [x, y] in map units)."""
-        return self.device.mowing_path_history
-
-    @property
     def zones(self) -> list[dict]:
         """Return available mowing zones (id, name, area) from vector map."""
         return self.device.zones
@@ -350,16 +323,6 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def contours(self) -> list[list[int]]:
         """Return available edge-mowing contour IDs from vector map."""
         return self.device.contours
-
-    @property
-    def spot_areas(self) -> list[dict]:
-        """Return available spot-mowing areas from vector map."""
-        return self.device.spot_areas
-
-    @property
-    def maintenance_points(self) -> list[dict[str, Any]]:
-        """Return the maintenance points of the active map from vector map data."""
-        return self.device.maintenance_points
 
     @property
     def available_maps(self) -> list[dict[str, Any]]:
@@ -391,11 +354,6 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Return whether the current map applies map-wide or per-zone preferences."""
         return self.device.mowing_preference_mode
 
-    async def async_fetch_cutting_height(self) -> None:
-        """Read the current map's cutting height from the device."""
-        await self.device.refresh_cutting_height()
-        self.async_update_listeners()
-
     async def async_fetch_zone_cutting_heights(self) -> dict[int, float]:
         """Read the current map's per-zone cutting heights from the device."""
         zone_heights = await self.device.refresh_zone_cutting_heights()
@@ -426,16 +384,6 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return updated
 
     @property
-    def edge_mowing_settings(self) -> dict[str, bool] | None:
-        """Return the current map's edge mowing settings, if they are known."""
-        return self.device.edge_mowing_settings
-
-    @property
-    def zone_edge_mowing_settings(self) -> dict[int, dict[str, bool]]:
-        """Return the per-zone edge mowing settings known for the current map."""
-        return self.device.zone_edge_mowing_settings
-
-    @property
     def supports_edge_mowing_settings(self) -> bool:
         """Return whether the device reported edge mowing settings."""
         return self.device.edge_mowing_settings is not None
@@ -446,78 +394,14 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return self.device.mowing_direction
 
     @property
-    def mowing_direction_angle(self) -> int | None:
-        """Return the direction the current map is mowed in, in degrees."""
-        direction = self.device.mowing_direction
-        return None if direction is None else direction[MOWING_DIRECTION_ANGLE_KEY]
-
-    @property
-    def mowing_direction_mode(self) -> MowingDirectionMode | None:
-        """Return how the current map's direction carries between sessions."""
-        direction = self.device.mowing_direction
-        if direction is None:
-            return None
-
-        try:
-            return MowingDirectionMode(direction[MOWING_DIRECTION_MODE_KEY])
-        except ValueError:
-            _LOGGER.debug("Unknown mowing direction mode: %s", direction[MOWING_DIRECTION_MODE_KEY])
-            return None
-
-    @property
     def zone_mowing_directions(self) -> dict[int, dict[str, int]]:
         """Return the per-zone mowing directions known for the current map."""
         return self.device.zone_mowing_directions
 
     @property
-    def supports_mowing_direction(self) -> bool:
-        """Return whether the device reported a mowing direction."""
-        return self.device.mowing_direction is not None
-
-    async def async_fetch_mowing_direction(self) -> dict[str, int] | None:
-        """Read the current map's mowing direction from the device."""
-        direction = await self.device.refresh_mowing_direction()
-        self.async_update_listeners()
-        return direction
-
-    async def async_set_mowing_direction(
-        self,
-        angle_degrees: float | None = None,
-        mode: MowingDirectionMode | None = None,
-        map_id: int | None = None,
-        zone_id: int | None = None,
-    ) -> bool:
-        """Set the mowing direction, keeping the part that was not named as it is."""
-        self._note_write(_WRITE_MOWING_PREFERENCES)
-        updated = await self.device.set_mowing_direction(
-            angle_degrees=angle_degrees,
-            mode=mode,
-            map_id=map_id,
-            zone_id=zone_id,
-        )
-        self.async_update_listeners()
-        return updated
-
-    @property
-    def supports_safe_edge_mowing(self) -> bool:
-        """Return whether the device keeps a safe edge mowing setting."""
-        settings = self.device.edge_mowing_settings
-        return settings is not None and EDGE_MOWING_SAFE_KEY in settings
-
-    @property
     def edge_mowing_auto(self) -> bool | None:
         """Return whether the mower mows the edges on its own, if it is known."""
         return self._edge_mowing_setting(EDGE_MOWING_AUTO_KEY)
-
-    @property
-    def edge_blade_offset(self) -> bool | None:
-        """Return whether the blade disc shifts sideways for the edges, if it is known."""
-        return self._edge_mowing_setting(EDGE_BLADE_OFFSET_KEY)
-
-    @property
-    def edge_mowing_safe(self) -> bool | None:
-        """Return whether the mower keeps a buffer from the boundary, if it is known."""
-        return self._edge_mowing_setting(EDGE_MOWING_SAFE_KEY)
 
     def _edge_mowing_setting(self, key: str) -> bool | None:
         """Return one edge mowing setting of the current map, if it is known."""
@@ -557,17 +441,6 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.async_update_listeners()
         return read
 
-    async def async_fetch_edge_mowing_settings(self) -> dict[str, bool] | None:
-        """Read the current map's edge mowing settings from the device."""
-        settings = await self.device.refresh_edge_mowing_settings()
-        self.async_update_listeners()
-        return settings
-
-    @property
-    def supports_schedules(self) -> bool:
-        """Return whether the device reported the schedules of a map."""
-        return self.device.schedules is not None
-
     @property
     def schedule_slots(self) -> list[int]:
         """Return the schedule slots the current map holds."""
@@ -606,6 +479,31 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         schedules = await self.device.set_schedule_enabled(slot, enabled)
         self.async_update_listeners()
         return schedules is not None
+
+    @property
+    def mowing_settings(self) -> dict[int, dict[str, Any]]:
+        """Return every setting of the current map's records, by area id."""
+        return self.device.mowing_settings
+
+    def map_mowing_setting(self, key: str) -> Any:
+        """Return one setting of the current map's map-wide record, if it is known."""
+        return self.device.mowing_settings.get(MOWING_PREFERENCE_GLOBAL_AREA_ID, {}).get(key)
+
+    def supports_mowing_setting(self, key: str) -> bool:
+        """Return whether the current map's map-wide record carries a setting."""
+        return key in self.device.mowing_settings.get(MOWING_PREFERENCE_GLOBAL_AREA_ID, {})
+
+    async def async_set_mowing_settings(
+        self,
+        settings: dict[str, Any],
+        map_id: int | None = None,
+        zone_id: int | None = None,
+    ) -> bool:
+        """Change any of the mowing settings at once, keeping the others as they are."""
+        self._note_write(_WRITE_MOWING_PREFERENCES)
+        updated = await self.device.set_mowing_settings(settings, map_id=map_id, zone_id=zone_id)
+        self.async_update_listeners()
+        return updated
 
     async def async_set_edge_mowing_settings(
         self,
@@ -652,16 +550,6 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if self._charging_settings is None:
             return None
         return int(self._charging_settings["charging_period_end_minutes"])
-
-    async def async_fetch_charging_settings(self) -> bool:
-        """Read the battery and charging settings from the device."""
-        settings = await self.device.get_charging_settings()
-        if settings is None:
-            return False
-
-        self._charging_settings = settings
-        self.async_update_listeners()
-        return True
 
     async def async_set_charging_period(
         self,
@@ -718,16 +606,6 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         end_time = self.rain_protection_end_time
         return end_time is not None and end_time > dt_util.utcnow()
-
-    async def async_fetch_rain_settings(self) -> bool:
-        """Read the rain protection settings from the device."""
-        settings = await self.device.get_rain_settings()
-        if settings is None:
-            return False
-
-        self._rain_settings = settings
-        self.async_update_listeners()
-        return True
 
     async def async_fetch_rain_protection_end(self) -> bool:
         """Read when rain protection lets the mower work again.
@@ -795,16 +673,6 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return None
         pin_check_enabled = self._anti_theft_settings["pin_check_enabled"]
         return None if pin_check_enabled is None else bool(pin_check_enabled)
-
-    async def async_fetch_anti_theft_settings(self) -> bool:
-        """Read the anti-theft settings from the device."""
-        settings = await self.device.get_anti_theft_settings()
-        if settings is None:
-            return False
-
-        self._anti_theft_settings = settings
-        self.async_update_listeners()
-        return True
 
     async def async_set_anti_theft_settings(
         self,
@@ -877,6 +745,7 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if settings is None:
             return
 
+        self._device_settings = dict(settings)
         charging_settings = self.device.decode_charging_settings(settings)
         if charging_settings is not None:
             self._charging_settings = charging_settings
@@ -890,6 +759,230 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._anti_theft_settings = anti_theft_settings
 
         self.async_update_listeners()
+
+    def supports_device_setting(self, key: str) -> bool:
+        """Return whether the mower's settings record carries a setting as a
+        single value, the form an on/off or choice setting takes.
+
+        Some models keep a setting of the same key in another form; it is not
+        offered rather than misread.
+        """
+        value = None if self._device_settings is None else self._device_settings.get(key)
+        return isinstance(value, (bool, int))
+
+    def device_setting(self, key: str) -> Any:
+        """Return one setting of the mower's settings record as it reported it, if known."""
+        return None if self._device_settings is None else self._device_settings.get(key)
+
+    def time_window_setting(self, key: str) -> dict[str, Any] | None:
+        """Return a setting with a time window, {enabled, start, end} in minutes
+        after midnight, or None when the record does not carry it so."""
+        value = self.device_setting(key)
+        if not (isinstance(value, list) and len(value) >= 3 and all(isinstance(part, (bool, int)) for part in value[:3])):
+            return None
+        return {"enabled": bool(value[0]), "start": int(value[1]), "end": int(value[2])}
+
+    async def async_set_time_window_setting(
+        self, key: str, enabled: bool | None = None, start: int | None = None, end: int | None = None
+    ) -> bool:
+        """Change a setting with a time window, keeping what is left out as it is."""
+        current = self.time_window_setting(key)
+        if current is None:
+            raise ValueError(f"This mower does not offer the {key} setting")
+        on = current["enabled"] if enabled is None else bool(enabled)
+        begin = current["start"] if start is None else int(start)
+        finish = current["end"] if end is None else int(end)
+        for minutes in (begin, finish):
+            # The mower takes 00:01 to 23:59; midnight itself is not a time it keeps.
+            if not 0 < minutes < 24 * 60:
+                raise ValueError("A window starts and ends between 00:01 and 23:59")
+        if begin == finish:
+            raise ValueError("The window has to start and end at different times")
+        return await self.async_set_device_setting(key, {"value": int(on), "time": [begin, finish]}, [int(on), begin, finish])
+
+    @property
+    def stop_point_setting(self) -> dict[str, Any] | None:
+        """Return whether a task may go on from a stop point, and for how many days one is kept."""
+        value = self.device_setting(DEVICE_SETTINGS_STOP_POINT_KEY)
+        if not (isinstance(value, list) and len(value) >= 2 and all(isinstance(part, (bool, int)) for part in value[:2])):
+            return None
+        return {"enabled": bool(value[0]), "days": int(value[1])}
+
+    async def async_set_stop_point_setting(self, enabled: bool | None = None, days: int | None = None) -> bool:
+        """Change the stop point setting, keeping what is left out as it is.
+
+        Switching it off clears the stop points the mower holds.
+        """
+        current = self.stop_point_setting
+        if current is None:
+            raise ValueError("This mower does not keep stop points")
+        on = current["enabled"] if enabled is None else bool(enabled)
+        keep = current["days"] if days is None else int(days)
+        low, high = STOP_POINT_DAYS_RANGE
+        if not low <= keep <= high:
+            raise ValueError(f"A stop point is kept {low} to {high} days")
+        updated = await self.async_set_device_setting(DEVICE_SETTINGS_STOP_POINT_KEY, {"on": on, "day": keep}, [int(on), keep])
+        if updated:
+            # The mower drops its stop points when the setting goes off.
+            try:
+                if await self.hass.async_add_executor_job(self.device.refresh_stop_points):
+                    self.async_update_listeners()
+            except Exception as ex:
+                _LOGGER.debug("Reading the stop points back failed: %s", ex)
+        return updated
+
+    def _int_record(self, key: str, length: int) -> list[int] | None:
+        """A record of at least `length` numbers, as integers, or None."""
+        value = self.device_setting(key)
+        if not (isinstance(value, list) and len(value) >= length and all(isinstance(part, (bool, int)) for part in value)):
+            return None
+        return [int(part) for part in value]
+
+    @property
+    def light_setting(self) -> dict[str, Any] | None:
+        """Return the lights: whether they keep to a custom period, its window
+        in minutes, and in which states they are on."""
+        record = self._int_record(DEVICE_SETTINGS_LIGHT_KEY, 7)
+        if record is None:
+            return None
+        setting: dict[str, Any] = {"custom_period": bool(record[0]), "start": record[1], "end": record[2]}
+        setting.update({scene: bool(record[3 + index]) for index, scene in enumerate(LIGHT_SCENES)})
+        return setting
+
+    async def async_set_light_setting(self, **changes: Any) -> bool:
+        """Change the lights, keeping what is left out as it is."""
+        record = self._int_record(DEVICE_SETTINGS_LIGHT_KEY, 7)
+        current = self.light_setting
+        if record is None or current is None:
+            raise ValueError("This mower does not offer light settings")
+        setting = {**current, **{key: value for key, value in changes.items() if value is not None}}
+        start, end = int(setting["start"]), int(setting["end"])
+        # Only a period being changed is checked, so an odd stored one does not
+        # block switching a light state.
+        changing_period = changes.get("start") is not None or changes.get("end") is not None
+        if changing_period and (not (0 <= start <= 24 * 60 and 0 <= end <= 24 * 60) or start == end):
+            raise ValueError("The light period starts and ends at different times between 00:00 and 24:00")
+        scenes = [int(bool(setting[scene])) for scene in LIGHT_SCENES]
+        data: dict[str, Any] = {"value": int(bool(setting["custom_period"])), "time": [start, end], "light": scenes}
+        new_record = [data["value"], start, end, *scenes, *record[7:]]
+        if len(record) > 7:
+            # The fill light, which this setting leaves as it is.
+            data["fill"] = record[7]
+        return await self.async_set_device_setting(DEVICE_SETTINGS_LIGHT_KEY, data, new_record)
+
+    @property
+    def human_presence_setting(self) -> dict[str, Any] | None:
+        """Return the human presence alert: whether it is on, how sensitive,
+        when it watches, how it reports and how often it alerts."""
+        record = self._int_record(DEVICE_SETTINGS_HUMAN_PRESENCE_KEY, 8)
+        if record is None:
+            return None
+        sensitivity = HUMAN_PRESENCE_SENSITIVITIES[record[1]] if 0 <= record[1] < len(HUMAN_PRESENCE_SENSITIVITIES) else None
+        setting: dict[str, Any] = {"enabled": bool(record[0]), "sensitivity": sensitivity}
+        setting.update({mode: bool(record[2 + index]) for index, mode in enumerate(HUMAN_PRESENCE_MODES)})
+        setting.update(voice=bool(record[6]), photo=bool(record[7]), interval=record[8] if len(record) > 8 else None)
+        return setting
+
+    async def async_set_human_presence_setting(self, **changes: Any) -> bool:
+        """Change the human presence alert, keeping what is left out as it is."""
+        record = self._int_record(DEVICE_SETTINGS_HUMAN_PRESENCE_KEY, 8)
+        current = self.human_presence_setting
+        if record is None or current is None:
+            raise ValueError("This mower does not offer a human presence alert")
+        setting = {**current, **{key: value for key, value in changes.items() if value is not None}}
+        # Only what is being changed is checked; a value left out is written
+        # back as the mower holds it.
+        sensitivity = record[1]
+        if changes.get("sensitivity") is not None:
+            if changes["sensitivity"] not in HUMAN_PRESENCE_SENSITIVITIES:
+                raise ValueError(f"The sensitivity is one of {', '.join(HUMAN_PRESENCE_SENSITIVITIES)}")
+            sensitivity = HUMAN_PRESENCE_SENSITIVITIES.index(changes["sensitivity"])
+        report = [int(bool(setting["voice"])), int(bool(setting["photo"]))]
+        if len(record) > 8:
+            interval = record[8]
+            if changes.get("interval") is not None:
+                if int(changes["interval"]) not in HUMAN_PRESENCE_INTERVALS_MINUTES:
+                    raise ValueError(f"The alert repeats every {', '.join(map(str, HUMAN_PRESENCE_INTERVALS_MINUTES))} minutes")
+                interval = int(changes["interval"])
+            report.append(interval)
+        elif changes.get("interval") is not None:
+            raise ValueError("This mower does not space its alerts")
+        modes = [int(bool(setting[mode])) for mode in HUMAN_PRESENCE_MODES]
+        data = {"value": int(bool(setting["enabled"])), "sen": sensitivity, "mode": modes, "report": report}
+        new_record = [data["value"], sensitivity, *modes, *report, *record[2 + len(modes) + len(report):]]
+        return await self.async_set_device_setting(DEVICE_SETTINGS_HUMAN_PRESENCE_KEY, data, new_record)
+
+    @property
+    def robot_voice_setting(self) -> dict[str, Any] | None:
+        """Return the robot's voice: its volume, the prompts it speaks and its language."""
+        volume = self.device_setting(DEVICE_SETTINGS_VOLUME_KEY)
+        prompts = self._int_record(DEVICE_SETTINGS_VOICE_PROMPTS_KEY, 4)
+        language = self._int_record(DEVICE_SETTINGS_LANGUAGE_KEY, 2)
+        if not isinstance(volume, int) and prompts is None:
+            return None
+        return {
+            "volume": volume if isinstance(volume, int) and not isinstance(volume, bool) else None,
+            "prompts": None if prompts is None else {kind: bool(prompts[index]) for index, kind in enumerate(VOICE_PROMPTS)},
+            "language": VOICE_LANGUAGES[language[1]] if language is not None and 0 <= language[1] < len(VOICE_LANGUAGES) else None,
+        }
+
+    async def async_set_robot_voice(self, volume: int | None = None, **prompts: bool | None) -> bool:
+        """Change the robot's volume or the prompts it speaks, keeping the rest as it is."""
+        changed = {kind: value for kind, value in prompts.items() if value is not None}
+        record = self._int_record(DEVICE_SETTINGS_VOICE_PROMPTS_KEY, 4)
+        # Both are checked before anything is written, so a call is never half applied.
+        if volume is not None:
+            if not isinstance((voice := self.robot_voice_setting), dict) or voice["volume"] is None:
+                raise ValueError("This mower does not offer a volume setting")
+            if not 0 <= int(volume) <= 100:
+                raise ValueError("The volume runs from 0 to 100")
+        if changed and record is None:
+            raise ValueError("This mower does not offer voice prompt settings")
+        updated = True
+        if volume is not None:
+            updated = await self.async_set_device_setting(DEVICE_SETTINGS_VOLUME_KEY, {"value": int(volume)})
+        if changed and updated and record is not None:
+            value = [int(bool(changed.get(kind, record[index]))) for index, kind in enumerate(VOICE_PROMPTS)]
+            updated = await self.async_set_device_setting(DEVICE_SETTINGS_VOICE_PROMPTS_KEY, {"value": value}, value)
+        return updated
+
+    @property
+    def time_zone(self) -> str | None:
+        """Return the mower's time zone, if it is known."""
+        value = self.device_setting(DEVICE_SETTINGS_TIME_ZONE_KEY)
+        return value if isinstance(value, str) and value else None
+
+    async def async_set_device_setting(self, key: str, data: dict[str, Any], record: Any = None) -> bool:
+        """Write one setting of the settings record, then read the record back.
+
+        `record` is what the record holds for the key once the write took;
+        left out, the setting is a single value written as {"value": …}.
+        False when the mower refused the write or answered with another single
+        value than the one asked for. The written value stands even when
+        reading the record back fails.
+        """
+        self._note_write(_WRITE_DEVICE_SETTINGS)
+        answer = await self.device.set_device_setting(key, data)
+        if answer is None:
+            return False
+        asked, answered = data.get("value"), answer.get("value")
+        scalar = (bool, int)
+        if isinstance(answered, list) and answered and isinstance(answered[0], scalar):
+            # Some settings answer with the whole record, its first part being on/off.
+            answered = answered[0]
+        if isinstance(asked, scalar) and isinstance(answered, scalar) and int(answered) != int(asked):
+            _LOGGER.warning("The mower kept %s at %s instead of %s", key, answered, asked)
+            return False
+        if record is None and isinstance(asked, scalar):
+            record = answered if isinstance(answered, scalar) else asked
+        if self._device_settings is not None and record is not None:
+            self._device_settings[key] = record
+            self.async_update_listeners()
+        try:
+            await self.async_refresh_device_settings()
+        except Exception as ex:
+            _LOGGER.debug("Reading the settings back after writing %s failed: %s", key, ex)
+        return True
 
     async def async_set_rain_protection(
         self,
@@ -913,164 +1006,13 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         await self.async_fetch_rain_protection_end()
         return True
 
-    @property
-    def task_target_map_id(self) -> int | None:
-        """Return the map targeted by the active task, if known."""
-        return self.device.task_target_map_id
-
-    @property
-    def selected_mowing_mode(self) -> MowingMode:
-        """Return the user-selected default mowing mode for the main start action."""
-        return self._selected_mowing_mode
-
-    @property
-    def selectable_mowing_modes(self) -> list[MowingMode]:
-        """Return mowing modes that can be driven by the main start action."""
-        modes = [MowingMode.ALL_AREA]
-        if self.contours:
-            modes.append(MowingMode.EDGE)
-        if self.zones:
-            modes.append(MowingMode.ZONE)
-        if self.spot_areas:
-            modes.append(MowingMode.SPOT)
-        return modes
-
-    @property
-    def selected_contour_id(self) -> list[int] | None:
-        """Return the selected contour ID, defaulting to the first available edge."""
-        self._normalize_selection_state()
-        if self._selected_contour_id is None:
-            return None
-        return [self._selected_contour_id[0], self._selected_contour_id[1]]
-
-    async def async_set_selected_mowing_mode(self, mode: MowingMode) -> None:
-        """Update the user-selected default mowing mode."""
-        self._normalize_selection_state()
-
-        if mode not in self.selectable_mowing_modes:
-            raise ValueError(f"Unsupported selectable mowing mode: {mode}")
-
-        if self._selected_mowing_mode == mode:
-            return
-
-        self._selected_mowing_mode = mode
-        data = await self._async_update_data()
-        self.async_set_updated_data(data)
-
-    async def async_set_selected_contour_id(self, contour_id: list[int] | None) -> None:
-        """Update the currently selected single contour ID."""
-        normalized_contour_id: tuple[int, int] | None = None
-        if contour_id is not None:
-            if len(contour_id) != 2:
-                raise ValueError(f"Unsupported contour ID: {contour_id}")
-            normalized_contour_id = (int(contour_id[0]), int(contour_id[1]))
-            if normalized_contour_id not in {(int(c[0]), int(c[1])) for c in self.contours}:
-                raise ValueError(f"Unsupported contour ID: {contour_id}")
-
-        if self._selected_contour_id == normalized_contour_id:
-            return
-
-        self._selected_contour_id = normalized_contour_id
-        data = await self._async_update_data()
-        self.async_set_updated_data(data)
-
-    @property
-    def selected_zone_id(self) -> int | None:
-        """Return the selected zone ID, defaulting to the first available zone."""
-        self._normalize_selection_state()
-        return self._selected_zone_id
-
-    @property
-    def selected_spot_area_id(self) -> int | None:
-        """Return the selected spot-area ID, defaulting to the first available spot."""
-        self._normalize_selection_state()
-        return self._selected_spot_area_id
-
-    async def async_set_selected_zone_id(self, zone_id: int | None) -> None:
-        """Update the currently selected single zone ID."""
-        if zone_id is not None and zone_id not in {int(zone["id"]) for zone in self.zones}:
-            raise ValueError(f"Unsupported zone ID: {zone_id}")
-
-        if self._selected_zone_id == zone_id:
-            return
-
-        self._selected_zone_id = zone_id
-        data = await self._async_update_data()
-        self.async_set_updated_data(data)
-
-    @property
-    def selected_maintenance_point_id(self) -> int | None:
-        """Return the selected maintenance point, defaulting to the first one."""
-        self._normalize_selection_state()
-        return self._selected_maintenance_point_id
-
-    async def async_set_selected_maintenance_point_id(self, point_id: int | None) -> None:
-        """Update the maintenance point the mower is sent to."""
-        if point_id is not None and point_id not in {
-            int(point["id"]) for point in self.maintenance_points
-        }:
-            raise ValueError(f"Unsupported maintenance point ID: {point_id}")
-
-        if self._selected_maintenance_point_id == point_id:
-            return
-
-        self._selected_maintenance_point_id = point_id
-        data = await self._async_update_data()
-        self.async_set_updated_data(data)
-
-    async def async_go_to_maintenance_point(self, point_id: int | None = None) -> bool:
-        """Send the mower to a maintenance point, defaulting to the selected one."""
-        if point_id is None:
-            point_id = self.selected_maintenance_point_id
-
-        if point_id is None:
-            raise ValueError("This map has no maintenance point to drive to")
-
+    async def async_go_to_maintenance_point(self, point_id: int) -> bool:
+        """Send the mower to a maintenance point of the active map."""
         return await self.device.go_to_maintenance_point([point_id])
-
-    async def async_set_selected_spot_area_id(self, spot_area_id: int | None) -> None:
-        """Update the currently selected single spot area ID."""
-        if spot_area_id is not None and spot_area_id not in {int(spot_area["id"]) for spot_area in self.spot_areas}:
-            raise ValueError(f"Unsupported spot area ID: {spot_area_id}")
-
-        if self._selected_spot_area_id == spot_area_id:
-            return
-
-        self._selected_spot_area_id = spot_area_id
-        data = await self._async_update_data()
-        self.async_set_updated_data(data)
-
-    def _normalize_selection_state(self) -> None:
-        """Keep selections valid and default them to the first available option."""
-        available_contour_ids = [(int(contour[0]), int(contour[1])) for contour in self.contours]
-        if not available_contour_ids:
-            self._selected_contour_id = None
-        elif self._selected_contour_id not in available_contour_ids:
-            self._selected_contour_id = available_contour_ids[0]
-
-        available_zone_ids = [int(zone["id"]) for zone in self.zones]
-        if not available_zone_ids:
-            self._selected_zone_id = None
-        elif self._selected_zone_id not in available_zone_ids:
-            self._selected_zone_id = available_zone_ids[0]
-
-        available_spot_area_ids = [int(spot_area["id"]) for spot_area in self.spot_areas]
-        if not available_spot_area_ids:
-            self._selected_spot_area_id = None
-        elif self._selected_spot_area_id not in available_spot_area_ids:
-            self._selected_spot_area_id = available_spot_area_ids[0]
-
-        available_point_ids = [int(point["id"]) for point in self.maintenance_points]
-        if not available_point_ids:
-            self._selected_maintenance_point_id = None
-        elif self._selected_maintenance_point_id not in available_point_ids:
-            self._selected_maintenance_point_id = available_point_ids[0]
-
-        if self._selected_mowing_mode not in self.selectable_mowing_modes:
-            self._selected_mowing_mode = MowingMode.ALL_AREA
 
     def _handle_device_update(self, property_name: str, value: Any) -> None:
         """Handle device property updates and notify Home Assistant."""
+        self._follow_session()
         if property_name == SETTINGS_CHANGED_PROPERTY_NAME:
             # The device announces that a setting changed without saying which,
             # so the settings are read back whenever it does.
@@ -1098,7 +1040,22 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # The mowing settings are stored per map, so they have to be re-read
             # whenever the active map changes.
             self.hass.create_task(self._async_refresh_preferences_on_map_change())
-        self._normalize_selection_state()
+        if property_name == "online" and value and self.reload_when_online:
+            self.reload_when_online = False
+            _LOGGER.info("%s is back online; setting it up again", self.device_name)
+            self.hass.add_job(self.hass.config_entries.async_schedule_reload, self.entry.entry_id)
+        if property_name == SERVICE1_PROPERTY_51.name:
+            # The mower sends 1:51 as a session starts; the station's position
+            # is read again then.
+            self.hass.create_task(self.async_refresh_map_extras(obstacles=False))
+        if property_name == PROPERTY_1_1_TASK_STATUS_NAME and self.device.mowing_session_active:
+            # The position reports carry only the newest points of the trail;
+            # what came before (a session already running when Home Assistant
+            # started) is read back from the mower.
+            self.hass.add_job(self._async_schedule_trail_read)
+        if property_name in (CURRENT_MAP_ID_PROPERTY_NAME, PROPERTY_1_1_TASK_STATUS_NAME):
+            # The obstacles are kept per map and change while mowing.
+            self.hass.create_task(self.async_refresh_map_extras(dock=False))
 
         # Handle device code error notifications
         notify_options = self.entry.options.get(CONF_NOTIFY, [])
@@ -1157,6 +1114,9 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _async_refresh_preferences_on_map_change(self) -> None:
         """Re-read the mowing settings after the active map changed."""
+        if not self.device_online:
+            # An offline mower cannot answer; it is read again once it is back.
+            return
         try:
             await self.async_fetch_mowing_preferences()
         except Exception as ex:
@@ -1227,28 +1187,221 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except Exception as ex:
             _LOGGER.warning("Firmware status refresh after update failed: %s", ex)
 
+    @callback
+    def async_update_pose_keepalive(self) -> None:
+        """Ask for the mower's position now and then while it drives.
+
+        That is while a session runs, and outside one while the mower drives
+        home or finds its position. The live map follows the mowing task, not
+        the dock: a session paused at the station keeps it running.
+        """
+        robot = self.device.robot_state or {}
+        active = self.device_type != DEVICE_TYPE_SWBOT and (
+            self.device.mowing_session_active
+            or (
+                self.device_online
+                and (robot.get("docking") in _DRIVING_HOME or robot.get("location") == "relocating")
+            )
+        )
+        if active and self._pose_keepalive is None:
+            self._pose_keepalive = async_track_time_interval(
+                self.hass,
+                self._async_request_pose_coverage,
+                POSE_COVERAGE_REQUEST_INTERVAL,
+                cancel_on_shutdown=True,
+            )
+            self.hass.async_create_task(self._async_request_pose_coverage())
+        elif not active:
+            self.async_stop_pose_keepalive()
+
+    @callback
+    def async_stop_pose_keepalive(self) -> None:
+        """Stop asking for the mower's position."""
+        if self._pose_keepalive is not None:
+            self._pose_keepalive()
+            self._pose_keepalive = None
+
+    def _follow_session(self) -> None:
+        """Note when a mowing session starts and what kind of task it runs.
+
+        The heartbeat names the task only while the mower mows; the kind
+        stays known while it charges or pauses in between. The session ends,
+        and both are forgotten, once the task status leaves it.
+        """
+        device = self.device
+        if not device.mowing_session_active:
+            self._session_started = None
+            self._session_task_mode = None
+            return
+        if self._session_started is None:
+            self._session_started = dt_util.utcnow()
+        work_mode = (device.robot_state or {}).get("work_mode")
+        mode = _SESSION_TASK_MODES.get(work_mode) if isinstance(work_mode, int) else None
+        if mode is not None:
+            self._session_task_mode = mode
+
+    @property
+    def session_task_mode(self) -> str | None:
+        """The kind of task the running session mows (all_area, edge, zone, spot or patrol), if known."""
+        self._follow_session()
+        return self._session_task_mode
+
+    @property
+    def session_minutes(self) -> int | None:
+        """How many minutes the running session has been going, None without one.
+
+        Counted from when the session was first seen active, so a session that
+        was already running when Home Assistant started counts from then.
+        """
+        self._follow_session()
+        if self._session_started is None:
+            return None
+        return int((dt_util.utcnow() - self._session_started).total_seconds() // 60)
+
+    async def _async_request_pose_coverage(self, now: datetime | None = None) -> None:
+        """Ask the device for the mower's position, which keeps the reports coming.
+
+        The obstacles are read again too: the mower drops one it found gone
+        when it passed by again, and announces only the ones it adds.
+        """
+        if not self.device_connected or not self.device.device_reachable:
+            return
+        if now is not None:
+            self.hass.async_create_task(self.async_refresh_map_extras(dock=False, stop_points=False))
+        parameters = [{"siid": POSE_COVERAGE_PROPERTY.siid, "piid": POSE_COVERAGE_PROPERTY.piid}]
+        try:
+            await self.hass.async_add_executor_job(
+                lambda: self.device.cloud_device.get_properties(parameters, retry_count=1)
+            )
+        except TimeoutError:
+            _LOGGER.debug("The mower did not answer the position request")
+        except Exception as ex:
+            _LOGGER.warning("Failed to request the mower's position: %s", ex)
+
+    @callback
+    def _async_schedule_trail_read(self) -> None:
+        """Read the session's trail back, unless a read is already running."""
+        if self._trail_read is not None and not self._trail_read.done():
+            return
+        self._trail_read = self.hass.async_create_task(self._async_refresh_trail())
+
+    async def _async_refresh_trail(self) -> None:
+        """Read the running session's trail back from the mower."""
+        if self.device_type == DEVICE_TYPE_SWBOT or not self.device_online:
+            return
+        try:
+            if await self.hass.async_add_executor_job(self.device.refresh_trail):
+                self.async_update_listeners()
+        except Exception as ex:
+            _LOGGER.debug("Reading the session's trail failed: %s", ex)
+
+    async def async_refresh_map_extras(
+        self, *, dock: bool = True, obstacles: bool = True, stop_points: bool = True
+    ) -> None:
+        """Read where the station stands, the obstacles and the stop points of the active map."""
+        if self.device_type == DEVICE_TYPE_SWBOT or not self.device_online:
+            return
+        for wanted, read, what in (
+            (dock, self.device.refresh_dock_position, "station position"),
+            (dock, self.device.refresh_mower_position, "mower position"),
+            (obstacles, self.device.refresh_obstacles, "obstacles"),
+            (obstacles and stop_points, self.device.refresh_stop_points, "stop points"),
+        ):
+            if not wanted:
+                continue
+            try:
+                if await self.hass.async_add_executor_job(read):
+                    self.async_update_listeners()
+            except Exception as ex:
+                _LOGGER.debug("Reading the %s failed: %s", what, ex)
+
+    @callback
+    def async_when_probed(self, add: Callable[[], None]) -> None:
+        """Run `add` once the reads that decide what the mower offers are done."""
+        if self._probe_cancelled:
+            return
+        if self._probed:
+            add()
+        else:
+            self._probe_waiters.append(add)
+
+    @callback
+    def async_cancel_probe(self) -> None:
+        """The entry goes away; entities waiting for the reads are not added."""
+        self._probe_cancelled = True
+        self._probe_waiters.clear()
+
+    @callback
+    def async_mark_probed(self) -> None:
+        """The reads that decide what the mower offers are done."""
+        if self._probe_cancelled:
+            return
+        self._probed = True
+        waiters, self._probe_waiters = self._probe_waiters, []
+        for add in waiters:
+            add()
+
+    @callback
+    def async_shutdown_map_feeds(self) -> None:
+        """Tell everything following the map that this entry goes away."""
+        for shutdown in list(self.shutdown_callbacks):
+            shutdown()
+        self.shutdown_callbacks.clear()
+
     async def _async_handle_device_update(self) -> None:
         """Async handler for device updates."""
+        self.async_update_pose_keepalive()
         try:
             # Get fresh data and update all entities
-            data = await self._async_update_data()
-            self.async_set_updated_data(data)
+            self.async_set_updated_data(None)
         except Exception as ex:
             _LOGGER.exception("Error handling device update: %s", ex)
     
-    def register_property_callback(self, property_key: str, callback) -> None:
-        """Register callback for property changes.
-        
-        Args:
-            property_key: Property identifier for callback registration
-            callback: Callback function to register
-        """
-        self.device.register_property_callback(callback)
-
     @property
     def consumable_values(self) -> list[int] | None:
         """Return cached CMS consumable counters: [blade_min, brush_min, robot_min]."""
         return self._consumable_values
+
+    @property
+    def consumables(self) -> list[dict[str, Any]] | None:
+        """Return how worn each consumable is: the blades, the station brush and
+        the mower's own maintenance, with the hours used, left and in all, and
+        the share left in percent. None until the counters have been read."""
+        values = self._consumable_values
+        if values is None:
+            return None
+        items = []
+        for index, item in enumerate(("blade", "brush", "robot")):
+            if len(values) <= index:
+                break
+            total = CONSUMABLE_COUNTER_TOTAL_MINUTES[item]
+            used = max(0, min(int(values[index]), total))
+            items.append(
+                {
+                    "item": item,
+                    "health": round((total - used) / total * 100, 1),
+                    "used_hours": round(used / 60, 1),
+                    "remaining_hours": round((total - used) / 60, 1),
+                    "total_hours": round(total / 60, 1),
+                }
+            )
+        return items
+
+    async def async_reset_consumable(self, item: str) -> None:
+        """Start a consumable's count over, as after replacing it.
+
+        The counters are read back afterwards; a reset the mower did not take
+        raises ValueError, while a read-back that fails leaves the reset be.
+        """
+        await self.device.reset_consumable_counter(item)
+        try:
+            await self.async_fetch_consumable_data()
+        except Exception as ex:
+            _LOGGER.warning("Consumable refresh after reset failed: %s", ex)
+            return
+        for entry in self.consumables or []:
+            if entry["item"] == item and entry["used_hours"] > 0:
+                raise ValueError(f"The mower kept counting the {item} after the reset")
 
     async def async_fetch_consumable_data(self) -> None:
         """Fetch CMS consumable counters from the device and cache them."""
@@ -1261,8 +1414,7 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def async_fetch_firmware_status(self) -> None:
         """Fetch firmware update availability from the device."""
         await self.device.fetch_firmware_status()
-        data = await self._async_update_data()
-        self.async_set_updated_data(data)
+        self.async_set_updated_data(None)
 
     async def async_start_firmware_update(self) -> bool:
         """Ask the cloud to push the available firmware update to the mower."""

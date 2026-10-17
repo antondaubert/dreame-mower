@@ -30,6 +30,8 @@ def _make_coordinator(supported=True):
     coordinator.charging_period_start_minutes = 1320
     coordinator.charging_period_end_minutes = 360
     coordinator.async_set_charging_period = AsyncMock(return_value=True)
+    # The reads that decide what the mower offers are already done.
+    coordinator.async_when_probed = lambda add: add()
     return coordinator
 
 

@@ -3,8 +3,10 @@
 import asyncio
 import base64
 import hashlib
+import io
 import json
 import logging
+import threading
 import pytest
 from datetime import datetime
 from types import SimpleNamespace
@@ -42,6 +44,8 @@ class MockCloudDevice:
         self.device_id = "test_device_123"  # Add device_id for execute_action method
         self.action_calls = []
         self.action_result = True
+        self.event_history_result = []
+        self.event_history_calls = []
         self.set_property_calls = []
         self.batch_device_datas_result = None
         self.check_device_version_result = None
@@ -108,6 +112,11 @@ class MockCloudDevice:
             return self.action_result(siid, aiid, parameters, retry_count)
         return self.action_result
 
+    def get_event_history(self, siid: int, eiid: int, since: int, limit: int):
+        """Mock cloud event history used by the work log."""
+        self.event_history_calls.append((siid, eiid, since, limit))
+        return self.event_history_result
+
     def get_batch_device_datas(self, props):
         """Mock batch device data getter used by vector map refresh."""
         return self.batch_device_datas_result
@@ -144,7 +153,7 @@ class MockCloudDevice:
 
 
 @pytest.fixture
-def device():
+def device(tmp_path):
     """Create a basic device instance for testing."""
     with patch('custom_components.dreame_mower.dreame.device.DreameMowerCloudDevice') as mock_cloud_device_class:
         with patch('custom_components.dreame_mower.dreame.utils.requests') as mock_requests:
@@ -172,7 +181,7 @@ def device():
                         password="test_password",
                         account_type="dreame",
                         country="DE",
-                        hass_config_dir="/tmp/test_config"
+                        hass_config_dir=str(tmp_path)
                     )
                     
                     # Ensure the mock is properly attached
@@ -731,110 +740,12 @@ async def test_maintenance_points_report_their_position(device):
 
 
 @pytest.mark.asyncio
-async def test_create_spot_area_creates_rectangle_and_returns_created_spot_id(device):
-    """Rectangle spot creation should create the spot, apply it, and return the new spot area ID."""
+async def test_spot_mowing_requires_existing_spot_ids(device):
+    """Spot mowing starts over existing spot areas only."""
     device._cloud_device.set_connected_state(True)
     await device.connect()
 
-    device._vector_map = SimpleNamespace(
-        spot_areas=[SimpleNamespace(area_id=1, path=[(-100, -100), (0, -100), (0, 0), (-100, 0)])],
-        boundary=SimpleNamespace(x1=-500, y1=-500, x2=500, y2=500),
-        zones=[],
-        forbidden_areas=[],
-        paths=[],
-        contours=[],
-    )
-
-    def refresh_vector_map():
-        device._vector_map = SimpleNamespace(
-            spot_areas=[
-                SimpleNamespace(area_id=1, path=[(-100, -100), (0, -100), (0, 0), (-100, 0)]),
-                SimpleNamespace(area_id=2, path=[(100, 100), (300, 100), (300, 300), (100, 300)]),
-            ],
-            boundary=SimpleNamespace(x1=-500, y1=-500, x2=500, y2=500),
-            zones=[],
-            forbidden_areas=[],
-            paths=[],
-            contours=[],
-        )
-        return True
-
-    device.fetch_vector_map = refresh_vector_map
-
-    result = await device.create_spot_area({"x1": 1, "y1": 1, "x2": 3, "y2": 3})
-
-    assert result == 2
-    assert len(device._cloud_device.action_calls) == 2
-
-    _, _, create_parameters, _ = device._cloud_device.action_calls[0]
-    assert create_parameters == [{
-        "m": "a",
-        "p": 0,
-        "o": 214,
-        "d": {
-            "id": -1,
-            "points": [[3.0, 1.0], [1.0, 1.0], [1.0, 3.0], [3.0, 3.0]],
-        },
-    }]
-
-    _, _, apply_parameters, _ = device._cloud_device.action_calls[1]
-    assert apply_parameters == [{"m": "a", "p": 1, "o": 201}]
-
-
-@pytest.mark.asyncio
-async def test_start_mowing_mode_rejects_rectangle_spot_flow(device):
-    """The mode-oriented API should not combine spot creation with spot mowing."""
-    device._cloud_device.set_connected_state(True)
-    await device.connect()
-
-    result = await device.start_mowing_mode(
-        MowingMode.SPOT,
-        spot_rectangle={"x1": 0, "y1": 0, "x2": 2, "y2": 2},
-    )
-
-    assert result is False
-    assert len(device._cloud_device.action_calls) == 0
-
-
-@pytest.mark.asyncio
-async def test_create_spot_area_rejects_too_small_rectangle(device):
-    """Rectangle spot creation should reject rectangles smaller than 1m x 1m."""
-    device._cloud_device.set_connected_state(True)
-    await device.connect()
-
-    result = await device.create_spot_area({"x1": 1, "y1": 1, "x2": 1.5, "y2": 2})
-
-    assert result is None
-    assert len(device._cloud_device.action_calls) == 0
-
-
-@pytest.mark.asyncio
-async def test_create_spot_area_rejects_rectangle_outside_map(device):
-    """Rectangle spot creation should reject rectangles that do not overlap the map."""
-    device._cloud_device.set_connected_state(True)
-    await device.connect()
-    device._vector_map = SimpleNamespace(
-        spot_areas=[],
-        boundary=SimpleNamespace(x1=-500, y1=-500, x2=500, y2=500),
-        zones=[],
-        forbidden_areas=[],
-        paths=[],
-        contours=[],
-    )
-
-    result = await device.create_spot_area({"x1": 6, "y1": 6, "x2": 8, "y2": 8})
-
-    assert result is None
-    assert len(device._cloud_device.action_calls) == 0
-
-
-@pytest.mark.asyncio
-async def test_start_mowing_spot_requires_existing_spot_ids(device):
-    """Spot mowing should remain a pure start operation over existing spot IDs."""
-    device._cloud_device.set_connected_state(True)
-    await device.connect()
-
-    result = await device.start_mowing_spot()
+    result = await device.start_mowing_mode(MowingMode.SPOT)
 
     assert result is False
     assert len(device._cloud_device.action_calls) == 0
@@ -877,26 +788,13 @@ def test_available_maps_returns_serializable_map_entries(device):
         ]
     )
 
+    device._map_backups = {1}
+
     assert device.available_maps == [
-        {"id": 1, "index": 0, "name": "Front", "area": 25.0},
-        {"id": 2, "index": 1, "name": "Back", "area": 30.5},
+        {"id": 1, "index": 0, "name": "Front", "area": 25.0, "has_backup": False},
+        {"id": 2, "index": 1, "name": "Back", "area": 30.5, "has_backup": True},
     ]
     assert len(device._cloud_device.action_calls) == 0
-
-
-def test_spot_areas_returns_serializable_entries(device):
-    """Spot areas should expose stable dicts for higher layers."""
-    device._vector_map = SimpleNamespace(
-        spot_areas=[
-            SimpleNamespace(area_id=4, name="Tree", area=2.5),
-            SimpleNamespace(area_id=5, name="Bench", area=1.2),
-        ]
-    )
-
-    assert device.spot_areas == [
-        {"id": 4, "name": "Tree", "area": 2.5},
-        {"id": 5, "name": "Bench", "area": 1.2},
-    ]
 
 
 def test_refresh_current_map_id_reads_active_map_from_mapl(device):
@@ -1099,14 +997,26 @@ def _connect_with_stored_maps(device, stored_maps: list[dict]) -> None:
 
 
 def test_fetch_vector_map_uses_the_stored_copy_while_its_hash_matches(device):
-    """A map whose stored copy carries the hash the mower reports is not read again."""
+    """A map whose stored copy carries the hash the mower reports is not read again.
+
+    Only the mower's own copy says which way a maintenance point faces, so a map
+    with one is read from the mower once for each version of it.
+    """
     fixture = _device_map_fixture()
     _connect_with_stored_maps(device, fixture["cache"])
     device._cloud_device.action_result, reads = _map_responder(fixture["map_list"], _fixture_documents(fixture))
 
     assert device.fetch_vector_map() is True
+    first_reads = reads.count("MAPD")
+    headings = [point.heading for point in device.vector_map.maintenance_points]
+
+    reads.clear()
+    assert device.fetch_vector_map() is True
 
     assert "MAPD" not in reads
+    assert [point.heading for point in device.vector_map.maintenance_points] == headings
+    assert first_reads > 0
+    assert headings == [0.0]
     assert [(m["index"], m["name"]) for m in device.available_maps] == [(0, "Zuhause"), (1, "Keller")]
 
 
@@ -1375,8 +1285,8 @@ async def test_message_callback(device):
     assert ("battery_percent", 75) in property_changes
 
 
-def test_service1_session_start_properties():
-    """Test handling of Service1 session start properties 1:50 and 1:51."""
+def test_service1_session_properties():
+    """1:51 announces a session start; 1:50 and 1:52 are only acknowledged."""
     device = DreameMowerDevice(
         device_id="test_device_123",
         username="test_user", 
@@ -1386,67 +1296,25 @@ def test_service1_session_start_properties():
         hass_config_dir="/tmp/test_config"
     )
     property_changes = []
-    
-    def property_change_callback(property_name, value):
-        property_changes.append((property_name, value))
-    
-    device.register_property_callback(property_change_callback)
-    
-    # Initial state should be False
-    assert device.service1_property_50 is False
-    assert device.service1_property_51 is False
-    assert device.service1_completion_flag is False
-    
-    # Simulate the exact MQTT messages from logs
-    message_property_50 = {
-        'id': 305, 
-        'method': 'properties_changed', 
-        'params': [{'did': '-1******95', 'piid': 50, 'siid': 1}]
-    }
-    
-    message_property_51 = {
-        'id': 306, 
-        'method': 'properties_changed', 
-        'params': [{'did': '-1******95', 'piid': 51, 'siid': 1}]
-    }
-    
-    # Test property 50 handling
-    device._handle_message(message_property_50)
-    assert device.service1_property_50 is True
-    assert ("service1_property_50", True) in property_changes
-    
-    # Test property 51 handling 
-    device._handle_message(message_property_51)
-    assert device.service1_property_51 is True
-    assert ("service1_property_51", True) in property_changes
-    
-    # Verify completion flag is still False (different property)
-    assert device.service1_completion_flag is False
+    device.register_property_callback(lambda name, value: property_changes.append((name, value)))
+
+    # These properties come without a value.
+    assert device._handle_mqtt_property_update({'did': '-1******95', 'piid': 50, 'siid': 1}) is True
+    assert device._handle_mqtt_property_update({'did': '-1******95', 'piid': 52, 'siid': 1}) is True
+    assert property_changes == []
+
+    assert device._handle_mqtt_property_update({'did': '-1******95', 'piid': 51, 'siid': 1}) is True
+    assert property_changes == [("service1_property_51", True)]
 
 
-def test_handle_mqtt_props_success(device):
-    """Test _handle_mqtt_props with known parameter (success case)."""
-    # Track property changes
-    property_changes = []
-    def track_changes(prop_name, value):
-        property_changes.append((prop_name, value))
-    
-    device.register_property_callback(track_changes)
-    
-    # Test handling ota_state parameter
-    assert device._handle_mqtt_props({"ota_state": "idle"}) is True
-    assert device.ota_state == "idle"
-    assert ("ota_state", "idle") in property_changes
-
-
-def test_handle_mqtt_props_ota_progress(device):
-    """Test _handle_mqtt_props handles ota_progress (issue #19)."""
+@pytest.mark.parametrize("params", [{"ota_state": "idle"}, {"ota_progress": 42}])
+def test_handle_mqtt_props_acknowledges_the_update_state(device, params):
+    """The state and progress of an update are acknowledged without a notification."""
     property_changes = []
     device.register_property_callback(lambda n, v: property_changes.append((n, v)))
 
-    assert device._handle_mqtt_props({"ota_progress": 42}) is True
-    assert device.ota_progress == 42
-    assert ("ota_progress", 42) in property_changes
+    assert device._handle_mqtt_props(params) is True
+    assert property_changes == []
 
 
 def test_handle_mqtt_props_failure(device):
@@ -1462,20 +1330,28 @@ def test_handle_mqtt_props_failure(device):
     assert len(property_changes) == 0
 
 
-def test_service2_property_62_handling(device):
-    """Test Service 2 property 62 (2:62) handling."""
-    # Track property changes
+@pytest.mark.parametrize(
+    "message",
+    [
+        {"siid": 2, "piid": 62, "value": 0},
+        {"siid": 2, "piid": 60, "value": 3},
+        {"siid": 2, "piid": 65, "value": "dm::TASK_NAV_DOCK"},
+        {"siid": 2, "piid": 65, "value": "an unknown navigation state"},
+        {"siid": 2, "piid": 56, "value": {"status": [[1, -1], [3, 0]]}},
+        {"siid": 5, "piid": 104, "value": 7},
+        {"siid": 5, "piid": 104, "value": 13},
+        {"siid": 5, "piid": 105, "value": 1},
+        {"siid": 5, "piid": 106, "value": 2},
+        {"siid": 5, "piid": 107, "value": 500},
+        {"siid": 5, "piid": 108, "value": 4},
+    ],
+)
+def test_ignored_properties_are_acknowledged_without_a_notification(device, message):
     property_changes = []
-    def track_changes(prop_name, value):
-        property_changes.append((prop_name, value))
-    
-    device.register_property_callback(track_changes)
-    
-    # Test the specific message structure
-    message = {"siid": 2, "piid": 62, "value": 0}
-    
+    device.register_property_callback(lambda n, v: property_changes.append((n, v)))
+
     assert device._handle_mqtt_property_update(message) is True
-    assert ("service2_property_62", 0) in property_changes
+    assert property_changes == []
 
 
 def test_service2_property_55_handling(device):
@@ -1493,45 +1369,61 @@ def test_service2_property_55_handling(device):
         },
     }
 
-    # Should be handled silently (no notification, no unhandled MQTT)
+    # The obstacle joins the known ones, once.
     assert device._handle_mqtt_property_update(message) is True
-    assert len(property_changes) == 0
+    assert device._handle_mqtt_property_update(message) is True
+    assert device.ai_obstacles == [
+        {
+            "id": "1773059052.181000_0",
+            "type": 5,
+            "x": 6125,
+            "y": 18425,
+            "confidence": 48,
+            "image": "1773059052.181000_0",
+            "bounds": None,
+            "ignorable": False,
+        }
+    ]
+    assert [name for name, _ in property_changes] == ["obstacles"]
+
+
+def test_a_pushed_obstacle_in_the_list_form_joins_the_known_ones(device):
+    message = {
+        "siid": 2,
+        "piid": 55,
+        "value": {
+            "obs": [[-3425, -3525, -3575, -3575, -3425], [-5625, -5525, -5775, -5825, -5725], 95, 0, "1791887465.551000_0", 0, "1791887465.551000_0"],
+            "type": "ai",
+        },
+    }
+
+    assert device._handle_mqtt_property_update(message) is True
+
+    assert device.ai_obstacles == [
+        {
+            "id": "1791887465.551000_0",
+            "type": 0,
+            "x": -3505,
+            "y": -5695,
+            "confidence": 95,
+            "image": "1791887465.551000_0",
+            "bounds": [-3575, -5825, -3425, -5525],
+            "ignorable": True,
+        }
+    ]
 
 
 def test_service2_property_64_handling(device):
-    """Test Service 2 property 64 (2:64) work statistics handling."""
-    # Track property changes
+    """Test Service 2 property 64 (2:64) work statistics are acknowledged."""
     property_changes = []
-    def track_changes(prop_name, value):
-        property_changes.append((prop_name, value))
-    
-    device.register_property_callback(track_changes)
-    
-    # Test with a simplified version of the complex work statistics structure
-    # from the issue report
+    device.register_property_callback(lambda n, v: property_changes.append((n, v)))
+
     message = {
         "siid": 2, 
         "piid": 64, 
         "value": {
-            "cw": {
-                "cy": {
-                    "ci": ["0.0", "0.0", "0.0", "0.0"],
-                    "ct": "2025-10-02 12:27:17",
-                    "p": ["0.0"] * 120  # Simplified array
-                },
-                "ow": {
-                    "ci": ["801"],
-                    "ct": "2025-10-02 12:27:17"
-                }
-            },
-            "fw": {
-                "xz": {
-                    "bi": [],
-                    "bt": "",
-                    "fi": [0] * 48,
-                    "wt": "2025-09-30T00:00:00+00:00"
-                }
-            },
+            "cw": {"cy": {"ci": ["0.0", "0.0", "0.0", "0.0"], "ct": "2025-10-02 12:27:17", "p": ["0.0"] * 120}},
+            "fw": {"xz": {"bi": [], "bt": "", "fi": [0] * 48, "wt": "2025-09-30T00:00:00+00:00"}},
             "p": [9.9, 53.6],
             "rt": "",
             "tz": "Europe/Berlin",
@@ -1539,77 +1431,9 @@ def test_service2_property_64_handling(device):
             "ws": "2025-10-02 12:27:15"
         }
     }
-    
+
     assert device._handle_mqtt_property_update(message) is True
-    # Verify the property change was notified
-    assert any(name == "service2_property_64" for name, _ in property_changes)
-    # Verify the value was passed through
-    notified_value = next(value for name, value in property_changes if name == "service2_property_64")
-    assert isinstance(notified_value, dict)
-    assert "cw" in notified_value
-    assert "fw" in notified_value
-
-
-def test_service5_property_104_handling(device):
-    """Test Service 5 property 104 (5:104) handling from issue #1616."""
-    # Track property changes
-    property_changes = []
-    def track_changes(prop_name, value):
-        property_changes.append((prop_name, value))
-    
-    device.register_property_callback(track_changes)
-    
-    # Test with value 7 (Task incomplete - spot mowing)
-    message = {
-        "siid": 5, 
-        "piid": 104, 
-        "value": 7
-    }
-    
-    assert device._handle_mqtt_property_update(message) is True
-    
-    # Verify the property change was notified with new property name
-    assert any(name == "task_status" for name, _ in property_changes)
-    
-    # Verify the value was passed through correctly
-    notified_value = next(value for name, value in property_changes if name == "task_status")
-    assert isinstance(notified_value, dict)
-    assert "status_code" in notified_value
-    assert notified_value["status_code"] == 7
-    assert "status_description" in notified_value
-    assert notified_value["status_description"] == "Task incomplete - spot mowing"
-    
-    # Also check that the individual state change notification was sent
-    assert any(name == "task_status_code" for name, _ in property_changes)
-    individual_value = next(value for name, value in property_changes if name == "task_status_code")
-    assert individual_value == 7
-
-
-def test_service5_property_104_unknown_value(device):
-    """Test Service 5 property 104 (5:104) with unknown value from issue #1616."""
-    # Track property changes
-    property_changes = []
-    def track_changes(prop_name, value):
-        property_changes.append((prop_name, value))
-    
-    device.register_property_callback(track_changes)
-    
-    # Test with unknown value 13 (from original issue #1616)
-    # Unknown values should still be handled with generic description
-    message = {
-        "siid": 5, 
-        "piid": 104, 
-        "value": 13
-    }
-    
-    # Should return True - we handle it even if we don't know what it means yet
-    assert device._handle_mqtt_property_update(message) is True
-    
-    # Should send notifications with generic "Unknown" description
-    assert any(name == "task_status" for name, _ in property_changes)
-    notified_value = next(value for name, value in property_changes if name == "task_status")
-    assert notified_value["status_code"] == 13
-    assert notified_value["status_description"] == "Unknown task status: 13"
+    assert property_changes == []
 
 
 def test_firmware_install_state_handling():
@@ -1630,7 +1454,7 @@ def test_firmware_install_state_handling():
     device.register_property_callback(property_change_callback)
     
     # Initial state should be None
-    assert device.firmware_install_state is None
+    assert device._firmware_install_state is None
     
     # Test valid value 2
     message_value_2 = {
@@ -1639,7 +1463,7 @@ def test_firmware_install_state_handling():
         'params': [{'did': '-1******18', 'piid': 2, 'siid': 1, 'value': 2}]
     }
     device._handle_message(message_value_2)
-    assert device.firmware_install_state == 2
+    assert device._firmware_install_state == 2
     assert ("firmware_install_state", 2) in property_changes
     
     # Test valid value 3 (from the issue)
@@ -1649,7 +1473,7 @@ def test_firmware_install_state_handling():
         'params': [{'did': '-1******18', 'piid': 2, 'siid': 1, 'value': 3}]
     }
     device._handle_message(message_value_3)
-    assert device.firmware_install_state == 3
+    assert device._firmware_install_state == 3
     assert ("firmware_install_state", 3) in property_changes
     
     # Test valid value 4 (firmware_download_failed - issues #98, #134)
@@ -1659,7 +1483,7 @@ def test_firmware_install_state_handling():
         'params': [{'did': '-1******07', 'piid': 2, 'siid': 1, 'value': 4}]
     }
     device._handle_message(message_value_4)
-    assert device.firmware_install_state == 4
+    assert device._firmware_install_state == 4
     assert ("firmware_install_state", 4) in property_changes
     
     # Test invalid value - should be rejected
@@ -1667,7 +1491,7 @@ def test_firmware_install_state_handling():
     message_invalid = {"siid": 1, "piid": 2, "value": 99}
     result = device._handle_mqtt_property_update(message_invalid)
     assert result is False  # Invalid value should return False
-    assert device.firmware_install_state == 4  # State should remain unchanged
+    assert device._firmware_install_state == 4  # State should remain unchanged
     assert len(property_changes) == 0  # No property change notification for invalid value
 
 
@@ -1689,7 +1513,7 @@ def test_firmware_download_progress_handling():
     device.register_property_callback(property_change_callback)
     
     # Initial state should be None
-    assert device.firmware_download_progress is None
+    assert device._firmware_download_progress is None
     
     # Test progress values from the issue (1 to 100)
     test_values = [1, 8, 14, 18, 23, 28, 33, 38, 42, 45, 47, 49, 53, 57, 61, 66, 72, 79, 87, 93, 98, 100]
@@ -1701,7 +1525,7 @@ def test_firmware_download_progress_handling():
             'params': [{'did': '-1******96', 'piid': 3, 'siid': 1, 'value': progress}]
         }
         device._handle_message(message)
-        assert device.firmware_download_progress == progress
+        assert device._firmware_download_progress == progress
         assert ("firmware_download_progress", progress) in property_changes
     
     # Test edge cases
@@ -1710,7 +1534,7 @@ def test_firmware_download_progress_handling():
     message_zero = {"siid": 1, "piid": 3, "value": 0}
     result = device._handle_mqtt_property_update(message_zero)
     assert result is True
-    assert device.firmware_download_progress == 0
+    assert device._firmware_download_progress == 0
     assert ("firmware_download_progress", 0) in property_changes
     
     # Test invalid negative value - should be rejected
@@ -1718,7 +1542,7 @@ def test_firmware_download_progress_handling():
     message_negative = {"siid": 1, "piid": 3, "value": -1}
     result = device._handle_mqtt_property_update(message_negative)
     assert result is False  # Invalid value should return False
-    assert device.firmware_download_progress == 0  # State should remain unchanged
+    assert device._firmware_download_progress == 0  # State should remain unchanged
     assert len(property_changes) == 0  # No property change notification for invalid value
     
     # Test invalid value > 100 - should be rejected
@@ -1726,7 +1550,7 @@ def test_firmware_download_progress_handling():
     message_over_100 = {"siid": 1, "piid": 3, "value": 101}
     result = device._handle_mqtt_property_update(message_over_100)
     assert result is False  # Invalid value should return False
-    assert device.firmware_download_progress == 0  # State should remain unchanged
+    assert device._firmware_download_progress == 0  # State should remain unchanged
     assert len(property_changes) == 0  # No property change notification for invalid value
 
 
@@ -1845,7 +1669,7 @@ async def test_mission_completion_caps_progress_at_100_percent(device):
             'siid': 4,
             'eiid': 1,
             'arguments': [
-                {'piid': 1, 'value': 96},  # Progress percent
+                {'piid': 1, 'value': 100},  # All-area mowing
                 {'piid': 2, 'value': 45},  # Duration minutes
                 {'piid': 3, 'value': 9600},  # Area (96.00 sqm in centi-sqm)
                 {'piid': 8, 'value': 1729000000},  # Start timestamp
@@ -2099,7 +1923,7 @@ def test_fetch_firmware_status_up_to_date(device):
     result = asyncio.get_event_loop().run_until_complete(device.fetch_firmware_status())
 
     assert result is True
-    assert device.firmware_update_available is False
+    assert device._firmware_new_available is False
     assert device.firmware_latest_version is None
 
 
@@ -2115,7 +1939,7 @@ def test_fetch_firmware_status_update_available(device):
     result = asyncio.get_event_loop().run_until_complete(device.fetch_firmware_status())
 
     assert result is True
-    assert device.firmware_update_available is True
+    assert device._firmware_new_available is True
     assert device.firmware_latest_version == "4.3.6_0625"
 
 
@@ -2132,7 +1956,7 @@ def test_fetch_firmware_status_clears_stale_availability(device):
     result = asyncio.get_event_loop().run_until_complete(device.fetch_firmware_status())
 
     assert result is True
-    assert device.firmware_update_available is False
+    assert device._firmware_new_available is False
     assert device.firmware_latest_version is None
 
 
@@ -2144,7 +1968,7 @@ def test_fetch_firmware_status_no_data(device):
     result = asyncio.get_event_loop().run_until_complete(device.fetch_firmware_status())
 
     assert result is False
-    assert device.firmware_update_available is False
+    assert device._firmware_new_available is False
 
 
 def test_fetch_firmware_status_notifies_on_change(device):
@@ -3092,6 +2916,7 @@ async def test_switching_the_current_map_drops_the_cached_heights(device):
     assert device.cutting_height is None
     assert device.zone_cutting_heights == {}
     assert device.mowing_preference_mode is None
+    assert device.mowing_settings == {}
 
 
 def _load_multi_zone_vector_map(device):
@@ -3107,38 +2932,6 @@ def _load_multi_zone_vector_map(device):
         maps={1: map_one, 2: map_two},
     )
     device._current_map_id = 1
-
-
-@pytest.mark.asyncio
-async def test_refresh_mowing_preference_mode_reads_and_caches_the_mode(device):
-    """The mode decides which heights apply, so it must be readable on its own."""
-    device._cloud_device.set_connected_state(True)
-    await device.connect()
-    _load_zoned_vector_map(device)
-    device._cloud_device.action_result, _ = _preference_responder(mode=1)
-
-    mode = await device.refresh_mowing_preference_mode()
-
-    assert mode == MowingPreferenceMode.PER_ZONE
-    assert device.mowing_preference_mode == MowingPreferenceMode.PER_ZONE
-    _, _, parameters, _ = device._cloud_device.action_calls[0]
-    assert parameters == [{"m": "g", "t": "PREI", "d": {"idx": 0}}]
-
-
-@pytest.mark.asyncio
-async def test_refresh_mowing_preference_mode_does_not_cache_another_map(device):
-    """The cache describes the current map, so another map's mode must not land in it."""
-    device._cloud_device.set_connected_state(True)
-    await device.connect()
-    _load_zoned_vector_map(device)
-    device._cloud_device.action_result, _ = _preference_responder(mode=1)
-
-    mode = await device.refresh_mowing_preference_mode(map_id=2)
-
-    assert mode == MowingPreferenceMode.PER_ZONE
-    assert device.mowing_preference_mode is None
-    _, _, parameters, _ = device._cloud_device.action_calls[0]
-    assert parameters == [{"m": "g", "t": "PREI", "d": {"idx": 1}}]
 
 
 @pytest.mark.asyncio
@@ -3183,14 +2976,13 @@ async def test_refresh_reads_the_edge_mowing_settings_from_the_same_record(devic
     record[16] = 0  # safe edge mowing off
     device._cloud_device.action_result, _ = _mowing_preference_responder(record)
 
-    settings = await device.refresh_edge_mowing_settings()
+    assert await device.refresh_mowing_preferences() is True
 
-    assert settings == {
+    assert device.edge_mowing_settings == {
         "edge_mowing_auto": False,
         "edge_blade_offset": True,
         "edge_mowing_safe": False,
     }
-    assert device.edge_mowing_settings == settings
     assert device.cutting_height == 6.0
     assert len(device._cloud_device.action_calls) == 1
 
@@ -3273,8 +3065,9 @@ async def test_safe_edge_mowing_is_absent_from_a_record_that_predates_it(device)
         _MOWING_PREFERENCE_RECORD[:16]
     )
 
-    settings = await device.refresh_edge_mowing_settings()
+    assert await device.refresh_mowing_preferences() is True
 
+    settings = device.edge_mowing_settings
     assert settings is not None
     assert "edge_mowing_safe" not in settings
     assert settings["edge_mowing_auto"] is True
@@ -4680,3 +4473,1113 @@ async def test_an_unreadable_settings_record_still_comes_back_as_none(device):
     device._cloud_device.action_result = {"code": 0, "out": [{"r": -1}]}
 
     assert await device.get_device_settings() is None
+
+
+@pytest.mark.asyncio
+async def test_end_task_sends_stop_only(device):
+    """Ending a task stops it; the mower is not sent home."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+
+    assert await device.end_task() is True
+
+    assert [call[:2] for call in device._cloud_device.action_calls] == [(5, 2)]
+
+
+@pytest.mark.asyncio
+async def test_stop_returning_sends_the_stop_return_payload(device):
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+
+    assert await device.stop_returning() is True
+
+    siid, aiid, parameters, _ = device._cloud_device.action_calls[-1]
+    assert (siid, aiid) == (2, 50)
+    assert parameters == [{"m": "a", "p": 2, "o": 13}]
+
+
+@pytest.mark.asyncio
+async def test_mowing_settings_report_every_setting_of_the_record(device):
+    """Each slot of a record is reported under its setting key."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_vector_map(device)
+    device._cloud_device.action_result, _ = _mowing_preference_responder()
+
+    assert await device.refresh_mowing_preferences() is True
+
+    # The record ends before the turning method, so that is left out.
+    assert device.mowing_settings == {
+        0: {
+            "efficiency": "efficient",
+            "cutting_height": 6.0,
+            "mowing_direction_mode": "fixed",
+            "mowing_direction": 0,
+            "edge_mowing_auto": True,
+            "edge_obstacle_avoidance": True,
+            "edge_blade_offset": True,
+            "lidar_obstacle_recognition": True,
+            "edge_mowing_safe": True,
+            "obstacle_height": 20,
+            "obstacle_distance": 20,
+            "ai_obstacle_recognition": ["humans", "animals", "objects"],
+        }
+    }
+
+
+@pytest.mark.asyncio
+async def test_set_mowing_settings_writes_every_requested_setting_at_once(device):
+    """One call costs one write, and every slot not named stays as it was."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_vector_map(device)
+    device._cloud_device.action_result, writes = _mowing_preference_responder()
+
+    result = await device.set_mowing_settings(
+        {
+            "efficiency": "standard",
+            "cutting_height": 4.5,
+            "obstacle_height": 10,
+            "obstacle_distance": 15,
+            "ai_obstacle_recognition": ["humans", "objects"],
+        }
+    )
+
+    assert result is True
+    assert len(writes) == 1
+    expected_record = list(_MOWING_PREFERENCE_RECORD)
+    expected_record[0] = 0  # version is zeroed on write
+    expected_record[3] = 0
+    expected_record[4] = 45
+    expected_record[13] = 10
+    expected_record[14] = 15
+    expected_record[15] = 5  # humans and objects
+    assert writes[0] == expected_record
+    assert device.mowing_settings[0]["ai_obstacle_recognition"] == ["humans", "objects"]
+    assert device.cutting_height == 4.5
+
+
+@pytest.mark.asyncio
+async def test_set_mowing_settings_turns_edge_avoidance_off_without_recognition(device):
+    """Avoiding obstacles along the edges needs the LiDAR or the camera."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_vector_map(device)
+    device._cloud_device.action_result, writes = _mowing_preference_responder()
+
+    await device.set_mowing_settings({"lidar_obstacle_recognition": False, "ai_obstacle_recognition": []})
+
+    assert writes[0][9] == 0
+    assert writes[0][12] == 0
+    assert writes[0][15] == 0
+
+
+@pytest.mark.asyncio
+async def test_set_mowing_settings_keeps_edge_avoidance_while_one_recognises(device):
+    """With the camera still recognising obstacles, edge avoidance stays on."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_vector_map(device)
+    device._cloud_device.action_result, writes = _mowing_preference_responder()
+
+    await device.set_mowing_settings({"lidar_obstacle_recognition": False})
+
+    assert writes[0][9] == 1
+    assert writes[0][12] == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("settings", [
+    {"turning_method": "lawn_care"},  # beyond the end of this record
+    {"obstacle_height": 12},
+    {"obstacle_distance": 5},
+    {"efficiency": "fast"},
+    {"ai_obstacle_recognition": ["cats"]},
+])
+async def test_set_mowing_settings_refuses_what_the_mower_does_not_take(device, settings):
+    """A setting the record lacks, or a value it does not take, writes nothing."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_vector_map(device)
+    device._cloud_device.action_result, writes = _mowing_preference_responder()
+
+    with pytest.raises(ValueError):
+        await device.set_mowing_settings(settings)
+
+    assert writes == []
+
+
+@pytest.mark.asyncio
+async def test_set_mowing_settings_writes_the_turning_method_of_a_full_record(device):
+    """Firmware with the full record carries the turning method."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_vector_map(device)
+    record = [*_MOWING_PREFERENCE_RECORD, 2, 0, 0, 30]
+    device._cloud_device.action_result, writes = _mowing_preference_responder(record)
+
+    assert await device.set_mowing_settings({"turning_method": "lawn_care"}) is True
+
+    assert writes[0][19] == 1
+    assert device.mowing_settings[0]["turning_method"] == "lawn_care"
+
+
+@pytest.mark.asyncio
+async def test_set_mowing_settings_for_a_zone_writes_that_zones_record(device):
+    """A zone's settings go into the zone's own record."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_zoned_vector_map(device)
+    device._cloud_device.action_result, calls = _preference_responder(mode=1)
+
+    result = await device.set_mowing_settings({"efficiency": "standard"}, zone_id=2)
+
+    assert result is True
+    assert [write[2] for write in calls["writes"]] == [2]
+    assert calls["writes"][0][3] == 0
+    assert device.mowing_settings[2]["efficiency"] == "standard"
+
+
+@pytest.mark.asyncio
+async def test_switching_to_per_zone_records_gives_zones_without_one_a_copy(device):
+    """A zone without a record would fall back to the device defaults."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_zoned_vector_map(device)
+    zone_one = list(_MOWING_PREFERENCE_RECORD)
+    zone_one[4] = 35
+    device._cloud_device.action_result, calls = _preference_responder(
+        mode=0, configured_area_ids=(0, 1), records={1: zone_one}
+    )
+
+    assert await device.set_mowing_preference_mode(MowingPreferenceMode.PER_ZONE) is True
+
+    # Zone 1 keeps its own record; zones 2 and 3 start from the map-wide one.
+    assert [write[2] for write in calls["writes"]] == [2, 3]
+    assert all(write[4] == _MOWING_PREFERENCE_RECORD[4] for write in calls["writes"])
+    assert calls["modes"] == [{"idx": 0, "value": 1}]
+    assert device.mowing_preference_mode == MowingPreferenceMode.PER_ZONE
+
+
+@pytest.mark.asyncio
+async def test_mowing_settings_carry_the_records_of_the_zones(device):
+    """A full read reports each zone's own record next to the map-wide one."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_zoned_vector_map(device)
+    zone_three = list(_MOWING_PREFERENCE_RECORD)
+    zone_three[3] = 0
+    device._cloud_device.action_result, _ = _preference_responder(
+        mode=1, configured_area_ids=(0, 3), records={3: zone_three}
+    )
+
+    await device.refresh_mowing_preferences()
+    await device.refresh_zone_mowing_preferences()
+
+    assert sorted(device.mowing_settings) == [0, 3]
+    assert device.mowing_settings[0]["efficiency"] == "efficient"
+    assert device.mowing_settings[3]["efficiency"] == "standard"
+
+
+_REAL_OPEN = io.open
+
+
+@pytest.mark.asyncio
+async def test_read_work_totals_reads_the_totals_of_the_log(device):
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._cloud_device.action_result = {
+        "code": 0,
+        "out": [{"r": 0, "d": {"area": 17469, "time": 12850, "count": 356, "start": 1704038400}}],
+    }
+
+    assert device.read_work_totals() == {"area": 17469, "time": 12850, "count": 356, "start": 1704038400}
+    assert device._cloud_device.action_calls[-1][2] == [{"m": "g", "t": "MIHIS"}]
+
+
+@pytest.mark.asyncio
+async def test_work_log_details_come_only_from_listed_tasks(device, tmp_path):
+    """A file the log did not list is refused; a kept copy is read without downloading."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    file = "ali_dreame/2026/10/09/X/task.json"
+    history = [
+        {"piid": 1, "value": 100},
+        {"piid": 7, "value": 1},
+        {"piid": 8, "value": 1791540000},
+        {"piid": 9, "value": file},
+    ]
+    device._cloud_device.event_history_result = [{"history": json.dumps(history)}]
+    device._hass_config_dir = str(tmp_path)
+    kept = tmp_path / "www" / "dreame" / file
+    kept.parent.mkdir(parents=True)
+    kept.write_text(json.dumps({"start": 1, "end": 2, "time": 1, "areas": 3.5, "mode": 100, "result": 1, "faults": [[5, 56]]}))
+
+    with pytest.raises(ValueError):
+        device.read_work_log_details(file)
+
+    entries = device.read_work_log(1704038400)
+    assert [entry["file"] for entry in entries] == [file]
+    assert device._cloud_device.event_history_calls == [(4, 1, 1704038400, 500)]
+
+    with patch("builtins.open", _REAL_OPEN):
+        details = device.read_work_log_details(file)
+
+    assert details["area"] == 3.5
+    assert details["result"] == "complete"
+    assert details["faults"][0]["code"] == 56
+    assert details["faults"][0]["description"]
+    with pytest.raises(ValueError):
+        device.read_work_log_details("ali_dreame/other.json")
+
+    # A file that does not parse leaves the task without details.
+    kept.write_text(json.dumps({"map": None, "faults": None}))
+    with patch("builtins.open", _REAL_OPEN):
+        assert device.read_work_log_details(file) is None
+
+
+def test_an_obstacle_photo_is_asked_for_until_the_mower_sends_it(device, tmp_path):
+    device._hass_config_dir = str(tmp_path)
+    device._ai_obstacles = [{"id": "p", "type": 0, "x": 0, "y": 0, "confidence": 95, "image": "p"}]
+    answers = [(None, True), (None, True), (b"\xff\xd8\xff\xd9", False)]
+    asked = []
+
+    def get_device_file(filename, kind, timeout):
+        asked.append((filename, kind))
+        return answers.pop(0)
+
+    device._cloud_device.get_device_file = get_device_file
+
+    with patch("builtins.open", _REAL_OPEN):
+        photo = device.read_obstacle_photo("p")
+
+    assert asked == [("p.jpg", "ai_obs")] * 3
+    assert photo == {"image": base64.b64encode(b"\xff\xd8\xff\xd9").decode(), "boxes": [], "width": 640, "height": 360}
+    # It is kept, outside of what the web server hands out.
+    assert (tmp_path / "dreame_mower" / "obstacle_photos" / str(device._device_id) / "p.jpg").read_bytes() == b"\xff\xd8\xff\xd9"
+
+
+def test_an_obstacle_photo_is_given_up_on(device, tmp_path):
+    device._hass_config_dir = str(tmp_path)
+    device._ai_obstacles = [{"id": "p", "type": 0, "x": 0, "y": 0, "confidence": 95, "image": "p"}]
+    calls = []
+    device._cloud_device.get_device_file = lambda filename, kind, timeout: calls.append(1) or (None, True)
+
+    with patch("builtins.open", _REAL_OPEN):
+        assert device.read_obstacle_photo("p") is None
+        assert len(calls) == 5
+
+        calls.clear()
+        device._cloud_device.get_device_file = lambda filename, kind, timeout: calls.append(1) or (None, False)
+        assert device.read_obstacle_photo("p") is None
+    assert len(calls) == 1
+
+
+def test_only_photos_of_reported_obstacles_are_fetched(device):
+    device._ai_obstacles = [
+        {"id": "p", "type": 0, "x": 0, "y": 0, "confidence": 95, "image": "p"},
+        {"id": "q", "type": 0, "x": 0, "y": 0, "confidence": 95, "image": "../q"},
+    ]
+
+    for image in ("../other", "../q"):
+        with pytest.raises(ValueError):
+            device.read_obstacle_photo(image)
+
+
+def test_a_photo_kept_before_is_not_asked_for_again(device, tmp_path):
+    device._hass_config_dir = str(tmp_path)
+    device._ai_obstacles = [{"id": "p", "type": 0, "x": 0, "y": 0, "confidence": 95, "image": "p"}]
+    calls = []
+    device._cloud_device.get_device_file = lambda filename, kind, timeout: calls.append(1) or (b"\xff\xd8\xff\xd9", False)
+
+    with patch("builtins.open", _REAL_OPEN):
+        first = device.read_obstacle_photo("p")
+        assert device.read_obstacle_photo("p") == first
+
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_photos_of_a_task_in_the_work_log_may_be_fetched(device, tmp_path):
+    """An obstacle the mower no longer reports keeps its photo in the task it was met in."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    file = "ali_dreame/2026/10/13/X/task.json"
+    history = [{"piid": 1, "value": 100}, {"piid": 7, "value": 1}, {"piid": 8, "value": 1}, {"piid": 9, "value": file}]
+    device._cloud_device.event_history_result = [{"history": json.dumps(history)}]
+    device._hass_config_dir = str(tmp_path)
+    kept = tmp_path / "www" / "dreame" / file
+    kept.parent.mkdir(parents=True)
+    kept.write_text(json.dumps({"ai_obstacle": [[[0, 10], [0, 10], 95, 0, "gone", 0, "gone"]]}))
+    device._cloud_device.get_device_file = lambda filename, kind, timeout: (b"\xff\xd8\xff\xd9", False)
+
+    with pytest.raises(ValueError):
+        device.read_obstacle_photo("gone")
+
+    device.read_work_log(0)
+    with patch("builtins.open", _REAL_OPEN):
+        device.read_work_log_details(file)
+        assert device.read_obstacle_photo("gone") is not None
+
+
+def test_a_pushed_obstacle_survives_a_list_read_that_missed_it(device):
+    """An obstacle pushed while the list was being read is kept."""
+    pushed = {"type": "ai", "obs": [[0, 10], [0, 10], 90, 1, "new", 0, "new"]}
+    listed = [[[100, 200], [100, 200], 80, 0, "old", 0, "old"]]
+
+    def responder(siid, aiid, parameters, retry_count):
+        payload = parameters[0]
+        if payload["t"] == "AIOBS":
+            device._add_ai_obstacle(pushed)
+            return {"code": 0, "out": [{"r": 0, "d": {"obs": listed}}]}
+        return {"code": 0, "out": [{"r": 0, "d": {"obstacle": []}}]}
+
+    device._cloud_device.set_connected_state(True)
+    device._cloud_device.action_result = responder
+
+    device.refresh_obstacles()
+
+    assert sorted(obstacle["image"] for obstacle in device.ai_obstacles) == ["new", "old"]
+
+
+def test_a_pushed_obstacle_without_an_id_is_told_apart_by_where_it_is(device):
+    device._add_ai_obstacle({"type": "ai", "obs": [[0, 10], [0, 10], 90, 1]})
+    device._add_ai_obstacle({"type": "ai", "obs": [[50, 60], [50, 60], 90, 1]})
+    device._add_ai_obstacle({"type": "ai", "obs": [[0, 10], [0, 10], 90, 1]})
+
+    assert [(obstacle["x"], obstacle["y"]) for obstacle in device.ai_obstacles] == [(5, 5), (55, 55)]
+
+
+
+@pytest.mark.asyncio
+async def test_a_task_shows_obstacles_the_mower_dropped_before_it_ended(device, tmp_path):
+    """The task's file leaves out an obstacle the mower found gone again."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._hass_config_dir = str(tmp_path)
+    file = "ali_dreame/2026/10/13/X/task.json"
+    history = [{"piid": 1, "value": 100}, {"piid": 7, "value": 1}, {"piid": 8, "value": 1000}, {"piid": 9, "value": file}]
+    device._cloud_device.event_history_result = [{"history": json.dumps(history)}]
+    kept = tmp_path / "www" / "dreame" / file
+    kept.parent.mkdir(parents=True)
+    kept.write_text(json.dumps({"start": 1000, "end": 2000, "ai_obstacle": []}))
+
+    with patch("builtins.open", _REAL_OPEN):
+        # Seen while mowing: one during the task, one long after it.
+        device._add_ai_obstacle({"type": "ai", "obs": [[0, 10], [0, 10], 95, 0, "1500.1_0", 0, "1500.1_0"]})
+        device._add_ai_obstacle({"type": "ai", "obs": [[50, 60], [50, 60], 90, 1, "9000.2_0", 0, "9000.2_0"]})
+        # A restart forgets what it held, not what it kept.
+        device._seen_ai_obstacles = None
+        device.read_work_log(0)
+        details = device.read_work_log_details(file)
+
+    assert [obstacle["image"] for obstacle in details["obstacles"]] == ["1500.1_0"]
+    assert details["obstacles"][0]["kind"] == "ai"
+    assert "1500.1_0" in device._work_log_photos
+
+
+
+@pytest.mark.asyncio
+async def test_the_work_log_counts_the_photographed_obstacles_of_a_task(device, tmp_path):
+    """Counted from what was seen while a task ran, or from its file when at hand."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    seen_task = [{"piid": 1, "value": 100}, {"piid": 2, "value": 10}, {"piid": 8, "value": 1000}, {"piid": 9, "value": "ali_dreame/a.json"}]
+    filed_task = [{"piid": 1, "value": 100}, {"piid": 2, "value": 10}, {"piid": 8, "value": 5000}, {"piid": 9, "value": "ali_dreame/b.json"}]
+    device._cloud_device.event_history_result = [{"history": json.dumps(seen_task)}, {"history": json.dumps(filed_task)}]
+    filed = tmp_path / "www" / "dreame" / "ali_dreame" / "b.json"
+    filed.parent.mkdir(parents=True)
+    filed.write_text(json.dumps({"ai_obstacle": [[[0], [0], 90, 0, "5100.1_0", 0, 1], [[0], [0], 90, 0, "", 0, 2]]}))
+
+    with patch("builtins.open", _REAL_OPEN):
+        # Seen during the first task (it ends at 1000 + 10 min), and after it.
+        device._add_ai_obstacle({"type": "ai", "obs": [[0, 10], [0, 10], 95, 0, "1590.1_0", 0, "1590.1_0"]})
+        device._add_ai_obstacle({"type": "ai", "obs": [[50, 60], [50, 60], 90, 1, "1700.2_0", 0, "1700.2_0"]})
+        entries = device.read_work_log(0)
+
+    assert {entry["start"]: entry["photos"] for entry in entries} == {5000: 1, 1000: 1}
+
+
+def test_obstacles_read_from_the_list_are_remembered(device, tmp_path):
+    def responder(siid, aiid, parameters, retry_count):
+        if parameters[0]["t"] == "AIOBS":
+            return {"code": 0, "out": [{"r": 0, "d": {"obs": [[[0, 10], [0, 10], 80, 0, "1500.1_0", 0, "x"]]}}]}
+        return {"code": 0, "out": [{"r": 0, "d": {"obstacle": []}}]}
+
+    device._cloud_device.set_connected_state(True)
+    device._cloud_device.action_result = responder
+
+    with patch("builtins.open", _REAL_OPEN):
+        device.refresh_obstacles()
+        device._seen_ai_obstacles = None
+        assert list(device._seen()) == ["1500.1_0"]
+
+
+def test_the_oldest_obstacles_seen_make_room(device):
+    with patch("builtins.open", _REAL_OPEN), patch("custom_components.dreame_mower.dreame.device.AI_OBSTACLES_SEEN_LIMIT", 2):
+        for taken in (300, 100, 200):
+            device._add_ai_obstacle({"type": "ai", "obs": [[taken, taken], [0, 0], 90, 0, f"{taken}.0_0", 0, f"{taken}.0_0"]})
+        device._seen_ai_obstacles = None
+        assert sorted(device._seen()) == ["200.0_0", "300.0_0"]
+
+
+def test_unreadable_obstacles_seen_before_start_over(device, tmp_path, caplog):
+    seen = tmp_path / "dreame_mower" / "obstacle_photos" / str(device._device_id) / "seen.json"
+    seen.parent.mkdir(parents=True)
+    seen.write_text('{"not": "a list"')
+
+    with patch("builtins.open", _REAL_OPEN), caplog.at_level(logging.WARNING):
+        assert device._seen() == {}
+    assert "start over" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_a_task_counts_its_listed_and_its_seen_photos_together(device, tmp_path):
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    task = [{"piid": 1, "value": 100}, {"piid": 2, "value": 10}, {"piid": 8, "value": 1000}, {"piid": 9, "value": "ali_dreame/a.json"}]
+    device._cloud_device.event_history_result = [{"history": json.dumps(task)}]
+    filed = tmp_path / "www" / "dreame" / "ali_dreame" / "a.json"
+    filed.parent.mkdir(parents=True)
+    filed.write_text(json.dumps({"ai_obstacle": [
+        [[0], [0], 90, 0, "1100.1_0", 0, 1],
+        [[0], [0], 90, 0, "1200.1_0", 1, 2],  # ignored by the user
+    ]}))
+
+    with patch("builtins.open", _REAL_OPEN):
+        device._add_ai_obstacle({"type": "ai", "obs": [[0, 10], [0, 10], 95, 0, "1100.1_0", 0, "1100.1_0"]})
+        device._add_ai_obstacle({"type": "ai", "obs": [[50, 60], [50, 60], 90, 1, "1300.2_0", 0, "1300.2_0"]})
+        entries = device.read_work_log(0)
+
+    assert entries[0]["photos"] == 2
+
+
+@pytest.mark.asyncio
+async def test_a_task_without_a_usable_duration_still_lists(device):
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    task = [{"piid": 1, "value": 100}, {"piid": 2, "value": "long"}, {"piid": 8, "value": 1000}]
+    device._cloud_device.event_history_result = [{"history": json.dumps(task)}]
+
+    assert device.read_work_log(0)[0]["photos"] == 0
+
+
+def test_a_task_file_named_outside_its_folder_is_not_read(device):
+    device._work_log_files = {"../../secrets.yaml"}
+
+    with pytest.raises(ValueError):
+        device.read_work_log_details("../../secrets.yaml")
+
+
+def test_obstacles_seen_before_that_lack_a_place_are_left_out(device, tmp_path):
+    seen = tmp_path / "dreame_mower" / "obstacle_photos" / str(device._device_id) / "seen.json"
+    seen.parent.mkdir(parents=True)
+    seen.write_text(json.dumps([
+        {"image": "1.0_0", "x": 1, "y": 2, "type": 0},
+        {"image": "2.0_0", "x": "far", "y": 2, "type": 0},
+        {"image": "3.0_0", "y": 2, "type": 0},
+        {"image": 4, "x": 1, "y": 2, "type": 0},
+    ]))
+
+    with patch("builtins.open", _REAL_OPEN):
+        assert list(device._seen()) == ["1.0_0"]
+
+
+def test_a_kept_photo_comes_while_another_is_being_fetched(device, tmp_path):
+    device._ai_obstacles = [{"id": "p", "type": 0, "x": 0, "y": 0, "confidence": 95, "image": "p"}]
+    kept = tmp_path / "dreame_mower" / "obstacle_photos" / str(device._device_id) / "p.jpg"
+    kept.parent.mkdir(parents=True)
+    kept.write_bytes(b"\xff\xd8\xff\xd9")
+    result = {}
+
+    def read():
+        with patch("builtins.open", _REAL_OPEN):
+            result["photo"] = device.read_obstacle_photo("p")
+
+    device._photo_lock.acquire()
+    try:
+        reader = threading.Thread(target=read)
+        reader.start()
+        reader.join(timeout=5)
+        assert not reader.is_alive()
+    finally:
+        device._photo_lock.release()
+    assert result["photo"]["image"] == base64.b64encode(b"\xff\xd8\xff\xd9").decode()
+
+
+def _answering(device, answers=None):
+    """A mower that confirms each 2:50 action with a TASK report, as it does."""
+    sent = []
+
+    def responder(siid, aiid, parameters, retry_count):
+        payload = parameters[0]
+        sent.append(payload)
+        answer = {"o": payload["o"], "exe": True, "status": True, "error": 0}
+        answer.update((answers or {}).get(payload["o"], {}))
+        device._deliver_task_answer({"t": "TASK", "d": answer})
+        return {"code": 0, "out": [{"r": 0}]}
+
+    device._cloud_device.set_connected_state(True)
+    device._cloud_device.action_result = responder
+    device.fetch_vector_map = Mock()
+    return sent
+
+
+@pytest.mark.asyncio
+async def test_a_map_change_is_made_in_the_edit_mode(device):
+    sent = _answering(device, {215: {"id": 101}})
+
+    zone_id = await device.set_no_go_zone("rectangle", [[-3800, -6000], [-3400, -5600]])
+
+    assert zone_id == 101
+    assert [payload["o"] for payload in sent] == [204, 215, 201]
+    assert sent[2]["p"] == 1
+    device.fetch_vector_map.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_the_edit_mode_is_left_when_the_mower_refuses_a_change(device):
+    sent = _answering(device, {214: {"status": False, "error": -3}})
+
+    with pytest.raises(ValueError, match="within one zone"):
+        await device.set_spot_area([0, 0, 1000, 1000])
+
+    assert [payload["o"] for payload in sent] == [204, 214, 201]
+
+
+@pytest.mark.asyncio
+async def test_the_map_is_not_changed_while_the_mower_works(device):
+    sent = _answering(device)
+
+    with patch.object(type(device), "mowing_session_active", new_callable=PropertyMock, return_value=True):
+        with pytest.raises(ValueError, match="not mowing"):
+            await device.delete_map_item("no_go_zone", 101)
+
+    assert sent == []
+
+
+@pytest.mark.asyncio
+async def test_an_unconfirmed_change_is_reported(device):
+    device._cloud_device.set_connected_state(True)
+    device._cloud_device.action_result = {"code": 0, "out": [{"r": 0}]}
+    device.fetch_vector_map = Mock()
+
+    with patch("custom_components.dreame_mower.dreame.device.MAP_EDIT_ANSWER_SECONDS", 0.05):
+        with pytest.raises(DreameCommandError, match="did not confirm"):
+            await device.rename_zone(1, "Front")
+
+
+@pytest.mark.asyncio
+async def test_zones_are_split_and_merged_with_the_ids_the_mower_gives(device):
+    _answering(device, {220: {"ids": [3, 4]}, 221: {"id": 5}})
+
+    assert await device.split_zone(1, [0, 0, 1000, 0]) == [3, 4]
+    assert await device.merge_zones([3, 4]) == 5
+
+
+@pytest.mark.asyncio
+async def test_maps_are_renamed_and_deleted_without_the_edit_mode(device):
+    sent = _answering(device)
+    _load_two_map_vector_map(device)
+
+    # The deleted map leaves the mower's list a moment after it confirmed.
+    device._read_map_slots = Mock(side_effect=[[{"index": 0}, {"index": 1}], [{"index": 0}]])
+
+    await device.rename_map(2, "Back")
+    with patch("custom_components.dreame_mower.dreame.device.MAP_SLOTS_SETTLE_SECONDS", 0):
+        await device.delete_map(2)
+
+    assert [(payload["o"], payload["d"]) for payload in sent] == [(210, {"idx": 1, "name": "Back"}), (207, {"idx": 1})]
+    assert device._read_map_slots.call_count == 2
+    assert device.fetch_vector_map.call_count == 2  # after the rename, and once the delete shows
+
+
+
+@pytest.mark.asyncio
+async def test_a_refusal_is_told_even_when_leaving_the_edit_mode_fails(device):
+    """Why the change failed is what the user needs to hear."""
+    sent = []
+
+    def responder(siid, aiid, parameters, retry_count):
+        payload = parameters[0]
+        sent.append(payload["o"])
+        if payload["o"] != 201:  # the exit goes unconfirmed
+            answer = {"o": payload["o"], "status": payload["o"] != 214, "error": -3 if payload["o"] == 214 else 0}
+            device._deliver_task_answer({"t": "TASK", "d": answer})
+        return {"code": 0, "out": [{"r": 0}]}
+
+    device._cloud_device.set_connected_state(True)
+    device._cloud_device.action_result = responder
+    device.fetch_vector_map = Mock()
+
+    with patch("custom_components.dreame_mower.dreame.device.MAP_EDIT_ANSWER_SECONDS", 0.05):
+        with pytest.raises(ValueError, match="within one zone"):
+            await device.set_spot_area([0, 0, 1000, 1000])
+
+    assert sent == [204, 214, 201]
+
+
+@pytest.mark.asyncio
+async def test_the_edit_mode_is_left_when_entering_it_went_unconfirmed(device):
+    sent = []
+
+    def responder(siid, aiid, parameters, retry_count):
+        sent.append(parameters[0]["o"])
+        return {"code": 0, "out": [{"r": 0}]}
+
+    device._cloud_device.set_connected_state(True)
+    device._cloud_device.action_result = responder
+    device.fetch_vector_map = Mock()
+
+    with patch("custom_components.dreame_mower.dreame.device.MAP_EDIT_ANSWER_SECONDS", 0.05):
+        with pytest.raises(DreameCommandError, match="map edit start"):
+            await device.rename_zone(1, "Front")
+
+    assert sent == [204, 201]
+
+
+@pytest.mark.asyncio
+async def test_a_confirmation_of_another_action_is_not_taken_for_the_one_waited_for(device):
+    sent = []
+
+    def responder(siid, aiid, parameters, retry_count):
+        sent.append(parameters[0]["o"])
+        device._deliver_task_answer({"t": "TASK", "d": {"o": 100, "status": True}})
+        return {"code": 0, "out": [{"r": 0}]}
+
+    device._cloud_device.set_connected_state(True)
+    device._cloud_device.action_result = responder
+
+    with patch("custom_components.dreame_mower.dreame.device.MAP_EDIT_ANSWER_SECONDS", 0.05):
+        with pytest.raises(DreameCommandError, match="did not confirm"):
+            await device._command("map edit start", {"m": "a", "p": 0, "o": 204})
+
+
+@pytest.mark.asyncio
+async def test_a_map_is_not_renamed_while_the_mower_works(device):
+    sent = _answering(device)
+    _load_two_map_vector_map(device)
+
+    with patch.object(type(device), "mowing_session_active", new_callable=PropertyMock, return_value=True):
+        with pytest.raises(ValueError, match="not mowing"):
+            await device.rename_map(2, "Back")
+
+    assert sent == []
+
+
+
+def test_the_map_list_tells_which_maps_have_a_backup(device):
+    """A slot row is [index, is current, holds a map, has a backup]."""
+    def responder(siid, aiid, parameters, retry_count):
+        payload = parameters[0]
+        if payload["t"] == "MAPL":
+            return {"code": 0, "out": [{"r": 0, "d": [[0, 1, 1, 0], [1, 0, 1, 1], [2, 0, 0, 1]]}]}
+        return {"code": 0, "out": [{"r": 0, "d": {"hash": "h", "size": 10}}]}
+
+    device._cloud_device.set_connected_state(True)
+    device._cloud_device.action_result = responder
+
+    slots = device._read_map_slots()
+
+    assert [slot["index"] for slot in slots] == [0, 1]
+    # A deleted map's slot can keep its backup too.
+    assert device._map_backups == {1, 2}
+
+
+
+@pytest.mark.asyncio
+async def test_a_backed_up_map_is_marked_as_such(device):
+    _answering(device)
+    _load_two_map_vector_map(device)
+    device._current_map_id = 1
+
+    await device.backup_map()
+
+    assert [entry["has_backup"] for entry in device.available_maps] == [True, False]
+
+
+def test_a_finished_patrol_does_not_finish_the_mowing_task(device):
+    """A patrol has no lawn to finish: the mowing progress stays as it was."""
+    device._pose_coverage_handler._progress_percent = 40.0
+    patrol = {
+        'method': 'event_occured',
+        'params': {
+            'siid': 4,
+            'eiid': 1,
+            'arguments': [{'piid': 1, 'value': 108}, {'piid': 7, 'value': 1}, {'piid': 10, 'value': 1}, {'piid': 12, 'value': 0}],
+        },
+    }
+
+    device._handle_message(patrol)
+
+    assert device.mowing_progress_percent == 40.0
+    assert not device._mission_completed_event.is_set()
+
+
+@pytest.mark.asyncio
+async def test_errors_the_mower_reports_are_cleared(device):
+    """Errors are cleared before warnings; a reminder to replace the blades and a finished task are left."""
+    sent = []
+
+    def responder(siid, aiid, parameters, retry_count):
+        sent.append(parameters[0])
+        return {"code": 0, "out": [{"r": 0}]}
+
+    device._cloud_device.set_connected_state(True)
+    device._cloud_device.action_result = responder
+    # 28 blades worn, 31 failed to return, 37 path impassable, 48 task finished.
+    device._misc_handler._property_1_1_handler._active_codes = frozenset({28, 31, 37, 48})
+
+    assert device.current_problem == device._device_code_handler.describe(37)
+    assert await device.clear_errors() is True
+    assert [payload["d"]["fault"] for payload in sent] == [37, 31]
+    assert all(payload["o"] == 11 for payload in sent)
+
+    device._misc_handler._property_1_1_handler._active_codes = frozenset({28, 48})
+    assert device.current_problem is None
+
+
+@pytest.mark.asyncio
+async def test_an_error_the_mower_keeps_is_reported(device):
+    device._cloud_device.set_connected_state(True)
+    device._cloud_device.action_result = lambda *args: None
+    device._misc_handler._property_1_1_handler._active_codes = frozenset({9})
+
+    assert await device.clear_errors() is False
+
+
+def test_before_the_first_heartbeat_the_announced_error_is_the_problem(device):
+    device._misc_handler._property_1_1_handler._active_codes = None
+    device._device_code_handler.parse_value(9)
+    assert device.current_problem == "Bumper error"
+
+
+
+def _ai_obstacle(obstacle_id):
+    return {"id": obstacle_id, "type": 99, "x": 0, "y": 0, "confidence": 90, "image": None, "bounds": [0, 0, 1, 1], "ignorable": True}
+
+
+@pytest.mark.asyncio
+async def test_an_ignored_obstacle_leaves_the_map(device):
+    sent = []
+
+    def responder(siid, aiid, parameters, retry_count):
+        sent.append(parameters[0])
+        return {"code": 0, "out": [{"m": "r", "obs": {"error": 0, "id": "7", "res": 1}, "r": 0}]}
+
+    device._cloud_device.set_connected_state(True)
+    device._cloud_device.action_result = responder
+    device._ai_obstacles = [_ai_obstacle("1791887465.551000_0"), _ai_obstacle(8)]
+
+    await device.ignore_ai_obstacle("1791887465.551000_0")
+
+    assert sent == [{"m": "s", "t": "AIOBS", "d": {"id": "1791887465.551000_0", "type": "ignore"}}]
+    assert [obstacle["id"] for obstacle in device.ai_obstacles] == [8]
+
+
+@pytest.mark.asyncio
+async def test_an_obstacle_the_mower_does_not_know_is_not_ignored(device):
+    device._cloud_device.set_connected_state(True)
+    device._cloud_device.action_result = lambda *args: {"code": 0, "out": [{"m": "r", "obs": {"error": 2, "id": "9", "res": 0}, "r": -3}]}
+    device._ai_obstacles = [_ai_obstacle(9)]
+
+    with pytest.raises(ValueError, match="does not know this obstacle"):
+        await device.ignore_ai_obstacle(9)
+    assert len(device.ai_obstacles) == 1
+
+
+@pytest.mark.asyncio
+async def test_an_obstacle_is_not_ignored_while_the_mower_mows(device):
+    sent = []
+    device._cloud_device.set_connected_state(True)
+    device._cloud_device.action_result = lambda *args: sent.append(args) or None
+    device._misc_handler._property_1_1_handler._robot_state = {"main_state": 4, "sub_state": 35}
+
+    with pytest.raises(ValueError, match="does not mow"):
+        await device.ignore_ai_obstacle(9)
+    assert sent == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("known,asked", [(8, "8"), ("987654", 987654)])
+async def test_an_obstacle_is_ignored_by_the_id_the_mower_gave_it(device, known, asked):
+    """However the id comes in, the mower gets it back as it gave it."""
+    sent = []
+
+    def responder(siid, aiid, parameters, retry_count):
+        sent.append(parameters[0])
+        return {"code": 0, "out": [{"m": "r", "obs": {"error": 0, "id": str(known), "res": 1}, "r": 0}]}
+
+    device._cloud_device.set_connected_state(True)
+    device._cloud_device.action_result = responder
+    # An obstacle without the mower's id, numbered by its place in the list.
+    unnamed = {**_ai_obstacle(8), "ignorable": False}
+    device._ai_obstacles = [_ai_obstacle(known), unnamed]
+
+    await device.ignore_ai_obstacle(asked)
+
+    assert sent[0]["d"]["id"] == known
+    assert device.ai_obstacles == [unnamed]
+
+
+@pytest.mark.asyncio
+async def test_an_obstacle_the_mower_gives_no_answer_for_is_reported(device):
+    device._cloud_device.set_connected_state(True)
+    device._cloud_device.action_result = lambda *args: {"code": 0, "out": [{"m": "r", "r": 0}]}
+    device._ai_obstacles = [_ai_obstacle(9)]
+
+    with pytest.raises(ValueError, match="did not ignore"):
+        await device.ignore_ai_obstacle(9)
+    assert len(device.ai_obstacles) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_deleted_map_comes_back_from_the_backup_in_its_empty_slot(device):
+    sent = _answering(device)
+    _load_two_map_vector_map(device)
+    # Slots 1 and 2 hold the maps; slot 3 keeps only the backup of a deleted one.
+    device._map_backups = {1, 2}
+    device._held_map_slots = {0, 1}
+
+    assert device.deleted_maps == [3]
+    # Still empty when checked with the mower, then holding the map once restored.
+    device._read_map_slots = Mock(side_effect=[[{"index": 0}, {"index": 1}], [{"index": 0}, {"index": 1}, {"index": 2}]])
+    await device.restore_deleted_map(3)
+
+    assert [(payload["o"], payload.get("d")) for payload in sent] == [(204, None), (209, {"idx": 2}), (201, None)]
+    assert device._read_map_slots.call_count == 2
+    assert device.fetch_vector_map.call_count == 2  # after the edit, and once the map shows
+
+
+@pytest.mark.asyncio
+async def test_the_maps_are_read_back_even_when_the_list_never_shows_the_change(device):
+    _answering(device)
+    _load_two_map_vector_map(device)
+    device._read_map_slots = Mock(return_value=[{"index": 0}, {"index": 1}])
+
+    with patch("custom_components.dreame_mower.dreame.device.MAP_SLOTS_SETTLE_SECONDS", 0):
+        await device.delete_map(2)
+
+    assert device._read_map_slots.call_count == 5
+    device.fetch_vector_map.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_a_slot_without_a_deleted_maps_backup_is_not_restored(device):
+    sent = _answering(device)
+    _load_two_map_vector_map(device)
+    device._map_backups = {1}  # the backup of a map that is still there
+    device._held_map_slots = {0, 1}
+
+    assert device.deleted_maps == []
+    with pytest.raises(ValueError, match="holds no backup of a deleted map"):
+        await device.restore_deleted_map(2)
+    assert sent == []
+
+
+
+def test_a_map_that_could_not_be_read_is_not_taken_for_a_deleted_one(device):
+    """Only the mower's list of its slots tells a deleted map; the maps read may lack one."""
+    device._vector_map = SimpleNamespace(available_maps=[SimpleNamespace(map_id=1, map_index=0, name="Front", total_area=25.0)])
+    device._map_backups = {1}
+    device._held_map_slots = {0, 1}
+
+    assert device.deleted_maps == []
+
+
+def test_the_backups_of_a_mower_without_any_map_are_still_offered(device):
+    device._vector_map = None
+    device._map_backups = {0}
+    device._held_map_slots = set()
+
+    assert device.deleted_maps == [1]
+
+
+@pytest.mark.asyncio
+async def test_a_slot_that_holds_a_map_again_is_not_restored_into(device):
+    """A backup put back into a slot that holds a map would overwrite that map."""
+    sent = _answering(device)
+    _load_two_map_vector_map(device)
+    device._map_backups = {2}
+    device._held_map_slots = {0, 1}
+
+    def mower_slots():
+        device._held_map_slots = {0, 1, 2}
+        return [{"index": 0}, {"index": 1}, {"index": 2}]
+
+    device._read_map_slots = Mock(side_effect=mower_slots)
+
+    with pytest.raises(ValueError, match="holds no backup of a deleted map"):
+        await device.restore_deleted_map(3)
+    assert sent == []
+
+
+@pytest.mark.asyncio
+async def test_a_failing_read_of_the_slots_does_not_undo_a_delete(device):
+    _answering(device)
+    _load_two_map_vector_map(device)
+    device._read_map_slots = Mock(side_effect=[TimeoutError("slow link"), [{"index": 0}]])
+
+    with patch("custom_components.dreame_mower.dreame.device.MAP_SLOTS_SETTLE_SECONDS", 0):
+        await device.delete_map(2)
+
+    assert device._read_map_slots.call_count == 2
+    device.fetch_vector_map.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_an_offline_mower_is_not_asked_for_its_slots_after_a_delete(device):
+    _answering(device)
+    _load_two_map_vector_map(device)
+    device._read_map_slots = Mock()
+    device._online = False
+
+    await device.delete_map(2)
+
+    device._read_map_slots.assert_not_called()
+    device.fetch_vector_map.assert_called_once()
+
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("point_id,heading,sent", [(1, None, 0.5), (1, 180.0, 1.0), (None, None, 0.0)])
+async def test_a_moved_maintenance_point_keeps_the_way_it_faces(device, point_id, heading, sent):
+    from custom_components.dreame_mower.dreame.map_data_parser import MowerMaintenancePoint
+
+    payloads = _answering(device, {224: {"id": 1}})
+    device._vector_map = SimpleNamespace(
+        maintenance_points=[MowerMaintenancePoint(point_id=1, x=-2270, y=30, heading=90.0)], available_maps=[], maps=None
+    )
+
+    await device.set_maintenance_point(-2000, 30, heading, point_id)
+
+    (change,) = [payload for payload in payloads if payload["o"] == 224]
+    assert change["d"]["points"][2] == sent
+
+
+def test_a_map_whose_headings_could_not_be_read_is_read_again_next_time(device):
+    """The stored copy stands in, but the next check asks the mower once more."""
+    fixture = _device_map_fixture()
+    _connect_with_stored_maps(device, fixture["cache"])
+    device._cloud_device.action_result, reads = _map_responder(fixture["map_list"], _fixture_documents(fixture), failing=("MAPD",))
+
+    assert device.fetch_vector_map() is True
+
+    assert [point.heading for point in device.vector_map.maintenance_points] == [None]
+    assert device._map_hashes[0] == ""  # so refresh_changed_vector_map reads it again
+
+
+@pytest.mark.asyncio
+async def test_a_point_whose_heading_is_not_known_is_read_before_it_is_moved(device):
+    from custom_components.dreame_mower.dreame.map_data_parser import MowerMaintenancePoint
+
+    payloads = _answering(device, {224: {"id": 1}})
+    device._vector_map = SimpleNamespace(
+        maintenance_points=[MowerMaintenancePoint(point_id=1, x=-2270, y=30)], available_maps=[], maps=None, map_index=0
+    )
+    fresh = SimpleNamespace(maintenance_points=[MowerMaintenancePoint(point_id=1, x=-2270, y=30, heading=270.0)], md5sum="h")
+    device._read_device_map = Mock(return_value=fresh)
+
+    await device.set_maintenance_point(-2000, 30, None, 1)
+
+    (change,) = [payload for payload in payloads if payload["o"] == 224]
+    assert change["d"]["points"][2] == 1.5
+
+
+@pytest.mark.asyncio
+async def test_a_point_is_not_turned_when_its_heading_cannot_be_read(device):
+    from custom_components.dreame_mower.dreame.map_data_parser import MowerMaintenancePoint
+
+    payloads = _answering(device, {224: {"id": 1}})
+    device._vector_map = SimpleNamespace(
+        maintenance_points=[MowerMaintenancePoint(point_id=1, x=-2270, y=30)], available_maps=[], maps=None, map_index=0
+    )
+    device._read_device_map = Mock(return_value=None)
+
+    with pytest.raises(ValueError, match="give its heading"):
+        await device.set_maintenance_point(-2000, 30, None, 1)
+    assert payloads == []
+
+
+
+@pytest.mark.parametrize("resume,expected", [(None, {}), (True, {"need_bp": True}), (False, {"need_bp": False})])
+def test_a_start_tells_the_mower_whether_to_go_on_from_the_stop_point(device, resume, expected):
+    """Left out, the mower is told nothing; otherwise it is told either way."""
+    all_area = device._build_all_area_task_payload(2, resume)
+    zones = device._build_zone_task_payload([1, 3], resume)
+
+    assert all_area == {"m": "a", "p": 0, "o": 100, "d": {"region_id": [2], "area_id": [], **expected}}
+    assert zones == {"m": "a", "p": 0, "o": 102, "d": {"region": [1, 3], **expected}}
+
+
+@pytest.mark.asyncio
+async def test_a_zone_start_from_the_stop_point_reaches_the_mower(device):
+    device._cloud_device.set_connected_state(True)
+    device._vector_map = None
+
+    assert await device.start_mowing(MowingMode.ZONE, zone_ids=[1], from_stop_point=True) is True
+
+    _siid, _aiid, parameters, _retry = device._cloud_device.action_calls[-1]
+    assert parameters == [{"m": "a", "p": 0, "o": 102, "d": {"region": [1], "need_bp": True}}]
+
+
+@pytest.mark.asyncio
+async def test_an_all_area_start_without_a_map_is_not_told_where_to_begin(device):
+    device._cloud_device.set_connected_state(True)
+    device._vector_map = None
+    device._current_map_id = None
+    device.refresh_current_map_id = Mock()
+    device.start_mowing_generic = AsyncMock(return_value=True)
+
+    assert await device.start_mowing_all_area(from_stop_point=True) is False
+    device.start_mowing_generic.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_setting_of_the_record_is_written_under_its_key(device):
+    sent = []
+
+    def responder(siid, aiid, parameters, retry_count):
+        sent.append(parameters[0])
+        return {"code": 0, "out": [{"d": {"value": 1}, "m": "r", "r": 0}]}
+
+    device._cloud_device.set_connected_state(True)
+    device._cloud_device.action_result = responder
+
+    assert await device.set_device_setting("CLS", {"value": 1}) == {"value": 1}
+    assert sent == [{"m": "s", "t": "CLS", "d": {"value": 1}}]
+
+
+
+@pytest.mark.asyncio
+async def test_a_setting_the_mower_refuses_is_not_taken_for_written(device):
+    device._cloud_device.set_connected_state(True)
+    device._cloud_device.action_result = lambda *args: {"code": 0, "out": [{"d": {"value": 0}, "m": "r", "r": 1}]}
+
+    assert await device.set_device_setting("CLS", {"value": 1}) is None
+
+
+@pytest.mark.asyncio
+async def test_a_setting_confirmed_without_an_echo_counts_as_written(device):
+    device._cloud_device.set_connected_state(True)
+    device._cloud_device.action_result = lambda *args: {"code": 0, "out": [{"m": "r", "q": 62, "r": 0}]}
+
+    assert await device.set_device_setting("BP", {"on": True, "day": 3}) == {}
+
+
+
+@pytest.mark.asyncio
+async def test_a_setting_answered_without_an_out_list_is_read_as_before(device):
+    device._cloud_device.set_connected_state(True)
+    device._cloud_device.action_result = lambda *args: {"d": {"value": 1}}
+
+    assert await device.set_device_setting("CLS", {"value": 1}) == {"value": 1}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("answer, called", [({"r": 0}, True), (None, False)])
+async def test_the_mower_is_asked_to_call_out(device, answer, called):
+    device._send_task_payload = AsyncMock(return_value=answer)
+
+    assert await device.find_robot() is called
+    device._send_task_payload.assert_awaited_once_with("find robot", {"m": "a", "p": 1, "o": 9})

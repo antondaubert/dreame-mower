@@ -1,10 +1,18 @@
 {
   "domain": "dreame_mower",
   "name": "Dreame Mower",
+  "after_dependencies": [
+    "frontend",
+    "lovelace"
+  ],
   "codeowners": [
     "@antondaubert"
   ],
   "config_flow": true,
+  "dependencies": [
+    "http",
+    "websocket_api"
+  ],
   "documentation": "https://github.com/antondaubert/dreame-mower",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/antondaubert/dreame-mower/issues",

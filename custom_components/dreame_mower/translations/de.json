@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Wählen Sie den Kontotyp",
-        "description": "Wählen Sie Ihren Kontotyp für die Integration von Dreame Mower aus.",
+        "description": "Wählen Sie Ihren Kontotyp für die Dreame-Mower-Integration.",
         "data": {
           "account_type": "Kontotyp"
         }
@@ -12,7 +12,7 @@
         "data": {
           "username": "Benutzername",
           "password": "Passwort",
-          "country": "Cloudserver"
+          "country": "Serverland"
         },
         "description": "Melden Sie sich in der Dreamehome Cloud an."
       },
@@ -28,14 +28,14 @@
         "data": {
           "devices": "Unterstützte Geräte"
         },
-        "description": "Bitte wählen Sie das Dreame Mower -Gerät aus, das Sie einrichten möchten."
+        "description": "Bitte wählen Sie den Dreame-Mäher aus, den Sie einrichten möchten."
       },
       "options": {
         "data": {
           "name": "Gerätename",
           "notify": "Benachrichtigungstypen"
         },
-        "description": "Konfigurieren Sie Ihren Geräten Namen und die Benachrichtigungseinstellungen für den Dreame Mower."
+        "description": "Konfigurieren Sie den Gerätenamen und die Benachrichtigungen für Ihren Dreame-Mäher."
       }
     },
     "error": {
@@ -47,7 +47,6 @@
       "invalid_account_type": "Ungültiger Kontotyp ausgewählt."
     },
     "abort": {
-      "cannot_connect": "Fehlgeschlagene Verbindung.",
       "already_configured": "Dieses Gerät ist bereits konfiguriert."
     }
   },
@@ -55,13 +54,10 @@
     "step": {
       "init": {
         "title": "Optionen",
-        "description": "Verbunden mit {account} ({account_type}, {country}).\n\nKonfigurieren Sie die Benachrichtigungseinstellungen für die Integration von Dreame Mäher.",
+        "description": "Verbunden mit {account} ({account_type}, {country}).\n\nWählen Sie, welche Benachrichtigungen Sie von Ihrem Dreame-Mäher erhalten möchten.",
         "data": {
           "notify": "Benachrichtigungstypen",
-          "map_rotation": "Kartenrotation",
-          "map_show_title": "Kartentitel anzeigen",
-          "map_show_legend": "Kartenlegende anzeigen",
-          "map_padding": "Kartenrand (Pixel)"
+          "map_rotation": "Kartenrotation"
         }
       }
     }
@@ -86,48 +82,8 @@
           "maintenance_paused": "Pausiert am Wartungspunkt"
         }
       },
-      "charging_status": {
-        "name": "Ladestatus",
-        "state": {
-          "not_docked": "Nicht angedockt",
-          "charging": "Wird geladen",
-          "not_charging": "Wird nicht aufgeladen",
-          "charging_completed": "Vollständig geladen",
-          "return_to_charge": "Rückkehr zum Laden",
-          "charging_paused_high_temperature": "Laden pausiert: Batterietemperatur zu hoch",
-          "charging_paused_low_temperature": "Laden pausiert: Batterietemperatur zu niedrig"
-        }
-      },
       "mowing_progress": {
         "name": "Mäh Fortschritt"
-      },
-      "bluetooth_connection": {
-        "name": "Bluetooth"
-      },
-      "dnd_status": {
-        "name": "Bitte nicht stören"
-      },
-      "charging_schedule": {
-        "name": "Ladeplan"
-      },
-      "timezone": {
-        "name": "Zeitzone"
-      },
-      "device_code": {
-        "name": "Gerätecode"
-      },
-      "current_task": {
-        "name": "Aktuelle Aufgabe",
-        "state": {
-          "idle": "Keine Aufgabe",
-          "starting": "Startet",
-          "mowing": "Mähen",
-          "paused": "Pausiert",
-          "finished": "Abgeschlossen",
-          "failed": "Fehlgeschlagen",
-          "exit": "Gestoppt",
-          "returning_to_dock": "Rückkehr zur Station"
-        }
       },
       "consumable_blade_health": {
         "name": "Klingenverschleiß"
@@ -143,36 +99,6 @@
       },
       "account": {
         "name": "Konto"
-      }
-    },
-    "camera": {
-      "map_camera": {
-        "name": "Karte"
-      }
-    },
-    "button": {
-      "reset_blade": {
-        "name": "Klingenzähler zurücksetzen"
-      },
-      "reset_brush": {
-        "name": "Bürstenzähler zurücksetzen"
-      },
-      "reset_robot_maintenance": {
-        "name": "Wartungszähler zurücksetzen"
-      },
-      "dock_without_stopping": {
-        "name": "Andocken ohne Aufgabe zu stoppen"
-      },
-      "go_to_maintenance_point": {
-        "name": "Zum Wartungspunkt fahren"
-      }
-    },
-    "number": {
-      "cutting_height": {
-        "name": "Schnitthöhe"
-      },
-      "mowing_direction": {
-        "name": "Mährichtung"
       }
     },
     "switch": {
@@ -197,14 +123,20 @@
       "schedule": {
         "name": "Zeitplan {number}"
       },
-      "edge_mowing_auto": {
-        "name": "Automatisches Randmähen"
+      "frost_protection": {
+        "name": "Frostschutz"
       },
-      "edge_blade_offset": {
-        "name": "EdgeMaster"
+      "path_obstacle_avoidance": {
+        "name": "Hindernisvermeidung auf Wegen"
       },
-      "edge_mowing_safe": {
-        "name": "Sicheres Randmähen"
+      "auto_recharge_standby": {
+        "name": "Automatisch laden nach Standby"
+      },
+      "ai_obstacle_photos": {
+        "name": "Fotos erkannter Hindernisse aufnehmen"
+      },
+      "child_lock": {
+        "name": "Kindersicherung"
       }
     },
     "time": {
@@ -218,6 +150,9 @@
     "select": {
       "rain_delay": {
         "name": "Wartezeit nach Regen"
+      },
+      "navigation_path": {
+        "name": "Navigationsweg"
       }
     }
   },
@@ -234,9 +169,50 @@
         "map_wide": "Eine Einstellung für die gesamte Karte",
         "per_zone": "Eine Einstellung pro Zone"
       }
+    },
+    "mowing_efficiency": {
+      "options": {
+        "standard": "Standard",
+        "efficient": "Effizient"
+      }
+    },
+    "turning_method": {
+      "options": {
+        "efficient": "Effizient",
+        "lawn_care": "Rasenschonend"
+      }
+    },
+    "ai_obstacle_kind": {
+      "options": {
+        "humans": "Menschen",
+        "animals": "Tiere",
+        "objects": "Gegenstände"
+      }
     }
   },
   "services": {
+    "start_all_area_mowing": {
+      "name": "Ganze Fläche mähen",
+      "description": "Mäht die ganze aktive Karte. Ein bereits laufender Mähvorgang wird fortgesetzt.",
+      "fields": {
+        "from_stop_point": {
+          "name": "Ab dem Haltepunkt",
+          "description": "Wo eine unvollendete Aufgabe in einer Zone anhielt: an, nur den Rest mähen; aus, von vorn mähen. Weggelassen wird dem Mäher nichts gesagt."
+        }
+      }
+    },
+    "end_task": {
+      "name": "Auftrag beenden",
+      "description": "Beendet den laufenden Mähauftrag. Der Mäher bleibt, wo er ist, und merkt sich, wo der Auftrag aufgehört hat, damit ein späterer dort weitermachen kann."
+    },
+    "stop_returning": {
+      "name": "Rückkehr abbrechen",
+      "description": "Hält den Mäher auf dem Weg zur Station an. Er bleibt, wo er ist."
+    },
+    "recharge": {
+      "name": "Aufladen",
+      "description": "Schickt den Mäher zum Aufladen in die Station. Ein laufender Mähauftrag bleibt erhalten und kann danach fortgesetzt werden."
+    },
     "start_zone_mowing": {
       "name": "Zonen mähen starten",
       "description": "Das Mähen für eine oder mehrere ausgewählte Zonen starten.",
@@ -244,6 +220,10 @@
         "zone_ids": {
           "name": "Zonen-IDs",
           "description": "Liste der zu mähenden Zonen-IDs, zum Beispiel [1, 3]."
+        },
+        "from_stop_point": {
+          "name": "Ab dem Haltepunkt",
+          "description": "Wo eine unvollendete Aufgabe in einer Zone anhielt: an, nur den Rest mähen; aus, von vorn mähen. Weggelassen wird dem Mäher nichts gesagt."
         }
       }
     },
@@ -267,61 +247,71 @@
         }
       }
     },
-    "set_cutting_height": {
-      "name": "Schnitthöhe festlegen",
-      "description": "Die Schnitthöhe für eine gesamte Karte oder eine ihrer Zonen festlegen. Nicht jedes Modell unterstützt die Höhenverstellung; der verfügbare Bereich hängt vom Modell ab.",
+    "select_map": {
+      "name": "Karte auswählen",
+      "description": "Macht eine andere Karte zu der, auf der der Mäher arbeitet. Während eines laufenden Mähauftrags nicht möglich.",
       "fields": {
-        "height": {
-          "name": "Schnitthöhe",
-          "description": "Schnitthöhe in Zentimetern, in Schritten von 0,5 cm."
-        },
         "map_id": {
           "name": "Karten-ID",
-          "description": "Zu ändernde Karte. Standardmäßig die aktive Karte. Verfügbare IDs stehen nach dem Abrufen der Karte im Attribut „maps“ der Mähroboter-Entität."
-        },
-        "zone_id": {
-          "name": "Zonen-ID",
-          "description": "Statt der gesamten Karte zu ändernde Zone. Dadurch werden zonenbezogene Einstellungen aktiviert: Andere Zonen behalten ihre eigene Höhe und die kartenweite Höhe gilt nicht mehr. Verfügbare IDs stehen im Attribut „zones“ der Mähroboter-Entität."
+          "description": "Karte, zu der gewechselt wird. Die verfügbaren Karten-IDs stehen im Attribut maps der Mäher-Entität, sobald die Karte geladen wurde."
         }
       }
     },
-    "set_edge_mowing_settings": {
-      "name": "Kantenmäh-Einstellungen festlegen",
-      "description": "Kantenmäh-Einstellungen für eine gesamte Karte oder eine ihrer Zonen ändern. Nicht angegebene Einstellungen behalten ihren aktuellen Wert. Bei zonenbezogenen Einstellungen werden Änderungen auf alle Zonen angewendet, da der Mähroboter die kartenweiten Einstellungen dann nicht mehr verwendet. Diese Einstellungen sind für die aktive Karte auch als Schalter verfügbar.",
+    "set_mowing_settings": {
+      "name": "Mäheinstellungen festlegen",
+      "description": "Beliebige Mäheinstellungen für eine gesamte Karte oder eine ihrer Zonen in einem Schritt ändern. Nicht angegebene Einstellungen behalten ihren aktuellen Wert. Bei zonenbezogenen Einstellungen werden Änderungen auf alle Zonen angewendet, da der Mähroboter die kartenweiten Einstellungen dann nicht mehr verwendet. Einstellungen, die ein Mähroboter nicht bietet, werden abgelehnt.",
       "fields": {
+        "efficiency": {
+          "name": "Mäheffizienz",
+          "description": "Wie schnell der Mähroboter arbeitet. „Effizient“ mäht mehr pro Tag, geht aber weniger behutsam mit Hindernissen um."
+        },
+        "cutting_height": {
+          "name": "Schnitthöhe",
+          "description": "Schnitthöhe in Zentimetern, in Schritten von 0,5 cm."
+        },
+        "mowing_direction": {
+          "name": "Mährichtung",
+          "description": "Richtung der Mähbahnen in Grad, wie in der App angezeigt. Winkel ab 180° entsprechen denselben Bahnen wie der um 180° kleinere Winkel."
+        },
+        "mowing_direction_mode": {
+          "name": "Mährichtungsmodus",
+          "description": "Legt fest, ob jede Sitzung in dieselbe Richtung mäht oder die Richtung gegenüber der vorherigen Sitzung dreht."
+        },
         "automatic_edge_mowing": {
           "name": "Automatisches Kantenmähen",
           "description": "Legt fest, ob der Mähroboter die Kanten nach dem Mähen der gesamten Karte oder einer Zone automatisch mäht."
         },
         "safe_edge_mowing": {
           "name": "Sicheres Kantenmähen",
-          "description": "Legt fest, ob der Mähroboter beim Kantenmähen einen kleinen Abstand zur Rasengrenze hält. Nicht bei allen Modellen verfügbar."
+          "description": "Legt fest, ob der Mähroboter beim Kantenmähen einen kleinen Abstand zur Rasengrenze hält."
         },
         "edge_blade_offset": {
           "name": "Seitlicher Messerversatz",
-          "description": "Legt fest, ob sich die Schneidscheibe bei Kantenfahrten seitlich verschiebt, damit näher an der Grenze gemäht wird. Beim Aktivieren werden außerdem aus einer Kantenrunde zwei, damit die versetzte Scheibe die Kante vollständig abdeckt."
+          "description": "Legt fest, ob sich die Schneidscheibe bei Kantenfahrten seitlich verschiebt, damit näher an der Grenze gemäht wird. Beim Aktivieren werden außerdem aus einer Kantenrunde zwei."
         },
-        "map_id": {
-          "name": "Karten-ID",
-          "description": "Zu ändernde Karte. Standardmäßig die aktive Karte. Verfügbare IDs stehen nach dem Abrufen der Karte im Attribut „maps“ der Mähroboter-Entität."
+        "edge_obstacle_avoidance": {
+          "name": "Hindernisvermeidung an Kanten",
+          "description": "Legt fest, ob der Mähroboter auch entlang der Kanten Hindernissen ausweicht, wodurch dort etwas Gras stehen bleiben kann. Wird automatisch deaktiviert, sobald weder LiDAR noch Kamera Hindernisse erkennen."
         },
-        "zone_id": {
-          "name": "Zonen-ID",
-          "description": "Statt der gesamten Karte zu ändernde Zone. Dadurch werden zonenbezogene Einstellungen aktiviert: Andere Zonen behalten ihre eigenen Einstellungen und die kartenweiten Einstellungen gelten nicht mehr. Verfügbare IDs stehen im Attribut „zones“ der Mähroboter-Entität."
-        }
-      }
-    },
-    "set_mowing_direction": {
-      "name": "Mährichtung festlegen",
-      "description": "Die Richtung der Mähbahnen für eine gesamte Karte oder eine ihrer Zonen sowie deren Änderung zwischen den Sitzungen festlegen. Bei zonenbezogenen Einstellungen werden Änderungen auf alle Zonen angewendet, da der Mähroboter die kartenweiten Einstellungen dann nicht mehr verwendet. Für die aktive Karte sind diese Einstellungen auch als Zahl und Auswahl verfügbar.",
-      "fields": {
-        "angle": {
-          "name": "Winkel",
-          "description": "Mährichtung in Grad, wie in der App angezeigt. Der Winkel beschreibt eine Linienausrichtung, keine Fahrtrichtung: Winkel ab 180° entsprechen denselben Bahnen wie der um 180° kleinere Winkel."
+        "lidar_obstacle_recognition": {
+          "name": "LiDAR-Hinderniserkennung",
+          "description": "Legt fest, ob der Mähroboter Hindernisse mit seinem LiDAR erkennt und ihnen ausweicht, ohne sie zu berühren. Deaktivieren, damit der Mähroboter hohes Gras mähen kann."
         },
-        "mode": {
-          "name": "Mähmodus",
-          "description": "Auswählen, ob jede Sitzung dieselbe Mährichtung verwendet oder gegenüber der vorherigen Sitzung wechselt."
+        "obstacle_height": {
+          "name": "Höhe für Hindernisvermeidung",
+          "description": "Das niedrigste Hindernis, dem der Mähroboter ausweicht, in Zentimetern."
+        },
+        "obstacle_distance": {
+          "name": "Abstand für Hindernisvermeidung",
+          "description": "Wie viel Abstand der Mähroboter zu Hindernissen hält, in Zentimetern. Ein geringerer Abstand kann zu Zusammenstößen oder Kratzern führen."
+        },
+        "ai_obstacle_recognition": {
+          "name": "KI-Hinderniserkennung",
+          "description": "Die Hindernisarten, die die Kamera erkennt und denen der Mähroboter ausweicht. Bei einer leeren Liste übernehmen Stoßfänger und LiDAR die Hindernisvermeidung."
+        },
+        "turning_method": {
+          "name": "Wendemethode",
+          "description": "Wie der Mähroboter am Ende einer Bahn wendet. „Rasenschonend“ wendet in einem weiteren Bogen und schont den Rasen, braucht aber etwas Platz zum Wenden. Nur mit neuerer Firmware verfügbar."
         },
         "map_id": {
           "name": "Karten-ID",
@@ -344,6 +334,368 @@
         "map_id": {
           "name": "Karten-ID",
           "description": "Zu ändernde Karte. Standardmäßig die aktive Karte."
+        }
+      }
+    },
+    "set_no_go_zone": {
+      "name": "Sperrzone festlegen",
+      "description": "Zeichnet eine Sperrzone auf der aktuellen Karte oder ändert eine, in Kartenkoordinaten (Millimeter, wie die Zonen der Karte angegeben sind). Gibt die ID der Zone zurück. Der Mäher fährt dafür nicht los, lehnt es aber ab, solange er mäht oder zur Station zurückkehrt.",
+      "fields": {
+        "shape": {
+          "name": "Form",
+          "description": "Eine Linie, die der Mäher nicht überquert, ein Rechteck oder ein Kreis."
+        },
+        "points": {
+          "name": "Punkte",
+          "description": "Die beiden Enden einer Linie, zwei gegenüberliegende Ecken eines Rechtecks oder der Mittelpunkt eines Kreises, jeweils als [x, y]."
+        },
+        "radius": {
+          "name": "Radius",
+          "description": "Radius eines Kreises in Millimetern."
+        },
+        "zone_id": {
+          "name": "Sperrzonen-ID",
+          "description": "Die zu ändernde Sperrzone, statt eine neue zu zeichnen."
+        }
+      }
+    },
+    "set_ignore_obstacle_area": {
+      "name": "Bereich ohne Hinderniserkennung festlegen",
+      "description": "Zeichnet einen Bereich auf der aktuellen Karte, in dem sich der Mäher nur auf seinen Stoßfänger verlässt und über niedrige Hindernisse fährt, oder ändert einen. Gibt die ID des Bereichs zurück. Der Mäher fährt dafür nicht los, lehnt es aber ab, solange er mäht oder zur Station zurückkehrt.",
+      "fields": {
+        "rect": {
+          "name": "Rechteck",
+          "description": "Zwei gegenüberliegende Ecken als [x0, y0, x1, y1], in Millimetern."
+        },
+        "area_id": {
+          "name": "Bereichs-ID",
+          "description": "Der zu ändernde Bereich, statt einen neuen zu zeichnen."
+        }
+      }
+    },
+    "set_spot_area": {
+      "name": "Bereich für Punktmähen festlegen",
+      "description": "Zeichnet einen Bereich für das Punktmähen auf der aktuellen Karte oder ändert einen. Er muss innerhalb einer Zone liegen. Gibt die ID des Bereichs zurück. Der Mäher fährt dafür nicht los, lehnt es aber ab, solange er mäht oder zur Station zurückkehrt.",
+      "fields": {
+        "rect": {
+          "name": "Rechteck",
+          "description": "Zwei gegenüberliegende Ecken als [x0, y0, x1, y1], in Millimetern."
+        },
+        "area_id": {
+          "name": "Bereichs-ID",
+          "description": "Der zu ändernde Bereich, statt einen neuen zu zeichnen."
+        }
+      }
+    },
+    "set_maintenance_point": {
+      "name": "Wartungspunkt festlegen",
+      "description": "Setzt einen Wartungspunkt auf der aktuellen Karte oder verschiebt einen. Gibt die ID des Punkts zurück. Der Mäher fährt dafür nicht los, lehnt es aber ab, solange er mäht oder zur Station zurückkehrt.",
+      "fields": {
+        "x": {
+          "name": "X",
+          "description": "Wo der Punkt liegt, in Millimetern."
+        },
+        "y": {
+          "name": "Y",
+          "description": "Wo der Punkt liegt, in Millimetern."
+        },
+        "heading": {
+          "name": "Ausrichtung",
+          "description": "In welche Richtung der Mäher dort schaut, in Grad. Weggelassen behält ein verschobener Punkt seine Richtung, ein neuer zeigt auf 0 Grad."
+        },
+        "point_id": {
+          "name": "Punkt-ID",
+          "description": "Der zu verschiebende Punkt, statt einen neuen zu setzen."
+        }
+      }
+    },
+    "delete_map_item": {
+      "name": "Kartenelement löschen",
+      "description": "Löscht eine Zone, einen Weg, eine Sperrzone, einen Bereich für Punktmähen, einen Wartungspunkt oder einen Bereich ohne Hinderniserkennung der aktuellen Karte. Beim Löschen einer Zone entfallen auch ihre Zeitpläne. Der Mäher fährt dafür nicht los, lehnt es aber ab, solange er mäht oder zur Station zurückkehrt.",
+      "fields": {
+        "kind": {
+          "name": "Art",
+          "description": "Um welche Art von Element es sich handelt."
+        },
+        "item_id": {
+          "name": "Element-ID",
+          "description": "Die ID des Elements."
+        }
+      }
+    },
+    "rename_zone": {
+      "name": "Zone umbenennen",
+      "description": "Gibt einer Zone der aktuellen Karte einen neuen Namen mit bis zu 24 Zeichen. Der Mäher fährt dafür nicht los, lehnt es aber ab, solange er mäht oder zur Station zurückkehrt.",
+      "fields": {
+        "zone_id": {
+          "name": "Zonen-ID",
+          "description": "Die umzubenennende Zone."
+        },
+        "name": {
+          "name": "Name",
+          "description": "Der neue Name."
+        }
+      }
+    },
+    "split_zone": {
+      "name": "Zone teilen",
+      "description": "Teilt eine Zone der aktuellen Karte entlang einer Linie quer durch sie in zwei. Die Zeitpläne, die die Zone enthalten, entfallen. Gibt die IDs der beiden Zonen zurück. Der Mäher fährt dafür nicht los, lehnt es aber ab, solange er mäht oder zur Station zurückkehrt.",
+      "fields": {
+        "zone_id": {
+          "name": "Zonen-ID",
+          "description": "Die zu teilende Zone."
+        },
+        "line": {
+          "name": "Linie",
+          "description": "Die beiden Enden der Linie als [x0, y0, x1, y1], in Millimetern; sie sollte quer über die Zone reichen."
+        }
+      }
+    },
+    "merge_zones": {
+      "name": "Zonen zusammenführen",
+      "description": "Führt zwei benachbarte Zonen der aktuellen Karte zu einer zusammen. Gibt die ID der zusammengeführten Zone zurück. Der Mäher fährt dafür nicht los, lehnt es aber ab, solange er mäht oder zur Station zurückkehrt.",
+      "fields": {
+        "zone_ids": {
+          "name": "Zonen-IDs",
+          "description": "Die beiden Zonen."
+        }
+      }
+    },
+    "rename_map": {
+      "name": "Karte umbenennen",
+      "description": "Gibt einer Karte einen neuen Namen mit bis zu 24 Zeichen. Der Mäher fährt dafür nicht los, lehnt es aber ab, solange er mäht oder zur Station zurückkehrt.",
+      "fields": {
+        "map_id": {
+          "name": "Karten-ID",
+          "description": "Die umzubenennende Karte."
+        },
+        "name": {
+          "name": "Name",
+          "description": "Der neue Name."
+        }
+      }
+    },
+    "clear_rain_protection": {
+      "name": "Regenschutz aufheben",
+      "description": "Hebt den vom Mäher gemeldeten Regen auf, damit eine danach gestartete Mähaufgabe läuft, obwohl der Sensor Wasser erkannt hat. Starte die Aufgabe direkt danach; sonst bewirkt dies nichts."
+    },
+    "find_robot": {
+      "name": "Mäher finden",
+      "description": "Lässt den Mäher rufen, damit man ihn an seinem Ton findet. Er bewegt sich dabei nicht."
+    },
+    "clear_error": {
+      "name": "Fehler löschen",
+      "description": "Löscht die Fehler und Warnungen, die der Mäher meldet, und lässt ihn weitermachen: Eine pausierte Aufgabe wird fortgesetzt, und ein Mäher, der ohne Aufgabe außerhalb seiner Station steht, fährt nach Hause. Der Mäher kann sich bewegen.",
+      "fields": {
+        "continue_task": {
+          "name": "Fortsetzen",
+          "description": "Nach dem Löschen die Aufgabe fortsetzen oder nach Hause fahren. Aus löscht nur die Fehler."
+        }
+      }
+    },
+    "set_do_not_disturb": {
+      "name": "Nicht stören einstellen",
+      "description": "Schaltet Nicht stören ein oder aus oder ändert sein Zeitfenster. Im Fenster startet keine Aufgabe; eine laufende Aufgabe wird zu Beginn pausiert und der Mäher fährt zur Station.",
+      "fields": {
+        "enabled": {
+          "name": "Aktiv",
+          "description": "Ein- oder ausschalten; weggelassen bleibt es, wie es ist."
+        },
+        "start": {
+          "name": "Beginn",
+          "description": "Wann das Fenster beginnt; weggelassen bleibt es, wie es ist."
+        },
+        "end": {
+          "name": "Ende",
+          "description": "Wann das Fenster endet, am nächsten Tag, wenn es vor dem Beginn liegt; weggelassen bleibt es, wie es ist. Zeiten liegen zwischen 00:01 und 23:59."
+        }
+      }
+    },
+    "set_low_speed_at_night": {
+      "name": "Langsam fahren nachts einstellen",
+      "description": "Schaltet das langsame Fahren in der Nacht ein oder aus oder ändert sein Zeitfenster, in dem der Mäher langsam fährt.",
+      "fields": {
+        "enabled": {
+          "name": "Aktiv",
+          "description": "Ein- oder ausschalten; weggelassen bleibt es, wie es ist."
+        },
+        "start": {
+          "name": "Beginn",
+          "description": "Wann das Fenster beginnt; weggelassen bleibt es, wie es ist."
+        },
+        "end": {
+          "name": "Ende",
+          "description": "Wann das Fenster endet, am nächsten Tag, wenn es vor dem Beginn liegt; weggelassen bleibt es, wie es ist. Zeiten liegen zwischen 00:01 und 23:59."
+        }
+      }
+    },
+    "set_start_from_stop_point": {
+      "name": "Start ab Haltepunkt einstellen",
+      "description": "Legt fest, ob eine neue Aufgabe dort weitermachen kann, wo eine unvollendete anhielt, und wie viele Tage ein Haltepunkt erhalten bleibt. Ausschalten löscht die Haltepunkte des Mähers.",
+      "fields": {
+        "enabled": {
+          "name": "Aktiv",
+          "description": "Ein- oder ausschalten; weggelassen bleibt es, wie es ist."
+        },
+        "days": {
+          "name": "Tage",
+          "description": "Wie viele Tage ein Haltepunkt erhalten bleibt, 1 bis 7; weggelassen bleibt es, wie es ist."
+        }
+      }
+    },
+    "set_light": {
+      "name": "Licht einstellen",
+      "description": "Ändert, wann die Lichter des Mähers leuchten: nur in einem eigenen Zeitraum oder den ganzen Tag, und in welchen Zuständen. Was weggelassen wird, bleibt, wie es ist.",
+      "fields": {
+        "custom_period": {
+          "name": "Eigener Zeitraum",
+          "description": "Die Lichter auf den Zeitraum von Beginn bis Ende beschränken."
+        },
+        "start": {
+          "name": "Beginn",
+          "description": "Wann der Zeitraum beginnt."
+        },
+        "end": {
+          "name": "Ende",
+          "description": "Wann der Zeitraum endet."
+        },
+        "standby": {
+          "name": "Im Standby",
+          "description": "Licht, solange der Mäher bereitsteht."
+        },
+        "working": {
+          "name": "Beim Arbeiten",
+          "description": "Licht, während der Mäher arbeitet."
+        },
+        "charging": {
+          "name": "Beim Laden",
+          "description": "Licht, während der Mäher lädt."
+        },
+        "error": {
+          "name": "Bei Fehlern",
+          "description": "Licht, solange der Mäher einen Fehler meldet."
+        }
+      }
+    },
+    "set_human_presence_alert": {
+      "name": "Personenerkennung einstellen",
+      "description": "Ändert die Meldung, wenn die Kamera des Mähers eine Person sieht: ob sie aktiv ist, wie empfindlich, wann sie aufpasst, wie sie meldet und wie oft. Was weggelassen wird, bleibt, wie es ist.",
+      "fields": {
+        "enabled": {
+          "name": "Aktiv",
+          "description": "Die Meldung ein- oder ausschalten."
+        },
+        "sensitivity": {
+          "name": "Empfindlichkeit",
+          "description": "Wie leicht eine Person erkannt wird."
+        },
+        "standby": {
+          "name": "Im Standby",
+          "description": "Aufpassen, solange der Mäher bereitsteht."
+        },
+        "mowing": {
+          "name": "Beim Mähen",
+          "description": "Aufpassen, während der Mäher mäht."
+        },
+        "returning": {
+          "name": "Bei der Rückkehr",
+          "description": "Aufpassen, während der Mäher zur Station fährt."
+        },
+        "patrolling": {
+          "name": "Beim Patrouillieren",
+          "description": "Aufpassen, während der Mäher patrouilliert."
+        },
+        "voice": {
+          "name": "Sprechen und benachrichtigen",
+          "description": "Der Mäher spricht, und eine Benachrichtigung geht raus."
+        },
+        "photo": {
+          "name": "Foto aufnehmen",
+          "description": "Ein Foto der Person wird aufgenommen und landet im Album der App."
+        },
+        "interval": {
+          "name": "Abstand",
+          "description": "Höchstens eine Meldung in so vielen Minuten, bei Mähern, die ihre Meldungen verteilen."
+        }
+      }
+    },
+    "set_robot_voice": {
+      "name": "Stimme einstellen",
+      "description": "Ändert die Lautstärke der Stimme des Mähers und welche Ansagen er spricht. Was weggelassen wird, bleibt, wie es ist.",
+      "fields": {
+        "volume": {
+          "name": "Lautstärke",
+          "description": "Von 0 bis 100."
+        },
+        "regular": {
+          "name": "Normale Hinweise",
+          "description": "Normale Hinweise ansagen."
+        },
+        "work_status": {
+          "name": "Arbeitsstatus",
+          "description": "Den Arbeitsstatus ansagen."
+        },
+        "special_status": {
+          "name": "Besondere Zustände",
+          "description": "Besondere Zustände ansagen."
+        },
+        "error_status": {
+          "name": "Fehler",
+          "description": "Fehler ansagen."
+        }
+      }
+    },
+    "reset_consumable": {
+      "name": "Verschleißteil zurücksetzen",
+      "description": "Beginnt die Zählung eines Verschleißteils neu, etwa nach dem Tausch der Messer oder der Reinigungsbürste der Station oder nach einer Wartung des Mähers.",
+      "fields": {
+        "item": {
+          "name": "Verschleißteil",
+          "description": "Die Messer, die Reinigungsbürste der Station oder die Wartung des Mähers."
+        }
+      }
+    },
+    "go_to_maintenance_point": {
+      "name": "Zum Wartungspunkt fahren",
+      "description": "Schickt den Mäher zu einem Wartungspunkt der aktuellen Karte, wo er zur Reinigung oder Wartung wartet. Der Mäher fährt dorthin.",
+      "fields": {
+        "point_id": {
+          "name": "Wartungspunkt",
+          "description": "Die ID eines Wartungspunkts der aktiven Karte."
+        }
+      }
+    },
+    "ignore_obstacle": {
+      "name": "Hindernis ignorieren",
+      "description": "Lässt den Mäher ein Hindernis vergessen, das seine Kamera erkannt hat, sodass es nicht mehr auf der Karte erscheint. Das lässt sich nicht rückgängig machen. Der Mäher bewegt sich dafür nicht, lehnt es aber während des Mähens ab.",
+      "fields": {
+        "obstacle_id": {
+          "name": "Hindernis",
+          "description": "Die ID des Hindernisses beim Mäher; die Kartenkarte setzt sie ein, wenn dort ein Hindernis ignoriert wird."
+        }
+      }
+    },
+    "backup_map": {
+      "name": "Karte sichern",
+      "description": "Sichert die aktuelle Karte und ersetzt dabei ihre bisherige Sicherung. Der Mäher fährt dafür nicht los, lehnt es aber ab, solange er mäht oder zur Station zurückkehrt."
+    },
+    "restore_map": {
+      "name": "Karte wiederherstellen",
+      "description": "Stellt die aktuelle Karte aus ihrer Sicherung wieder her, oder mit einem Platz eine gelöschte Karte aus der Sicherung, die in ihrem leeren Platz geblieben ist. Zeitpläne und Mäheinstellungen der Karte können zurückgesetzt werden. Der Mäher bewegt sich dafür nicht, lehnt es aber ab, während er mäht oder zur Station zurückkehrt.",
+      "fields": {
+        "slot": {
+          "name": "Platz",
+          "description": "Der leere Kartenplatz, ab 1 gezählt, dessen Sicherung eine gelöschte Karte zurückbringt. Weglassen, um die aktuelle Karte wiederherzustellen."
+        }
+      }
+    },
+    "delete_map": {
+      "name": "Karte löschen",
+      "description": "Löscht eine Karte mit allem darauf. Die Sicherung der Karte bleibt in ihrem leeren Platz, aus dem restore_map sie zurückholt; ohne Sicherung muss in der App eine neue Karte abgefahren werden. Der Mäher bewegt sich dafür nicht, lehnt es aber ab, während er mäht oder zur Station zurückkehrt.",
+      "fields": {
+        "map_id": {
+          "name": "Karten-ID",
+          "description": "Die zu löschende Karte."
         }
       }
     }

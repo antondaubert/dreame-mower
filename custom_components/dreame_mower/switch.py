@@ -8,14 +8,21 @@ from typing import Any
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import UndefinedType
 
 from .const import DATA_COORDINATOR, DOMAIN
 from .coordinator import DreameMowerCoordinator
-from .dreame.const import SCHEDULE_SLOT_COUNT
+from .dreame.const import (
+    DEVICE_SETTINGS_AI_OBSTACLE_PHOTOS_KEY,
+    DEVICE_SETTINGS_AUTO_RECHARGE_KEY,
+    DEVICE_SETTINGS_CHILD_LOCK_KEY,
+    DEVICE_SETTINGS_FROST_PROTECTION_KEY,
+    DEVICE_SETTINGS_PATH_OBSTACLE_AVOIDANCE_KEY,
+    SCHEDULE_SLOT_COUNT,
+)
 from .entity import DreameMowerEntity, device_errors_as_ha_errors
 
 _LOGGER = logging.getLogger(__name__)
@@ -29,67 +36,59 @@ async def async_setup_entry(
     """Set up Dreame Mower switches from a config entry."""
     coordinator: DreameMowerCoordinator = hass.data[DOMAIN][entry.entry_id][DATA_COORDINATOR]
 
-    switches: list[SwitchEntity] = []
+    # Which switches exist depends on what the mower turns out to offer.
+    @callback
+    def add_switches() -> None:
+        switches: list[SwitchEntity] = []
 
-    if coordinator.supports_charging_period:
-        switches.append(DreameMowerChargingPeriodSwitch(coordinator))
-    else:
-        _LOGGER.debug(
-            "Skipping the charging period switch: device %s reported no charging settings",
-            coordinator.device_name,
-        )
-
-    if coordinator.supports_rain_protection:
-        switches.append(DreameMowerRainProtectionSwitch(coordinator))
-    else:
-        _LOGGER.debug(
-            "Skipping the rain protection switch: device %s reported no rain settings",
-            coordinator.device_name,
-        )
-
-    if coordinator.supports_anti_theft:
-        switches.append(DreameMowerLiftAlarmSwitch(coordinator))
-        switches.append(DreameMowerOffMapAlarmSwitch(coordinator))
-        switches.append(DreameMowerLocationReportingSwitch(coordinator))
-        if coordinator.supports_anti_theft_pin_check:
-            switches.append(DreameMowerAntiTheftPinCheckSwitch(coordinator))
+        if coordinator.supports_charging_period:
+            switches.append(DreameMowerChargingPeriodSwitch(coordinator))
         else:
             _LOGGER.debug(
-                "Skipping the PIN code switch: device %s does not ask for a PIN before power-off",
+                "Skipping the charging period switch: device %s reported no charging settings",
                 coordinator.device_name,
             )
-    else:
-        _LOGGER.debug(
-            "Skipping the anti-theft switches: device %s reported no anti-theft settings",
-            coordinator.device_name,
-        )
 
-    # Every mower keeps the same fixed set of schedule slots, so the switches are
-    # created even when the schedules could not be read at startup: they report
-    # unavailable until a read lands, and the poll brings them to life without a
-    # reload. A mower that turns out to keep more slots than that gets a switch
-    # per slot it reported.
-    schedule_slots = coordinator.schedule_slots or list(range(SCHEDULE_SLOT_COUNT))
-    for slot in schedule_slots:
-        switches.append(DreameMowerScheduleSwitch(coordinator, slot))
-
-    if coordinator.supports_edge_mowing_settings:
-        switches.append(DreameMowerAutomaticEdgeMowingSwitch(coordinator))
-        switches.append(DreameMowerEdgeBladeOffsetSwitch(coordinator))
-        if coordinator.supports_safe_edge_mowing:
-            switches.append(DreameMowerSafeEdgeMowingSwitch(coordinator))
+        if coordinator.supports_rain_protection:
+            switches.append(DreameMowerRainProtectionSwitch(coordinator))
         else:
             _LOGGER.debug(
-                "Skipping the safe edge mowing switch: device %s keeps no such setting",
+                "Skipping the rain protection switch: device %s reported no rain settings",
                 coordinator.device_name,
             )
-    else:
-        _LOGGER.debug(
-            "Skipping the edge mowing switches: device %s reported no mowing settings",
-            coordinator.device_name,
-        )
 
-    async_add_entities(switches)
+        if coordinator.supports_anti_theft:
+            switches.append(DreameMowerLiftAlarmSwitch(coordinator))
+            switches.append(DreameMowerOffMapAlarmSwitch(coordinator))
+            switches.append(DreameMowerLocationReportingSwitch(coordinator))
+            if coordinator.supports_anti_theft_pin_check:
+                switches.append(DreameMowerAntiTheftPinCheckSwitch(coordinator))
+            else:
+                _LOGGER.debug(
+                    "Skipping the PIN code switch: device %s does not ask for a PIN before power-off",
+                    coordinator.device_name,
+                )
+        else:
+            _LOGGER.debug(
+                "Skipping the anti-theft switches: device %s reported no anti-theft settings",
+                coordinator.device_name,
+            )
+
+        # Every mower keeps the same fixed set of schedule slots, so the switches are
+        # created even when the schedules could not be read at startup: they report
+        # unavailable until a read lands, and the poll brings them to life without a
+        # reload. A mower that turns out to keep more slots than that gets a switch
+        # per slot it reported.
+        schedule_slots = coordinator.schedule_slots or list(range(SCHEDULE_SLOT_COUNT))
+        for slot in schedule_slots:
+            switches.append(DreameMowerScheduleSwitch(coordinator, slot))
+
+        for key, translation_key, icon in _DEVICE_SETTING_SWITCHES:
+            if coordinator.supports_device_setting(key):
+                switches.append(DreameMowerDeviceSettingSwitch(coordinator, key, translation_key, icon))
+        async_add_entities(switches)
+
+    coordinator.async_when_probed(add_switches)
 
 
 class DreameMowerChargingPeriodSwitch(DreameMowerEntity, SwitchEntity):
@@ -389,105 +388,42 @@ class DreameMowerScheduleSwitch(DreameMowerEntity, SwitchEntity):
             )
 
 
-class DreameMowerEdgeMowingSwitch(DreameMowerEntity, SwitchEntity):
-    """Base switch for one edge mowing setting of the active map.
+# The on/off settings of the mower's settings record: key, translation key, icon.
+_DEVICE_SETTING_SWITCHES = (
+    (DEVICE_SETTINGS_FROST_PROTECTION_KEY, "frost_protection", "mdi:snowflake-thermometer"),
+    (DEVICE_SETTINGS_PATH_OBSTACLE_AVOIDANCE_KEY, "path_obstacle_avoidance", "mdi:road-variant"),
+    (DEVICE_SETTINGS_AUTO_RECHARGE_KEY, "auto_recharge_standby", "mdi:home-import-outline"),
+    (DEVICE_SETTINGS_AI_OBSTACLE_PHOTOS_KEY, "ai_obstacle_photos", "mdi:camera-outline"),
+    (DEVICE_SETTINGS_CHILD_LOCK_KEY, "child_lock", "mdi:lock-outline"),
+)
 
-    The settings are stored per map, and per zone once a map follows its per-zone
-    settings. These switches always address the active map as a whole: on such a
-    map the setting goes into every zone as well, since the mower reads the
-    zones' own records and no longer the map-wide one. A single zone is changed
-    with the set_edge_mowing_settings action.
-    """
+
+class DreameMowerDeviceSettingSwitch(DreameMowerEntity, SwitchEntity):
+    """Switch for one on/off setting of the mower's settings record."""
 
     _attr_entity_category = EntityCategory.CONFIG
-    # Name of the set_edge_mowing_settings argument the switch drives, alongside
-    # how the setting reads in an error message.
-    _setting: str
-    _setting_description: str
 
-    async def async_turn_on(self, **kwargs) -> None:
-        """Turn the setting on."""
-        await self._async_set_enabled(True)
+    def __init__(self, coordinator: DreameMowerCoordinator, key: str, translation_key: str, icon: str) -> None:
+        super().__init__(coordinator, translation_key)
+        self._key = key
+        self._attr_translation_key = translation_key
+        self._attr_icon = icon
 
-    async def async_turn_off(self, **kwargs) -> None:
-        """Turn the setting off."""
-        await self._async_set_enabled(False)
+    @property
+    def is_on(self) -> bool | None:
+        """Return whether the setting is on, if it is known."""
+        value = self.coordinator.device_setting(self._key)
+        return bool(value) if isinstance(value, (bool, int)) else None
 
-    async def _async_set_enabled(self, enabled: bool) -> None:
-        """Switch the setting for the active map, keeping the other settings as they are."""
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self._async_set(True)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self._async_set(False)
+
+    async def _async_set(self, enabled: bool) -> None:
         with device_errors_as_ha_errors():
-            updated = await self.coordinator.async_set_edge_mowing_settings(**{self._setting: enabled})
-
+            updated = await self.coordinator.async_set_device_setting(self._key, {"value": int(enabled)})
         if not updated:
-            raise HomeAssistantError(
-                f"Failed to turn {self._setting_description} {'on' if enabled else 'off'}"
-            )
+            raise HomeAssistantError(f"The mower did not take the {self._key} setting")
 
-
-class DreameMowerAutomaticEdgeMowingSwitch(DreameMowerEdgeMowingSwitch):
-    """Switch entity for automatic edge mowing.
-
-    While it is on the mower mows the edges of the map on its own once an
-    all-area or zone run has finished.
-    """
-
-    _attr_translation_key = "edge_mowing_auto"
-    _attr_icon = "mdi:vector-square"
-    _setting = "auto"
-    _setting_description = "automatic edge mowing"
-
-    def __init__(self, coordinator: DreameMowerCoordinator) -> None:
-        """Initialize the automatic edge mowing switch."""
-        super().__init__(coordinator, "edge_mowing_auto")
-
-    @property
-    def is_on(self) -> bool | None:
-        """Return whether the mower mows the edges on its own, if it is known."""
-        return self.coordinator.edge_mowing_auto
-
-
-class DreameMowerSafeEdgeMowingSwitch(DreameMowerEdgeMowingSwitch):
-    """Switch entity for safe edge mowing.
-
-    While it is on the mower keeps a small buffer from the lawn boundary as it
-    mows the edges, which spares the boundary at the cost of leaving a strip of
-    uncut grass along it.
-    """
-
-    _attr_translation_key = "edge_mowing_safe"
-    _attr_icon = "mdi:shield-outline"
-    _setting = "safe"
-    _setting_description = "safe edge mowing"
-
-    def __init__(self, coordinator: DreameMowerCoordinator) -> None:
-        """Initialize the safe edge mowing switch."""
-        super().__init__(coordinator, "edge_mowing_safe")
-
-    @property
-    def is_on(self) -> bool | None:
-        """Return whether the mower keeps a buffer from the boundary, if it is known."""
-        return self.coordinator.edge_mowing_safe
-
-
-class DreameMowerEdgeBladeOffsetSwitch(DreameMowerEdgeMowingSwitch):
-    """Switch entity for the offset blade disc used along the edges.
-
-    While it is on the blade disc shifts sideways for the edge laps so the mower
-    cuts closer to the boundary than the centred disc reaches. The offset disc
-    needs more than one lap to cover the edge, so switching it on also raises a
-    single edge lap to two.
-    """
-
-    _attr_translation_key = "edge_blade_offset"
-    _attr_icon = "mdi:circle-half-full"
-    _setting = "blade_offset"
-    _setting_description = "the edge blade offset"
-
-    def __init__(self, coordinator: DreameMowerCoordinator) -> None:
-        """Initialize the edge blade offset switch."""
-        super().__init__(coordinator, "edge_blade_offset")
-
-    @property
-    def is_on(self) -> bool | None:
-        """Return whether the blade disc shifts sideways for the edges, if it is known."""
-        return self.coordinator.edge_blade_offset
