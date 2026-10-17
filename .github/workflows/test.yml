@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - "main"
-      - "dev"
   pull_request:
     branches:
       - "main"
@@ -15,10 +14,10 @@ jobs:
     runs-on: "ubuntu-latest"
     steps:
       - name: "Checkout the repository"
-        uses: "actions/checkout@v4"
+        uses: "actions/checkout@v7"
 
       - name: "Set up Python"
-        uses: "actions/setup-python@v4"
+        uses: "actions/setup-python@v7"
         with:
           python-version: "3.14"
 
@@ -33,10 +32,10 @@ jobs:
 
       - name: "Run mypy"
         run: |
-          python -m mypy custom_components/dreame_mower/ --ignore-missing-imports --python-version 3.14
+          python -m mypy custom_components/
 
       - name: "Set up Node"
-        uses: "actions/setup-node@v4"
+        uses: "actions/setup-node@v7"
         with:
           node-version: "22"
 
