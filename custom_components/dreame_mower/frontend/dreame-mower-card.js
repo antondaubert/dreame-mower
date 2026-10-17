@@ -60,8 +60,6 @@ const PALETTES = {
     trail: "rgba(255,255,255,.6)",
     working: "#70966E",
     brand: "#AB8C5E",
-    brandSoft: "#E8DEC1",
-    badge: "rgba(255,255,255,.6)",
     obstacle: "#87B2FF",
     mowerBody: "#cfcfcf",
     mowerTop: "#3a3a3a",
@@ -86,8 +84,6 @@ const PALETTES = {
     trail: "rgba(255,255,255,.35)",
     working: "#8fb88c",
     brand: "#c9a877",
-    brandSoft: "#4a3f2b",
-    badge: "rgba(44,44,46,.75)",
     obstacle: "#87B2FF",
     mowerBody: "#bdbdbd",
     mowerTop: "#2e2e2e",
@@ -362,14 +358,23 @@ button { font: inherit; color: inherit; }
 .big.pause ha-icon { color: #f9a825; }
 .big:disabled { color: var(--mower-muted); cursor: default; }
 .big:disabled ha-icon { color: var(--mower-muted); }
+/* A bar along the bottom of the card, over the row of buttons there while
+   it shows; taps go through to them. */
 .toast {
+  pointer-events: none;
   position: absolute;
-  left: 50%;
-  bottom: 16px;
-  transform: translateX(-50%);
-  max-width: calc(100% - 32px);
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  box-sizing: border-box;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
   padding: 8px 14px;
   border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   background: var(--mower-text);
   color: var(--mower-background);
   font-size: 0.9em;
@@ -1052,74 +1057,13 @@ function trailPath(tf, points) {
   return d;
 }
 
-// A zone's name centred on (X, Y), with the badge of its cutting height
-// above it; px is the size of one screen pixel in SVG units.
-// A tap on the badge opens the settings of the zone `zoneId`.
-function svgZoneLabel(X, Y, name, height, px, pal, zoneId = null) {
-  let out = `<g pointer-events="none">`;
-  if (height !== null && height !== undefined) {
-    // The same text size as the stop-point bubble above, so both read alike.
-    const fs = 8.5 * px;
-    const text = `${Number.isInteger(height) ? height : height.toFixed(1)}cm`;
-    const r = 10 * px;
-    const h = 28 * px;
-    const textW = Math.max(2 * r, text.length * fs * 0.58 + 8 * px);
-    const w = 4 * px + 2 * r + 4 * px + textW + 4 * px;
-    const x0 = X - w / 2;
-    const y0 = Y - 15 * px - h;
-    const cy = y0 + h / 2;
-    const tx = x0 + w - 4 * px - textW / 2;
-    out +=
-      (zoneId === null ? "<g>" : `<g data-zone-settings="${esc(zoneId)}" pointer-events="all" style="cursor:pointer">`) +
-      `<rect x="${num(x0)}" y="${num(y0)}" width="${num(w)}" height="${num(h)}" rx="${num(h / 2)}" fill="${pal.badge}"/>` +
-      `<circle cx="${num(x0 + 4 * px + r)}" cy="${num(cy)}" r="${num(r)}" fill="${pal.brandSoft}"/>` +
-      // A compass: how the lawn is cut.
-      `<circle cx="${num(x0 + 4 * px + r)}" cy="${num(cy)}" r="${num(r * 0.62)}" fill="none" stroke="${pal.brand}" stroke-width="${num(1.2 * px)}"/>` +
-      `<path transform="translate(${num(x0 + 4 * px + r)} ${num(cy)}) rotate(45)" ` +
-      `d="M0 ${num(-r * 0.45)}L${num(r * 0.16)} 0L0 ${num(r * 0.45)}L${num(-r * 0.16)} 0Z" fill="${pal.brand}"/>` +
-      `<rect x="${num(tx - textW / 2)}" y="${num(cy - r)}" width="${num(textW)}" height="${num(2 * r)}" rx="${num(r)}" fill="${pal.surface}"/>` +
-      `<text x="${num(tx)}" y="${num(cy)}" font-size="${num(fs)}" font-weight="500" ` +
-      `fill="${pal.brand}" text-anchor="middle" dominant-baseline="central">${esc(text)}</text></g>`;
-  }
-  if (name) {
-    out +=
-      `<text x="${num(X)}" y="${num(Y)}" font-size="${num(16 * px)}" fill="${pal.zoneName}" ` +
-      `text-anchor="middle" dominant-baseline="central">${esc(name)}</text>`;
-  }
-  return out + `</g>`;
-}
-
-// Where an unfinished task left off in a zone: a small speech bubble above the
-// zone's badge, pointing at it, with the day it stopped and how far it got.
-// A zone it finished gets a grey variant.
-function svgStopPoint(X, Y, px, point, pal) {
-  // A little larger than the badge below it, so the text stays readable.
-  const w = 84 * px;
-  const h = 32 * px;
-  const tip = Y - 45 * px;
-  const x0 = X - w / 2;
-  const y0 = tip - 4 * px - h;
-  const r = 10 * px;
-  const cx = x0 + 5 * px + r;
-  const cy = y0 + h / 2;
-  const finished = point.progress >= 100;
-  const icon = finished
-    ? `<circle cx="${num(cx)}" cy="${num(cy)}" r="${num(r)}" fill="#e3e3e3"/>` +
-      `<rect x="${num(cx - r * 0.4)}" y="${num(cy - r * 0.5)}" width="${num(r * 0.8)}" height="${num(r)}" rx="${num(r * 0.1)}" fill="none" stroke="#8a8a8a" stroke-width="${num(1.2 * px)}"/>`
-    : `<circle cx="${num(cx)}" cy="${num(cy)}" r="${num(r)}" fill="${pal.brandSoft}"/>` +
-      `<path d="M${num(cx - r * 0.4)} ${num(cy - r * 0.4)}L${num(cx + r * 0.2)} ${num(cy)}L${num(cx - r * 0.4)} ${num(cy + r * 0.4)}Z" fill="${pal.brand}"/>` +
-      `<rect x="${num(cx + r * 0.27)}" y="${num(cy - r * 0.4)}" width="${num(r * 0.16)}" height="${num(r * 0.8)}" fill="${pal.brand}"/>`;
-  const percent = `${point.progress.toFixed(2)}%`;
-  // A tap on it opens the work log.
+// A zone's name centred on (X, Y); px is the size of one screen pixel in SVG
+// units.
+function svgZoneLabel(X, Y, name, px, pal) {
+  if (!name) return "";
   return (
-    `<g data-open-log pointer-events="all" style="cursor:pointer">` +
-    `<path d="M${num(x0 + h / 2)} ${num(y0)}H${num(x0 + w - h / 2)}A${num(h / 2)} ${num(h / 2)} 0 0 1 ${num(x0 + w - h / 2)} ${num(y0 + h)}` +
-    `H${num(X + 4 * px)}L${num(X)} ${num(tip)}L${num(X - 4 * px)} ${num(y0 + h)}H${num(x0 + h / 2)}A${num(h / 2)} ${num(h / 2)} 0 0 1 ${num(x0 + h / 2)} ${num(y0)}Z" ` +
-    `fill="${pal.surface}" style="filter: drop-shadow(0 ${num(px)}px ${num(2 * px)}px rgba(0,0,0,.18))"/>` +
-    icon +
-    `<text x="${num(cx + r + 4 * px)}" y="${num(cy - 5 * px)}" font-size="${num(8.5 * px)}" fill="${pal.muted}" dominant-baseline="central">${esc(point.date)}</text>` +
-    `<text x="${num(cx + r + 4 * px)}" y="${num(cy + 5.5 * px)}" font-size="${num(8.5 * px)}" fill="${pal.text}" dominant-baseline="central">${esc(percent)}</text>` +
-    `</g>`
+    `<text x="${num(X)}" y="${num(Y)}" font-size="${num(16 * px)}" fill="${pal.zoneName}" ` +
+    `text-anchor="middle" dominant-baseline="central" pointer-events="none">${esc(name)}</text>`
   );
 }
 
@@ -1669,6 +1613,13 @@ const TABS = [
  *   handleEvent(e)  click, change, input and value-changed in the tab
  *   back()       the tab was tapped again
  *   leave()      the tab is left; false keeps it open
+ *   beforeDrive(action)  "start", "recharge", "maintenance" or "continue"
+ *                (an error cleared) is about to make the mower drive; may
+ *                wait (a gate opening on its way) and returns false, or a
+ *                promise of false, to call it off; throwing calls it off too
+ *   mapLayer(view)  SVG drawn over the map; view holds px (map units per
+ *                screen pixel), pal (the colours), docked and station
+ *                ({ x, y, angle, length } on the map, or null)
  */
 const SECTION_TYPES = [];
 // Cards on the page, to set up sections registered after them.
@@ -2347,7 +2298,9 @@ class DreameMowerCard extends HTMLElement {
     for (const type of ["change", "pointerup", "pointercancel", "focusout"]) this._el.editpanel.addEventListener(type, turned);
     this._el.error.addEventListener("click", (e) => {
       const button = e.target.closest("[data-clear-error]");
-      if (button && !this._busy) this._call(DOMAIN, "clear_error", {}, { success: "Error cleared" });
+      if (!button || this._busy) return;
+      // Cleared, the mower goes on with its task or drives home.
+      this._beforeDrive("continue").then((ready) => ready && this._call(DOMAIN, "clear_error", {}, { success: "Error cleared" }));
     });
     this._el.edithead.addEventListener("click", (e) => {
       const button = e.target.closest("button");
@@ -2785,26 +2738,16 @@ class DreameMowerCard extends HTMLElement {
         );
       }
     }
-    // Where an unfinished task left off, while no task runs and Start would
-    // mow whole zones; finished zones are marked too once any is unfinished.
-    const stopPoints = (status.stop_points || []).filter((p) => p.progress > 0);
-    const showStops =
-      !working && (this._mode === "all" || kind === "zones") && stopPoints.some((p) => p.progress < 100);
     for (const zone of this._shapes.zones) {
       if (!zone.center) continue;
       const [X, Y] = tf.toMap(zone.center[0], zone.center[1]);
-      const stop = showStops ? stopPoints.find((p) => p.zone_id === zone.id) : null;
-      if (stop) parts.push(svgStopPoint(X, Y, px, stop, pal));
-      const setting = this._zoneSetting(zone.id);
-      const height = !working && !this._faded() && setting ? setting.height : null;
-      const settings = this._status && this._status.settings;
-      parts.push(svgZoneLabel(X, Y, zone.name, height, px, pal, settings ? zone.id : null));
+      parts.push(svgZoneLabel(X, Y, zone.name, px, pal));
     }
     if (kind === "spots") {
       for (const spot of this._shapes.spots) {
         if (!spot.center) continue;
         const [X, Y] = tf.toMap(spot.center[0], spot.center[1]);
-        parts.push(svgZoneLabel(X, Y, spot.name, null, px, pal));
+        parts.push(svgZoneLabel(X, Y, spot.name, px, pal));
       }
     }
 
@@ -2840,13 +2783,23 @@ class DreameMowerCard extends HTMLElement {
     const screenAngle = (angle) => -(angle || 0) + tf.rotation;
     const dock = status.dock;
     const docked = this._docked();
+    let station = null;
     if (dock) {
       const [X, Y] = tf.toMap(dock.x, dock.y);
-      parts.push(svgStation(X, Y, scale, screenAngle(dock.angle), docked ? "#52FF8C" : "#52C3FF", pal, docked));
+      station = { x: X, y: Y, angle: screenAngle(dock.angle), length: STATION_LENGTH * scale };
+      parts.push(svgStation(X, Y, scale, station.angle, docked ? "#52FF8C" : "#52C3FF", pal, docked));
     }
     if (!(docked && dock) && status.mower) {
       const [X, Y] = tf.toMap(status.mower.x, status.mower.y);
       parts.push(svgMower(X, Y, scale, screenAngle(status.mower.heading), pal));
+    }
+    // What the sections draw over it.
+    if (!this._edit) {
+      const view = { px, pal, docked, station };
+      for (const { section } of this._sections) {
+        const layer = this._sectionCall(section, "mapLayer", view);
+        if (typeof layer === "string") parts.push(layer);
+      }
     }
     this._el.dyn.innerHTML = parts.join("");
   }
@@ -3204,19 +3157,6 @@ class DreameMowerCard extends HTMLElement {
     if (pin) {
       this._lastTap = null;
       this._openObstacle(pin.dataset.obstacle);
-      return;
-    }
-    if (under && under.closest && under.closest("[data-open-log]")) {
-      // The History tab opens on the task that left the stop point.
-      this._lastTap = null;
-      this._setTab("history");
-      if (this._log) this._log.openStopped = true;
-      return;
-    }
-    const badge = under && under.closest ? under.closest("[data-zone-settings]") : null;
-    if (badge) {
-      this._lastTap = null;
-      this._openSettings(Number(badge.dataset.zoneSettings));
       return;
     }
     const p = this._clientToMap(e.clientX, e.clientY);
@@ -3882,6 +3822,7 @@ class DreameMowerCard extends HTMLElement {
     if (button.dataset.go) {
       const id = Number(button.dataset.go);
       if (!window.confirm(`Send the mower to maintenance point ${id}? It drives there and waits.`)) return;
+      if (!(await this._beforeDrive("maintenance"))) return;
       await this._call(DOMAIN, "go_to_maintenance_point", { point_id: id }, { success: "On its way to the maintenance point" });
       return;
     }
@@ -4061,7 +4002,31 @@ class DreameMowerCard extends HTMLElement {
       settingsFeed: () => card._settingsFeed(),
       toast: (text, error = false) => card._toast(text, error),
       refresh: () => card._invalidate("schedules"),
+      redrawMap: () => card._invalidate("dyn"),
     };
+  }
+
+  // Lets the sections get ready for `action`, which makes the mower drive:
+  // true when it can go ahead, false when one of them called it off (a
+  // section that fails calls it off too, since the way may not be clear).
+  async _beforeDrive(action) {
+    const ready = this._sections.filter(({ section }) => typeof section.beforeDrive === "function");
+    if (!ready.length) return true;
+    this._busy = true;
+    this._invalidate("header", "toolbar", "actions", "settings", "maps", "photo", "maint", "picker", "schedules");
+    try {
+      for (const { section } of ready) {
+        if ((await section.beforeDrive(action)) === false) return false;
+      }
+      return true;
+    } catch (err) {
+      console.error("Dreame Mower Card: a section's beforeDrive failed", err);
+      this._toast(errorMessage(err), true);
+      return false;
+    } finally {
+      this._busy = false;
+      this._invalidate("header", "toolbar", "actions", "settings", "maps", "photo", "maint", "picker", "schedules");
+    }
   }
 
   // --- Map editor ---
@@ -4910,10 +4875,6 @@ class DreameMowerCard extends HTMLElement {
     }
     log.loading = false;
     this._invalidate("log");
-    if (log.openStopped && !log.error) {
-      const stopped = log.entries.find((entry) => this._resumableStopPoints(entry).length);
-      if (stopped) this._openWorkLogEntry(stopped);
-    }
   }
 
   async _openWorkLogEntry(entry) {
@@ -5504,6 +5465,7 @@ class DreameMowerCard extends HTMLElement {
         break;
       case "recharge":
         // During a task the task is kept, to continue after charging.
+        if (!(await this._beforeDrive("recharge"))) break;
         await this._call(DOMAIN, "recharge");
         break;
       case "stop-returning":
@@ -5537,7 +5499,8 @@ class DreameMowerCard extends HTMLElement {
       if (kind && !picked.length && !mower.session_active) return;
     }
     // While it rains the mower stays home; started anyway, it mows.
-    if ((mower.codes || []).includes(RAIN_CODE)) {
+    const raining = (mower.codes || []).includes(RAIN_CODE);
+    if (raining) {
       const choice = await this._choose(
         "Rain protection is active",
         "The mower stays home while it rains. Start mowing anyway? The rain protection is cleared first.",
@@ -5547,8 +5510,13 @@ class DreameMowerCard extends HTMLElement {
         ],
       );
       if (choice !== "anyway") return;
-      if (!(await this._call(DOMAIN, "clear_rain_protection"))) return;
     }
+    if (!(await this._beforeDrive("start"))) return;
+    // Getting ready may have taken a while: look again.
+    mower = this._mower();
+    if (kind) picked = this._shapes[kind].filter((shape) => this._selected[kind].has(shape.id));
+    if (kind && !picked.length && !mower.session_active) return;
+    if (raining &&!(await this._call(DOMAIN, "clear_rain_protection"))) return;
     if (mower.session_active) {
       // Continue the running session, whatever it mows.
       await this._call("lawn_mower", "start_mowing");

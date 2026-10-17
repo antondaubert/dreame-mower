@@ -230,3 +230,121 @@ test("a section follows the card's mower and its place on the page", async () =>
   card.remove();
   assert.equal(section.calls.at(-1), "disconnect");
 });
+
+// A mower on its station on a map, as the map feed sends it.
+const GEOMETRY = { type: "geometry", map_id: 0, bounds: [0, 0, 10000, 8000] };
+const DOCKED = {
+  type: "status",
+  dock: { x: 2000, y: 3000, angle: 0 },
+  docked: true,
+  state: { available: true, status: "Charging complete", session_active: false },
+};
+
+async function sendFeed(window, hass, ...events) {
+  const [subscription] = subscribed(hass, "dreame_mower/map/subscribe");
+  for (const event of events) subscription.callback(event);
+  await settle(window);
+}
+
+// A section that answers beforeDrive with what `answer` returns.
+function gate(answer) {
+  const asked = [];
+  return {
+    asked,
+    type: {
+      id: "gate",
+      create: () => ({
+        beforeDrive: (action) => {
+          asked.push(action);
+          return answer(action);
+        },
+      }),
+    },
+  };
+}
+
+test("a section can call off a task before it starts", async () => {
+  const window = load("dreame-mower-card.js");
+  const { asked, type } = gate(() => false);
+  window.customElements.get("dreame-mower-card").registerSection(type);
+  const hass = fakeHass();
+  const card = await mount(window, hass);
+  await sendFeed(window, hass, GEOMETRY, DOCKED);
+  await click(window, $(card, '[data-action="start"]'));
+  assert.deepEqual(plain(asked), ["start"]);
+  assert.deepEqual(hass.services, []);
+});
+
+test("a task starts once the sections are ready, and the card waits for them", async () => {
+  const window = load("dreame-mower-card.js");
+  let release;
+  const { asked, type } = gate(() => new Promise((resolve) => (release = resolve)));
+  window.customElements.get("dreame-mower-card").registerSection(type);
+  const hass = fakeHass();
+  const card = await mount(window, hass);
+  await sendFeed(window, hass, GEOMETRY, DOCKED);
+  await click(window, $(card, '[data-action="start"]'));
+  assert.deepEqual(plain(asked), ["start"]);
+  assert.deepEqual(hass.services, []);
+  // The card is busy while it waits.
+  assert.ok($(card, '[data-action="start"]').disabled);
+  release(true);
+  await settle(window);
+  assert.deepEqual(
+    plain(hass.services).map((s) => `${s.domain}.${s.service}`),
+    ["dreame_mower.start_all_area_mowing"],
+  );
+});
+
+test("a failing section calls the drive off", async () => {
+  const window = load("dreame-mower-card.js");
+  window.console.error = () => {};
+  const { type } = gate(() => Promise.reject(new Error("no answer")));
+  window.customElements.get("dreame-mower-card").registerSection(type);
+  const hass = fakeHass();
+  const card = await mount(window, hass);
+  await sendFeed(window, hass, GEOMETRY, { ...DOCKED, docked: false, state: { ...DOCKED.state, status: "Idle" } });
+  hass.states[MOWER] = { ...hass.states[MOWER], state: "paused" };
+  card.hass = { ...hass };
+  await settle(window);
+  await click(window, $(card, '[data-action="recharge"]'));
+  assert.deepEqual(hass.services, []);
+  assert.match($(card, ".toast").textContent, /no answer/);
+});
+
+test("a section draws over the map, next to the station", async () => {
+  const window = load("dreame-mower-card.js");
+  const views = [];
+  window.customElements.get("dreame-mower-card").registerSection({
+    id: "layer",
+    create: () => ({
+      mapLayer: (view) => {
+        views.push(view);
+        return `<circle class="mine" cx="${view.station ? view.station.x : 0}" cy="0" r="1"/>`;
+      },
+    }),
+  });
+  const hass = fakeHass();
+  const card = await mount(window, hass);
+  await sendFeed(window, hass, GEOMETRY, DOCKED);
+  assert.ok($(card, "circle.mine"));
+  const view = views.at(-1);
+  assert.ok(view.station && view.station.length > 0 && view.px > 0);
+  assert.equal(view.docked, true);
+});
+
+test("clearing an error asks the sections first, since the mower goes on", async () => {
+  const window = load("dreame-mower-card.js");
+  let ready = false;
+  const { asked, type } = gate(() => ready);
+  window.customElements.get("dreame-mower-card").registerSection(type);
+  const hass = fakeHass();
+  const card = await mount(window, hass);
+  await sendFeed(window, hass, GEOMETRY, { ...DOCKED, state: { ...DOCKED.state, error: "Blades stuck" } });
+  await click(window, $(card, "[data-clear-error]"));
+  assert.deepEqual(plain(asked), ["continue"]);
+  assert.deepEqual(hass.services, []);
+  ready = true;
+  await click(window, $(card, "[data-clear-error]"));
+  assert.deepEqual(plain(hass.services).map((s) => s.service), ["clear_error"]);
+});
