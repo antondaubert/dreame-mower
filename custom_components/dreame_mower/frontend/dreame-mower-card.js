@@ -190,6 +190,7 @@ button { font: inherit; color: inherit; }
   cursor: pointer;
 }
 .mapbtn { width: 32px; height: 32px; border-radius: 50%; --mdc-icon-size: 18px; }
+.mapbtns .secbtns, .mapbtns [data-section] { display: contents; }
 .mapchip {
   position: absolute;
   left: 8px;
@@ -1600,8 +1601,9 @@ const TABS = [
 ];
 
 /*
- * Sections other modules add to the Schedules tab, above the mower's
- * schedules, with DreameMowerCard.registerSection({ id, create(host) }).
+ * Sections other modules add to the card with
+ * DreameMowerCard.registerSection({ id, create(host) }): to the Schedules
+ * tab, above the mower's schedules, and to the Mow tab's map.
  * create() gets what the card shares with a section (see _sectionHost) and
  * returns an object with any of:
  *   connect(), disconnect(), resubscribe(), dropped(), reset()
@@ -1620,6 +1622,12 @@ const TABS = [
  *   mapLayer(view)  SVG drawn over the map; view holds px (map units per
  *                screen pixel), pal (the colours), docked and station
  *                ({ x, y, angle, length } on the map, or null)
+ *   mapButtons()  html of buttons under the map's zoom buttons on the Mow
+ *                tab; their clicks go to the section's handleEvent(e)
+ *   cover()      an element shown in place of the map on the Mow tab, or
+ *                null for the map; the section keeps it, so what it holds
+ *                (a player, say) survives the card's redraws
+ *   update()     Home Assistant's state changed
  */
 const SECTION_TYPES = [];
 // Cards on the page, to set up sections registered after them.
@@ -1697,8 +1705,7 @@ class DreameMowerCard extends HTMLElement {
     return document.createElement(EDITOR_TYPE);
   }
 
-  // Adds a section to the Schedules tab of every card, those already on the
-  // page included.
+  // Adds a section to every card, those already on the page included.
   static registerSection(type) {
     if (!type || typeof type.id !== "string" || typeof type.create !== "function") return;
     if (SECTION_TYPES.some((t) => t.id === type.id)) return;
@@ -1819,6 +1826,7 @@ class DreameMowerCard extends HTMLElement {
     // change on their own.
     if (this._maint) this._invalidate("maint");
     if (this._tab === "schedules") this._invalidate("schedules");
+    this._eachSection("update");
     this._ensureSubscribed();
   }
 
@@ -2171,9 +2179,11 @@ class DreameMowerCard extends HTMLElement {
             <button type="button" class="mapbtn" data-zoom="in" title="Zoom in" aria-label="Zoom in"><ha-icon icon="mdi:plus"></ha-icon></button>
             <button type="button" class="mapbtn" data-zoom="out" title="Zoom out" aria-label="Zoom out"><ha-icon icon="mdi:minus"></ha-icon></button>
             <button type="button" class="mapbtn" data-zoom="fit" title="Fit the map" aria-label="Fit the map"><ha-icon icon="mdi:fit-to-screen-outline"></ha-icon></button>
+            <span class="secbtns"></span>
           </div>
           <div class="mapnote" hidden><span class="spin"></span><span class="text"></span></div>
         </div>
+        <div class="cover" hidden></div>
         <div class="errline" hidden></div>
         <div class="panel"><div class="strip" role="group" aria-label="What to mow"></div><div class="hint" hidden></div><div class="controls"></div></div>
         <div class="editpanel" hidden></div>
@@ -2209,6 +2219,8 @@ class DreameMowerCard extends HTMLElement {
       msg: $(".msg"),
       chip: $(".mapchip"),
       mapbtns: $(".mapbtns"),
+      secbtns: $(".mapbtns .secbtns"),
+      cover: $(".cover"),
       note: $(".mapnote"),
       error: $(".errline"),
       panel: $(".panel"),
@@ -2262,6 +2274,13 @@ class DreameMowerCard extends HTMLElement {
     });
     this._el.picker.addEventListener("click", (e) => this._onPickerClick(e));
     this._el.mapbtns.addEventListener("click", (e) => {
+      // A section's button goes to that section.
+      const own = e.target.closest("[data-section]");
+      if (own) {
+        const entry = this._sections.find((s) => s.id === own.dataset.section);
+        if (entry) this._sectionCall(entry.section, "handleEvent", e);
+        return;
+      }
       const button = e.target.closest("[data-zoom]");
       if (!button || !this._vb) return;
       if (button.dataset.zoom === "fit") {
@@ -2409,7 +2428,22 @@ class DreameMowerCard extends HTMLElement {
     const editing = settings && Boolean(this._edit) && !this._mapList;
     const el = this._el;
     el.status.hidden = !mow || this._config.show_header === false;
-    el.map.hidden = !(mow || editing);
+    // A section may show something of its own in the map's place.
+    let cover = null;
+    const buttons = [];
+    if (mow) {
+      for (const { id, section } of this._sections) {
+        const own = this._sectionCall(section, "cover");
+        if (!cover && own && own.nodeType === 1) cover = own;
+        const html = this._sectionCall(section, "mapButtons");
+        if (html) buttons.push(`<span data-section="${esc(id)}">${html}</span>`);
+      }
+    }
+    this._setHtml("secbtns", el.secbtns, buttons.join(""));
+    if (cover && (el.cover.firstChild !== cover || el.cover.childNodes.length !== 1)) el.cover.replaceChildren(cover);
+    else if (!cover && el.cover.firstChild) el.cover.replaceChildren();
+    el.cover.hidden = !cover;
+    el.map.hidden = !(mow || editing) || Boolean(cover);
     el.error.hidden = !mow || !this._mower().error;
     // Without the controls the panel only shows the progress of a running task.
     el.panel.hidden = !mow || (this._config.show_controls === false && !this._mower().session_active);
@@ -4003,6 +4037,11 @@ class DreameMowerCard extends HTMLElement {
       toast: (text, error = false) => card._toast(text, error),
       refresh: () => card._invalidate("schedules"),
       redrawMap: () => card._invalidate("dyn"),
+      // The Mow tab's map buttons and cover, with the map's overlays, which
+      // follow once the map shows again.
+      refreshMow: () => card._invalidate("toolbar", "dyn"),
+      docked: () => card._docked(),
+      entity: (domain, key) => (card._config ? card._deviceEntity(domain, key) : null),
     };
   }
 

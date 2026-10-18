@@ -348,3 +348,76 @@ test("clearing an error asks the sections first, since the mower goes on", async
   await click(window, $(card, "[data-clear-error]"));
   assert.deepEqual(plain(hass.services).map((s) => s.service), ["clear_error"]);
 });
+
+test("a section adds buttons to the map, and their clicks go to it alone", async () => {
+  const window = load("dreame-mower-card.js");
+  const clicks = [];
+  const Card = window.customElements.get("dreame-mower-card");
+  Card.registerSection({
+    id: "mine",
+    create: () => ({
+      mapButtons: () => `<button type="button" class="mapbtn" data-mine="1">M</button>`,
+      handleEvent: (e) => clicks.push(`mine:${e.type}`),
+    }),
+  });
+  Card.registerSection({ id: "other", create: () => ({ handleEvent: (e) => clicks.push(`other:${e.type}`) }) });
+  const hass = fakeHass();
+  const card = await mount(window, hass);
+  await sendFeed(window, hass, GEOMETRY, DOCKED);
+  const button = $(card, '.mapbtns [data-section="mine"] [data-mine]');
+  assert.ok(button);
+  await click(window, button);
+  assert.deepEqual(clicks, ["mine:click"]);
+  // Only on the Mow tab.
+  await openTab(window, card, "history");
+  assert.equal($(card, ".mapbtns [data-mine]"), null);
+});
+
+test("a section can show its own element in the map's place, kept across redraws", async () => {
+  const window = load("dreame-mower-card.js");
+  const element = window.document.createElement("div");
+  element.className = "mycover";
+  let covered = false;
+  let host = null;
+  const updates = [];
+  window.customElements.get("dreame-mower-card").registerSection({
+    id: "cover",
+    create: (h) => {
+      host = h;
+      return { cover: () => (covered ? element : null), update: () => updates.push("update") };
+    },
+  });
+  const hass = fakeHass();
+  const card = await mount(window, hass);
+  await sendFeed(window, hass, GEOMETRY, DOCKED);
+  assert.equal($(card, ".cover").hidden, true);
+  assert.equal($(card, ".map").hidden, false);
+  covered = true;
+  host.refreshMow();
+  await settle(window);
+  assert.equal($(card, ".cover").hidden, false);
+  assert.equal($(card, ".map").hidden, true);
+  assert.equal($(card, ".cover").firstChild, element);
+  // A change of state reaches the section and leaves its element in place.
+  updates.length = 0;
+  card.hass = { ...hass, states: { ...hass.states } };
+  await settle(window);
+  assert.deepEqual(updates, ["update"]);
+  assert.equal($(card, ".cover").firstChild, element);
+  assert.equal(host.docked(), true);
+  covered = false;
+  host.refreshMow();
+  await settle(window);
+  assert.equal($(card, ".cover").hidden, true);
+  assert.equal($(card, ".cover").firstChild, null);
+  assert.equal($(card, ".map").hidden, false);
+});
+
+test("a section finds the mower's entities by their key", async () => {
+  const window = load("dreame-mower-card.js");
+  let host = null;
+  window.customElements.get("dreame-mower-card").registerSection({ id: "find", create: (h) => ((host = h), {}) });
+  await mount(window, fakeHass({ entities: { "sensor.a2_blades": entry("sensor.a2_blades", "blade") } }));
+  assert.equal(host.entity("sensor", "blade"), "sensor.a2_blades");
+  assert.equal(host.entity("sensor", "other"), null);
+});
