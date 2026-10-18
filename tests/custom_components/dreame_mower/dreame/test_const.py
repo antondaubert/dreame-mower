@@ -9,6 +9,7 @@ from custom_components.dreame_mower.dreame.const import (
     DeviceStatus,
     STATUS_MAPPING,
     cutting_height_max_cm,
+    has_camera,
     map_status_to_activity,
     supports_cutting_height,
 )
@@ -79,4 +80,26 @@ class TestCuttingHeightSupport:
     def test_unknown_models_fall_back_to_the_default_range(self):
         assert supports_cutting_height("dreame.mower.x9999") is True
         assert cutting_height_max_cm("dreame.mower.x9999") == CUTTING_HEIGHT_DEFAULT_MAX_CM
+
+
+class TestCameraSupport:
+    """Test the model-dependent camera helper."""
+
+    @pytest.mark.parametrize(
+        "model",
+        ["dreame.mower.g2408", "dreame.mower.g2568a", "dreame.mower.g2541e", "mova.mower.g2529b"],
+    )
+    def test_camera_models(self, model):
+        assert has_camera(model) is True
+
+    @pytest.mark.parametrize(
+        "model",
+        ["dreame.mower.g2422", "dreame.mower.g2540b", "dreame.mower.p2255", "mova.mower.g2405c", "mova.mower.g2552"],
+    )
+    def test_lidar_only_models(self, model):
+        assert has_camera(model) is False
+
+    def test_unknown_or_missing_models_are_taken_to_have_one(self):
+        assert has_camera("dreame.mower.x9999") is True
+        assert has_camera(None) is True
 

@@ -215,7 +215,8 @@ MOWING_PREFERENCE_EDGE_MOWING_SAFE_INDEX = 16
 #   lidar      recognise obstacles with the LiDAR, 1 while on
 #   height     the lowest obstacle avoided, in cm (OBSTACLE_HEIGHTS_CM)
 #   distance   how far obstacles are kept away, in cm (OBSTACLE_DISTANCES_CM)
-#   ai         the obstacle kinds the camera recognises, a mask of AiObstacleKind
+#   ai         the obstacle kinds the camera recognises, a mask of AiObstacleKind;
+#              a model without a camera carries the slot too but does not act on it
 MOWING_PREFERENCE_EDGE_OBSTACLE_AVOIDANCE_INDEX = 9
 MOWING_PREFERENCE_LIDAR_OBSTACLE_INDEX = 12
 MOWING_PREFERENCE_OBSTACLE_HEIGHT_INDEX = 13
@@ -322,6 +323,22 @@ def cutting_height_max_cm(model: str) -> float:
     if _model_code(model).startswith(_EXTENDED_CUTTING_HEIGHT_MODELS):
         return CUTTING_HEIGHT_ABSOLUTE_MAX_CM
     return CUTTING_HEIGHT_DEFAULT_MAX_CM
+
+
+# Model codes without a camera. They recognise obstacles with the LiDAR alone,
+# so AI obstacle recognition means nothing to them even though their mowing
+# preference records carry its slot.
+_CAMERA_LESS_MODELS = ("g2405", "g2422", "g2540", "g2552", "p2255", "yc2530")
+
+
+def has_camera(model: str | None) -> bool:
+    """Return True when the model recognises obstacles with a camera as well.
+
+    An unknown model is taken to have one, which keeps every setting reachable.
+    """
+    if not model:
+        return True
+    return not _model_code(model).startswith(_CAMERA_LESS_MODELS)
 
 # Device settings ("CFG") record
 #

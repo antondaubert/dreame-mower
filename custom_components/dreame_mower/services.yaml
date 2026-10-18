@@ -260,7 +260,8 @@ set_mowing_settings:
       name: AI obstacle recognition
       description: >-
         The obstacle kinds the camera recognises and the mower avoids. An empty
-        list leaves avoiding obstacles to the bumper and the LiDAR.
+        list leaves avoiding obstacles to the bumper and the LiDAR. Only mowers
+        with a camera offer it.
       required: false
       example: '["humans", "animals"]'
       selector:

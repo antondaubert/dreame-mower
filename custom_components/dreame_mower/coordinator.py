@@ -154,7 +154,8 @@ class DreameMowerCoordinator(DataUpdateCoordinator[None]):
             entry.data[CONF_PASSWORD],
             entry.data[CONF_ACCOUNT_TYPE],
             entry.data[CONF_COUNTRY],
-            hass.config.config_dir)
+            hass.config.config_dir,
+            model=entry.data.get(CONF_MODEL))
         self._consumable_values: list[int] | None = None
         self._charging_settings: dict[str, Any] | None = None
         self._rain_settings: dict[str, Any] | None = None
