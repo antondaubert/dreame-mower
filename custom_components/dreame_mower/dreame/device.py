@@ -72,6 +72,7 @@ from .const import (
     OBSTACLE_HEIGHT_KEY,
     OBSTACLE_HEIGHTS_CM,
     TURNING_METHOD_KEY,
+    has_camera,
     AiObstacleKind,
     MowingEfficiency,
     TurningMethod,
@@ -386,6 +387,7 @@ class DreameMowerDevice:
         account_type: str,
         country: str,
         hass_config_dir: str,
+        model: str | None = None,
     ) -> None:
         """Initialize the device handler.
         
@@ -396,8 +398,10 @@ class DreameMowerDevice:
             account_type: Account type for cloud authentication
             country: Country for cloud authentication
             hass_config_dir: The path to the Home Assistant configuration directory.
+            model: The model identifier, when known ahead of the first cloud read.
         """
         self._device_id = device_id
+        self._model = model
         self._username = username
         self._password = password
         self._account_type = account_type
@@ -1600,12 +1604,18 @@ class DreameMowerDevice:
         return {zone_id: dict(settings) for zone_id, settings in self._zone_edge_mowing_settings.items()}
 
     @property
+    def model(self) -> str | None:
+        """Return the model identifier, once known."""
+        return self._model
+
+    @property
     def mowing_settings(self) -> dict[int, dict[str, Any]]:
         """Return every setting of the current map's records, by area id.
 
         Area 0 is the map-wide record; the others are the zones that hold one.
         """
-        return {area_id: self._record_mowing_settings(record) for area_id, record in self._mowing_records.items()}
+        camera = has_camera(self._model)
+        return {area_id: self._record_mowing_settings(record, camera) for area_id, record in self._mowing_records.items()}
 
     @property
     def mowing_direction(self) -> dict[str, int] | None:
@@ -2259,9 +2269,10 @@ class DreameMowerDevice:
             if isinstance(device_info.get("online"), bool):
                 self._set_online(device_info["online"])
 
-            # Extract and set device model for device code handler
-            if "model" in device_info:
-                model = device_info["model"]
+            # The model decides which device codes apply and which settings
+            # the mower acts on.
+            if model := device_info.get("model"):
+                self._model = model
                 self._device_code_handler.set_model(model)
             
             # Update last update timestamp
@@ -4575,10 +4586,12 @@ class DreameMowerDevice:
         return slots
 
     @staticmethod
-    def _record_mowing_settings(record: Sequence[int]) -> dict[str, Any]:
+    def _record_mowing_settings(record: Sequence[int], camera: bool = True) -> dict[str, Any]:
         """Return every setting a record carries, under the setting keys.
 
-        A setting the record is too short to carry is left out.
+        A setting the record is too short to carry is left out, and so is AI
+        obstacle recognition on a mower without a camera, which carries the
+        slot without acting on it.
         """
 
         def slot(index: int) -> int | None:
@@ -4606,19 +4619,22 @@ class DreameMowerDevice:
             settings[OBSTACLE_HEIGHT_KEY] = value
         if (value := slot(MOWING_PREFERENCE_OBSTACLE_DISTANCE_INDEX)) is not None:
             settings[OBSTACLE_DISTANCE_KEY] = value
-        if (value := slot(MOWING_PREFERENCE_AI_OBSTACLE_INDEX)) is not None:
+        if camera and (value := slot(MOWING_PREFERENCE_AI_OBSTACLE_INDEX)) is not None:
             settings[AI_OBSTACLE_KEY] = [str(kind.name).lower() for kind in AiObstacleKind if value & kind]
         if (value := slot(MOWING_PREFERENCE_TURNING_METHOD_INDEX)) is not None:
             settings[TURNING_METHOD_KEY] = _enum_name(TurningMethod, value)
         return settings
 
     @classmethod
-    def _mowing_settings_slots(cls, record: Sequence[int], settings: Mapping[str, Any]) -> dict[int, int]:
+    def _mowing_settings_slots(
+        cls, record: Sequence[int], settings: Mapping[str, Any], camera: bool = True
+    ) -> dict[int, int]:
         """Return the record slots that carry the requested settings.
 
-        Raises on a value a setting does not take, and when the record does not
+        Raises on a value a setting does not take, when the record does not
         reach a slot a request needs, which is how a firmware without that
-        setting reports it.
+        setting reports it, and on AI obstacle recognition for a mower without
+        a camera.
         """
         slots: dict[int, int] = {}
 
@@ -4670,6 +4686,8 @@ class DreameMowerDevice:
         if OBSTACLE_DISTANCE_KEY in settings:
             put(MOWING_PREFERENCE_OBSTACLE_DISTANCE_INDEX, one_of(OBSTACLE_DISTANCES_CM, OBSTACLE_DISTANCE_KEY), "the obstacle avoidance distance")
         if AI_OBSTACLE_KEY in settings:
+            if not camera:
+                raise ValueError("This mower does not support AI obstacle recognition")
             mask = 0
             for name in settings[AI_OBSTACLE_KEY]:
                 try:
@@ -4682,7 +4700,8 @@ class DreameMowerDevice:
             put(MOWING_PREFERENCE_TURNING_METHOD_INDEX, choice(TurningMethod, TURNING_METHOD_KEY), "the turning method")
 
         # Avoiding obstacles along the edges needs something that recognises
-        # them, so it goes off once neither the LiDAR nor the camera does.
+        # them, so it goes off once neither the LiDAR nor the camera does. A
+        # mower without a camera only has the LiDAR, whatever its AI slot says.
         def after(index: int) -> int | None:
             if index in slots:
                 return slots[index]
@@ -4691,7 +4710,7 @@ class DreameMowerDevice:
         if (
             after(MOWING_PREFERENCE_EDGE_OBSTACLE_AVOIDANCE_INDEX)
             and after(MOWING_PREFERENCE_LIDAR_OBSTACLE_INDEX) == 0
-            and after(MOWING_PREFERENCE_AI_OBSTACLE_INDEX) in (0, None)
+            and (not camera or after(MOWING_PREFERENCE_AI_OBSTACLE_INDEX) in (0, None))
         ):
             slots[MOWING_PREFERENCE_EDGE_OBSTACLE_AVOIDANCE_INDEX] = 0
 
@@ -5174,7 +5193,7 @@ class DreameMowerDevice:
             return True
 
         def build_slots(record: Sequence[int]) -> dict[int, int]:
-            return self._mowing_settings_slots(record, settings)
+            return self._mowing_settings_slots(record, settings, has_camera(self._model))
 
         description = "Mowing settings set to " + ", ".join(f"{key}={value}" for key, value in settings.items())
 

@@ -125,6 +125,14 @@ async def test_coordinator_reads_the_map_list_once_for_echo_and_marker(
     coordinator.device.refresh_current_map_id.assert_called_once()
 
 
+async def test_coordinator_tells_the_device_its_model(hass: HomeAssistant, minimal_config_entry):
+    """The device needs the model before its first cloud read, for the settings it reports."""
+    minimal_config_entry.add_to_hass(hass)
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+
+    assert coordinator.device.model == "dreame.mower.test789"
+
+
 async def test_coordinator_refreshes_the_mowing_preferences_of_fixed_height_models(
     hass: HomeAssistant, minimal_config_entry
 ):

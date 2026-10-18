@@ -4645,6 +4645,60 @@ async def test_set_mowing_settings_keeps_edge_avoidance_while_one_recognises(dev
     assert writes[0][12] == 0
 
 
+def _learn_lidar_only_model(device):
+    """Let the device learn, as it does from the cloud, that it is a model without a camera."""
+    device._update_device_state_from_info({"model": "dreame.mower.g2422"})
+    assert device.model == "dreame.mower.g2422"
+
+
+@pytest.mark.asyncio
+async def test_mowing_settings_leave_out_ai_recognition_without_a_camera(device):
+    """A mower without a camera carries the AI slot but does not act on it, so it is not reported."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_vector_map(device)
+    device._cloud_device.action_result, _ = _mowing_preference_responder()
+    _learn_lidar_only_model(device)
+
+    assert await device.refresh_mowing_preferences() is True
+
+    settings = device.mowing_settings[0]
+    assert "ai_obstacle_recognition" not in settings
+    assert settings["lidar_obstacle_recognition"] is True
+    assert settings["obstacle_distance"] == 20
+
+
+@pytest.mark.asyncio
+async def test_set_mowing_settings_refuses_ai_recognition_without_a_camera(device):
+    """Asking a mower without a camera for AI recognition writes nothing."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_vector_map(device)
+    device._cloud_device.action_result, writes = _mowing_preference_responder()
+    _learn_lidar_only_model(device)
+
+    with pytest.raises(ValueError, match="AI obstacle recognition"):
+        await device.set_mowing_settings({"ai_obstacle_recognition": ["humans"]})
+
+    assert writes == []
+
+
+@pytest.mark.asyncio
+async def test_set_mowing_settings_turns_edge_avoidance_off_with_the_lidar_without_a_camera(device):
+    """Without a camera the LiDAR is the only recognition, whatever the AI slot holds."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_vector_map(device)
+    device._cloud_device.action_result, writes = _mowing_preference_responder()
+    _learn_lidar_only_model(device)
+
+    await device.set_mowing_settings({"lidar_obstacle_recognition": False})
+
+    assert writes[0][9] == 0
+    assert writes[0][12] == 0
+    assert writes[0][15] == 7  # the slot itself is left as it was
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("settings", [
     {"turning_method": "lawn_care"},  # beyond the end of this record
