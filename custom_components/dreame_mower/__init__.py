@@ -21,6 +21,7 @@ from homeassistant.helpers.event import async_track_time_interval
 from .const import (
     DATA_COORDINATOR,
     DATA_PLATFORMS,
+    DATA_POINT_CLOUD,
     DOMAIN,
     FIRMWARE_POLL_INTERVAL_HOURS,
     ONLINE_POLL_INTERVAL_SECONDS,
@@ -31,6 +32,7 @@ from .const import (
 from .coordinator import DreameMowerCoordinator
 from .config_flow import DEVICE_TYPE_SWBOT
 from .frontend import async_setup_frontend
+from .point_cloud import PointCloudStore
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -147,6 +149,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         DATA_COORDINATOR: coordinator,
         DATA_PLATFORMS: platforms,
     }
+    if coordinator.device_type != DEVICE_TYPE_SWBOT:
+        hass.data[DOMAIN][entry.entry_id][DATA_POINT_CLOUD] = PointCloudStore(
+            coordinator.device, hass.config.path(DOMAIN, "point_cloud", entry.entry_id)
+        )
 
     # While a mowing session runs, keep the position reports coming; open map
     # cards hear when the entry goes away.

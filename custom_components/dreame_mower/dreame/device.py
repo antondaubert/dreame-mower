@@ -22,7 +22,16 @@ import time
 from typing import Any, Callable
 from datetime import datetime
 
+import requests
+
 from .cloud.cloud_device import DreameMowerCloudDevice
+from .point_cloud import (
+    POINT_CLOUD_MAX_BYTES,
+    PointCloudError,
+    build_point_cloud_list_payload,
+    point_cloud_names,
+    validate_point_cloud,
+)
 from .map_data_parser import (
     MowerVectorMap,
     assemble_vector_map,
@@ -4117,6 +4126,30 @@ class DreameMowerDevice:
                 schedule["enabled"] = False
         self._update_schedule_cache(map_index, schedules, None)
         return schedules
+
+    def read_point_cloud_names(self) -> list[str | None]:
+        """Return the stored 3D map (point cloud) file name of each map index."""
+        result = self._cloud_device.action(
+            SCHEDULING_TASK_PROPERTY.siid,
+            SCHEDULING_TASK_PROPERTY.piid,
+            [build_point_cloud_list_payload()],
+        )
+        return point_cloud_names(result)
+
+    def download_point_cloud(self, file_name: str) -> bytes:
+        """Download one stored point cloud and check that it is complete."""
+        url = self._cloud_device.get_file_download_url(file_name)
+        if not url:
+            raise PointCloudError("the cloud gave no download URL")
+        with requests.get(url, timeout=60, stream=True) as response:
+            response.raise_for_status()
+            data = bytearray()
+            for chunk in response.iter_content(chunk_size=256 * 1024):
+                data.extend(chunk)
+                if len(data) > POINT_CLOUD_MAX_BYTES:
+                    raise PointCloudError("the file is too large")
+        validate_point_cloud(bytes(data))
+        return bytes(data)
 
     def refresh_current_map_id(self) -> bool:
         """Refresh the current map by querying the MAPL getter."""
