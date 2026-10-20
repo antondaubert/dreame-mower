@@ -32,10 +32,10 @@ const MOWER_LENGTH = 880;
 const MOWER_WIDTH = 560;
 const STATION_LENGTH = 1100;
 const STATION_WIDTH = 700;
-// The mower is drawn somewhat larger than it is, so it stands out on the
-// lawn, and never shorter than this on screen.
-const MOWER_SCALE = 1.3;
-const MOWER_MIN_PX = 26;
+// The mower and its station are drawn at their real size, and the mower never
+// shorter than this on screen.
+const MOWER_SCALE = 1;
+const MOWER_MIN_PX = 20;
 
 // Lawn colours by zone id, starting at zone 1; the outline is a shade darker.
 const ZONE_COLORS = [
@@ -1161,9 +1161,6 @@ function mowerLook(model) {
   return AWD_MODEL_FAMILIES.some((family) => String(model || "").startsWith(family)) ? "awd" : "rwd";
 }
 
-// How large each body is drawn, against the two-wheel one.
-const LOOK_SIZE = { rwd: 1, awd: 0.75 };
-
 // The all-wheel drive body seen from above, in the same fractions as
 // MOWER_OUTLINE: a square back, straight sides, and shoulders that close in
 // towards the front.
@@ -1215,8 +1212,8 @@ function mowerBody(scale, pal, look = "rwd") {
 // across the front with the twin cameras behind it, and on the light body the
 // dark lid with the LiDAR dome at its centre and the red strip behind it.
 function mowerBodyAwd(scale, pal) {
-  const L = MOWER_LENGTH * scale * LOOK_SIZE.awd;
-  const W = MOWER_WIDTH * scale * LOOK_SIZE.awd;
+  const L = MOWER_LENGTH * scale;
+  const W = MOWER_WIDTH * scale;
   const rect = (u0, u1, v0, v1, attrs) =>
     `<rect x="${num(u0 * L)}" y="${num(v0 * W)}" width="${num((u1 - u0) * L)}" height="${num((v1 - v0) * W)}" ${attrs}/>`;
   const wheel = (u0, side) => {
@@ -1246,8 +1243,8 @@ function mowerBodyAwd(scale, pal) {
 // The mower out on the lawn, (X, Y) its centre, turned by `angle`
 // (clockwise on screen); a red mark ahead of it shows where it heads.
 function svgMower(X, Y, scale, angle, pal, look = "rwd") {
-  const L = MOWER_LENGTH * scale * LOOK_SIZE[look];
-  const W = MOWER_WIDTH * scale * LOOK_SIZE[look];
+  const L = MOWER_LENGTH * scale;
+  const W = MOWER_WIDTH * scale;
   const tip = L * 0.5 + W * 0.32;
   return (
     `<g transform="translate(${num(X)} ${num(Y)}) rotate(${num(angle)})" pointer-events="none" data-look="${look}">` +
