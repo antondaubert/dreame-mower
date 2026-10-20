@@ -245,6 +245,7 @@ async def test_subscription_sends_geometry_then_status(
     }
     assert status["type"] == "status"
     assert status["rotation"] == 90
+    assert status["model"] == "dreame.mower.test"
     assert status["maps"] == [
         {"id": 1, "name": "Front", "area": 120.0, "selected": True, "has_backup": False},
         {"id": 2, "name": "Map 2", "area": 80.0, "selected": False, "has_backup": True},
