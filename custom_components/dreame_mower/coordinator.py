@@ -640,6 +640,16 @@ class DreameMowerCoordinator(DataUpdateCoordinator[None]):
         return self.device.link_module_plan_valid
 
     @property
+    def wifi_signal_dbm(self) -> int | None:
+        """Return the Wi-Fi signal in dBm, if the mower is on Wi-Fi."""
+        return self.device.wifi_signal_dbm
+
+    @property
+    def cellular_signal_dbm(self) -> int | None:
+        """Return the cellular signal in dBm, if a module on a valid plan reports one."""
+        return self.device.cellular_signal_dbm
+
+    @property
     def supports_anti_theft(self) -> bool:
         """Return whether the device reported anti-theft settings."""
         return self._anti_theft_settings is not None

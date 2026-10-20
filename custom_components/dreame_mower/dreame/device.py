@@ -657,6 +657,16 @@ class DreameMowerDevice:
         return self._misc_handler.link_module_plan_valid
 
     @property
+    def wifi_signal_dbm(self) -> int | None:
+        """Return the Wi-Fi signal in dBm, if the mower is on Wi-Fi."""
+        return self._misc_handler.wifi_signal_dbm
+
+    @property
+    def cellular_signal_dbm(self) -> int | None:
+        """Return the cellular signal in dBm, if a module on a valid plan reports one."""
+        return self._misc_handler.cellular_signal_dbm
+
+    @property
     def bluetooth_connected(self) -> bool | None:
         """Return Bluetooth connection status."""
         return self._bluetooth_connected
@@ -2158,6 +2168,9 @@ class DreameMowerDevice:
                 break
 
         if online:
+            # The poll reads the same heartbeat the mower pushes, so its signal
+            # bytes keep the link readings fresh between pushes.
+            self._misc_handler.update_signal(props[0]["value"], self._notify_property_change)
             self._set_online(True)
             return True
 

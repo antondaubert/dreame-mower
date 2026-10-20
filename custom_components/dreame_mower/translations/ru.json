@@ -85,6 +85,12 @@
       "mowing_progress": {
         "name": "Загрязнение прогресса"
       },
+      "wifi_signal": {
+        "name": "Сигнал Wi-Fi"
+      },
+      "cellular_signal": {
+        "name": "Сотовый сигнал"
+      },
       "consumable_blade_health": {
         "name": "Состояние ножей"
       },

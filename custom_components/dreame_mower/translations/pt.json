@@ -85,6 +85,12 @@
       "mowing_progress": {
         "name": "Progresso da corte"
       },
+      "wifi_signal": {
+        "name": "Sinal Wi-Fi"
+      },
+      "cellular_signal": {
+        "name": "Sinal móvel"
+      },
       "consumable_blade_health": {
         "name": "Estado das lâminas"
       },

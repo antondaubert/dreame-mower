@@ -85,6 +85,12 @@
       "mowing_progress": {
         "name": "Kaszálási haladás"
       },
+      "wifi_signal": {
+        "name": "Wi-Fi jel"
+      },
+      "cellular_signal": {
+        "name": "Mobiljel"
+      },
       "consumable_blade_health": {
         "name": "Penge állapota"
       },

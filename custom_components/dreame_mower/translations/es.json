@@ -85,6 +85,12 @@
       "mowing_progress": {
         "name": "Progreso de corte"
       },
+      "wifi_signal": {
+        "name": "Señal wifi"
+      },
+      "cellular_signal": {
+        "name": "Señal móvil"
+      },
       "consumable_blade_health": {
         "name": "Estado de cuchillas"
       },
