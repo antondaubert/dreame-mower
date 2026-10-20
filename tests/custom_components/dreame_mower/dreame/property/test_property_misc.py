@@ -434,8 +434,8 @@ def test_a_heartbeat_describing_no_real_state_is_passed_over():
     assert handler.robot_state is None
 
 
-# Heartbeat read from a dreame.mower.g2541e (A3 AWD Pro) mowing far from the
-# access point: Wi-Fi at -87 dBm (byte 17), cellular at -70 dBm (byte 18).
+# A 22-byte heartbeat of a dreame.mower.g2541e (A3 AWD Pro): Wi-Fi at -87 dBm
+# (byte 17), cellular at -70 dBm (byte 18).
 _A3_HEARTBEAT = [206, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 53, 229, 36, 135, 0, 128, 169, 186, 0, 128, 206]
 
 
@@ -473,6 +473,7 @@ class TestLinkSignal:
     @pytest.mark.parametrize("wifi,cellular", [
         (0, 127),    # off Wi-Fi, no module fitted
         (0, 100),    # off Wi-Fi, module fitted but its plan expired
+        (128, 128),  # -128 dBm on both, a placeholder
     ])
     def test_links_without_a_reading(self, wifi, cellular):
         """A byte that carries no signal reads as unknown, not as a strength."""

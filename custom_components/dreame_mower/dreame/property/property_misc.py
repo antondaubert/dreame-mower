@@ -93,8 +93,8 @@ _LINK_MODULE_VALID_PLAN_RSSI = 128
 _HEARTBEAT_SENTINEL = 0xCE
 
 # Byte 17 is the Wi-Fi link's signal strength as a signed byte: a negative value
-# is the RSSI in dBm. Any other value is taken as no reading (the connectivity
-# poll already treats zero as no Wi-Fi uplink).
+# above -128 is the RSSI in dBm. Any other value is taken as no reading (the
+# connectivity poll already treats zero as no Wi-Fi uplink).
 _WIFI_RSSI_INDEX = 17
 
 # The 22-byte heartbeat (dreame.mower.g2541e, A3 AWD Pro) frames the payload with
@@ -103,8 +103,12 @@ _HEARTBEAT_LENGTHS_WITH_SIGNAL = (20, 22)
 
 
 def _signal_dbm(raw: int | None) -> int | None:
-    """Return a signal byte as dBm, or None when it carries no reading."""
-    if raw is None or raw < 128:
+    """Return a signal byte as dBm, or None when it carries no reading.
+
+    -128 dBm (raw 128), the lowest a signed byte goes, lies far below any usable
+    link, so it is taken as a placeholder rather than a reading.
+    """
+    if raw is None or raw <= 128:
         return None
     return raw - 256
 
