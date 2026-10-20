@@ -85,6 +85,12 @@
       "mowing_progress": {
         "name": "Косіння прогресу"
       },
+      "wifi_signal": {
+        "name": "Сигнал Wi-Fi"
+      },
+      "cellular_signal": {
+        "name": "Стільниковий сигнал"
+      },
       "consumable_blade_health": {
         "name": "Стан ножів"
       },

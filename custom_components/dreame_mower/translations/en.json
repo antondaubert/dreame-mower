@@ -85,6 +85,12 @@
       "mowing_progress": {
         "name": "Mowing Progress"
       },
+      "wifi_signal": {
+        "name": "Wi-Fi Signal"
+      },
+      "cellular_signal": {
+        "name": "Cellular Signal"
+      },
       "consumable_blade_health": {
         "name": "Blade Health"
       },

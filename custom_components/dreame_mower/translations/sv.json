@@ -85,6 +85,12 @@
       "mowing_progress": {
         "name": "Klippa framsteg"
       },
+      "wifi_signal": {
+        "name": "Wi-Fi-signal"
+      },
+      "cellular_signal": {
+        "name": "Mobilsignal"
+      },
       "consumable_blade_health": {
         "name": "Knivskick"
       },

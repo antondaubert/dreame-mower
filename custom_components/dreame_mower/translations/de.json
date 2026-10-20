@@ -85,6 +85,12 @@
       "mowing_progress": {
         "name": "Mäh Fortschritt"
       },
+      "wifi_signal": {
+        "name": "WLAN-Signal"
+      },
+      "cellular_signal": {
+        "name": "Mobilfunksignal"
+      },
       "consumable_blade_health": {
         "name": "Klingenverschleiß"
       },

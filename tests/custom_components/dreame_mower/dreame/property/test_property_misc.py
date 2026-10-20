@@ -8,6 +8,7 @@ from custom_components.dreame_mower.dreame.property.property_misc import (
     SettingsChangeHandler,
     MiscPropertyHandler,
     PROPERTY_1_1_ACTIVE_CODES_NAME,
+    PROPERTY_1_1_SIGNAL_NAME,
     PROPERTY_1_1_TASK_STATUS_NAME,
     SETTINGS_CHANGED_PROPERTY_NAME,
 )
@@ -431,3 +432,83 @@ def test_a_heartbeat_describing_no_real_state_is_passed_over():
     handler.parse_value(data, MagicMock())
 
     assert handler.robot_state is None
+
+
+# Heartbeat read from a dreame.mower.g2541e (A3 AWD Pro) mowing far from the
+# access point: Wi-Fi at -87 dBm (byte 17), cellular at -70 dBm (byte 18).
+_A3_HEARTBEAT = [206, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 53, 229, 36, 135, 0, 128, 169, 186, 0, 128, 206]
+
+
+class TestLinkSignal:
+    """Bytes 17 and 18 carry the Wi-Fi and cellular signal strengths."""
+
+    def test_unknown_until_a_heartbeat_arrives(self):
+        """No reading is claimed before the mower reports one."""
+        handler = Property11Handler()
+
+        assert handler.wifi_signal_dbm is None
+        assert handler.cellular_signal_dbm is None
+
+    def test_decodes_both_links_from_the_heartbeat(self):
+        """Signed bytes below zero are the signal strengths in dBm."""
+        handler = Property11Handler()
+        payload = _heartbeat()
+        payload[17] = 190
+        payload[18] = 200
+
+        assert handler.parse_value(payload) is True
+        assert handler.wifi_signal_dbm == -66
+        assert handler.cellular_signal_dbm == -56
+
+    def test_decodes_the_22_byte_variant(self):
+        """The A3 AWD Pro heartbeat carries the signal bytes at the same offsets."""
+        handler = Property11Handler()
+
+        assert handler.parse_value(list(_A3_HEARTBEAT)) is True
+        assert handler.wifi_signal_dbm == -87
+        assert handler.cellular_signal_dbm == -70
+        assert handler.link_module_installed is True
+        assert handler.link_module_plan_valid is True
+
+    @pytest.mark.parametrize("wifi,cellular", [
+        (0, 127),    # off Wi-Fi, no module fitted
+        (0, 100),    # off Wi-Fi, module fitted but its plan expired
+    ])
+    def test_links_without_a_reading(self, wifi, cellular):
+        """A byte that carries no signal reads as unknown, not as a strength."""
+        handler = Property11Handler()
+        payload = _heartbeat()
+        payload[17] = wifi
+        payload[18] = cellular
+
+        assert handler.parse_value(payload) is True
+        assert handler.wifi_signal_dbm is None
+        assert handler.cellular_signal_dbm is None
+
+    def test_notifies_only_when_a_reading_changes(self):
+        """Listeners hear about a new reading once, not on every heartbeat."""
+        handler = Property11Handler()
+        notify = MagicMock()
+
+        handler.update_signal(list(_A3_HEARTBEAT), notify)
+        handler.update_signal(list(_A3_HEARTBEAT), notify)
+        weaker = list(_A3_HEARTBEAT)
+        weaker[17] = 166
+        handler.update_signal(weaker, notify)
+
+        assert [c.args for c in notify.call_args_list] == [
+            (PROPERTY_1_1_SIGNAL_NAME, (-87, -70)),
+            (PROPERTY_1_1_SIGNAL_NAME, (-90, -70)),
+        ]
+
+    @pytest.mark.parametrize("value", [
+        None,
+        [0] * 22,                         # no sentinels
+        [206] + [0] * 22 + [206],         # unknown length
+    ])
+    def test_ignores_what_is_not_a_heartbeat(self, value):
+        """Only a framed heartbeat of a known length updates the readings."""
+        handler = Property11Handler()
+
+        assert handler.update_signal(value, None) is False
+        assert handler.wifi_signal_dbm is None

@@ -85,6 +85,12 @@
       "mowing_progress": {
         "name": "Falciatura progresso"
       },
+      "wifi_signal": {
+        "name": "Segnale Wi-Fi"
+      },
+      "cellular_signal": {
+        "name": "Segnale cellulare"
+      },
       "consumable_blade_health": {
         "name": "Stato delle lame"
       },

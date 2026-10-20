@@ -17,6 +17,7 @@ from custom_components.dreame_mower.sensor import (
     DreameMowerStatusSensor,
     DreameMowerProgressSensor,
     DreameMowerRainProtectionEndSensor,
+    DreameMowerSignalSensor,
 )
 from custom_components.dreame_mower.config_flow import (
     CONF_ACCOUNT_TYPE,
@@ -190,3 +191,16 @@ async def test_account_sensor_stays_available_while_the_device_is_not(mock_coord
 
     assert sensor.available is True
     assert sensor.native_value == "someone@example.com"
+
+
+async def test_signal_sensors_report_each_link_in_dbm(mock_coordinator):
+    """The Wi-Fi and cellular sensors each read their own link's signal."""
+    mock_coordinator.wifi_signal_dbm = -87
+    mock_coordinator.cellular_signal_dbm = -70
+    wifi = DreameMowerSignalSensor(mock_coordinator, "wifi_signal", "mdi:wifi")
+    cellular = DreameMowerSignalSensor(mock_coordinator, "cellular_signal", "mdi:signal-cellular-3")
+
+    assert wifi.native_value == -87
+    assert cellular.native_value == -70
+    assert wifi.unique_id == "aa:bb:cc:dd:ee:ff_wifi_signal"
+    assert wifi.native_unit_of_measurement == "dBm"

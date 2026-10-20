@@ -5694,3 +5694,17 @@ async def test_the_mower_is_asked_to_call_out(device, answer, called):
 
     assert await device.find_robot() is called
     device._send_task_payload.assert_awaited_once_with("find robot", {"m": "a", "p": 1, "o": 9})
+
+
+def test_update_online_status_refreshes_the_link_signal(device):
+    """The polled heartbeat updates the Wi-Fi and cellular readings."""
+    notified: list[tuple[str, object]] = []
+    device.register_property_callback(lambda name, value: notified.append((name, value)))
+    value = [206, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 53, 229, 36, 135, 0, 128, 169, 186, 0, 128, 206]
+    device._cloud_device.get_properties_result = [{"siid": 1, "piid": 1, "code": 0, "value": value}]
+
+    asyncio.get_event_loop().run_until_complete(device.async_update_online_status())
+
+    assert device.wifi_signal_dbm == -87
+    assert device.cellular_signal_dbm == -70
+    assert ("property_1_1_signal", (-87, -70)) in notified

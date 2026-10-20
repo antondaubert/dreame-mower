@@ -85,6 +85,12 @@
       "mowing_progress": {
         "name": "Postęp koszenia"
       },
+      "wifi_signal": {
+        "name": "Sygnał Wi-Fi"
+      },
+      "cellular_signal": {
+        "name": "Sygnał komórkowy"
+      },
       "consumable_blade_health": {
         "name": "Stan ostrzy"
       },

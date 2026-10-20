@@ -85,6 +85,12 @@
       "mowing_progress": {
         "name": "Progression de la tonte"
       },
+      "wifi_signal": {
+        "name": "Signal wifi"
+      },
+      "cellular_signal": {
+        "name": "Signal 4G"
+      },
       "consumable_blade_health": {
         "name": "État des lames"
       },

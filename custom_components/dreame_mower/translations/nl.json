@@ -85,6 +85,12 @@
       "mowing_progress": {
         "name": "Maaier vooruitgang"
       },
+      "wifi_signal": {
+        "name": "Wifi-signaal"
+      },
+      "cellular_signal": {
+        "name": "Mobiel signaal"
+      },
       "consumable_blade_health": {
         "name": "Messenstaat"
       },
