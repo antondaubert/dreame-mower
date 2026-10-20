@@ -104,6 +104,8 @@ def status_payload(coordinator: DreameMowerCoordinator) -> dict[str, Any]:
     return {
         "type": "status",
         "rotation": int(coordinator.entry.options.get(CONF_MAP_ROTATION, DEFAULT_MAP_ROTATION)),
+        # The model, so the card can draw the mower that is out there.
+        "model": coordinator.device_model,
         "maps": [
             {
                 "id": map_entry["id"],

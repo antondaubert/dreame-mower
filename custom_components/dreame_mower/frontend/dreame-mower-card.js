@@ -1104,7 +1104,7 @@ const DOCKED_AT = 0.04;
 // down its middle and a rail on each side; the hood over its far end carries
 // the light. A docked mower stands on the plate, its front under the hood,
 // where the charging contacts are.
-function svgStation(X, Y, scale, angle, light, pal, docked = false) {
+function svgStation(X, Y, scale, angle, light, pal, docked = false, look = "rwd") {
   const L = STATION_LENGTH * scale;
   const W = STATION_WIDTH * scale;
   const shape = (outline, attrs) => `<polygon points="${localPoints(L, W, outline)}" ${attrs}/>`;
@@ -1116,7 +1116,7 @@ function svgStation(X, Y, scale, angle, light, pal, docked = false) {
     shape(STATION_RAMP, `fill="${pal.stationBody}"`) +
     rail(-1) +
     rail(1) +
-    (docked ? `<g transform="translate(${num(L * DOCKED_AT)} 0)">${mowerBody(scale, pal)}</g>` : "") +
+    (docked ? `<g transform="translate(${num(L * DOCKED_AT)} 0)" data-look="${look}">${mowerBody(scale, pal, look)}</g>` : "") +
     shape(STATION_HOOD, `fill="${pal.stationBody}" ${edge}`) +
     `<rect x="${num(L * (0.27 - 0.0125))}" y="${num(-W * 0.09)}" width="${num(L * 0.025)}" height="${num(W * 0.18)}" rx="${num(L * 0.0125)}" fill="${light}"/>` +
     `</g>`
@@ -1151,6 +1151,41 @@ const MOWER_OUTLINE = (() => {
   return points;
 })();
 
+// Model families drawn with all-wheel drive (four wheel pods and a front
+// bumper) instead of the two-wheel body; the status says which model the
+// mower is. The A3 AWD Pro comes in sizes that share its body (the 3500 is
+// dreame.mower.g2541e), told apart by the last letter of the model.
+const AWD_MODEL_FAMILIES = ["dreame.mower.g2541"];
+
+function mowerLook(model) {
+  return AWD_MODEL_FAMILIES.some((family) => String(model || "").startsWith(family)) ? "awd" : "rwd";
+}
+
+// How large each body is drawn, against the two-wheel one.
+const LOOK_SIZE = { rwd: 1, awd: 0.75 };
+
+// The all-wheel drive body seen from above, in the same fractions as
+// MOWER_OUTLINE: a square back, straight sides, and shoulders that close in
+// towards the front.
+const AWD_OUTLINE = (() => {
+  const points = [[-0.44, -0.3]];
+  const quad = (c, e, n = 8) => {
+    const p = points[points.length - 1];
+    for (let i = 1; i <= n; i++) {
+      const t = i / n;
+      points.push([0, 1].map((k) => (1 - t) ** 2 * p[k] + 2 * (1 - t) * t * c[k] + t * t * e[k]));
+    }
+  };
+  quad([-0.44, -0.38], [-0.36, -0.38]);
+  points.push([0.22, -0.38]);
+  quad([0.4, -0.38], [0.44, -0.2]);
+  points.push([0.44, 0.2]);
+  quad([0.4, 0.38], [0.22, 0.38]);
+  points.push([-0.36, 0.38]);
+  quad([-0.44, 0.38], [-0.44, 0.3]);
+  return points;
+})();
+
 // `outline` in fractions of a shape `L` long and `W` wide, as SVG points.
 function localPoints(L, W, outline) {
   return outline.map(([u, v]) => `${num(u * L)},${num(v * W)}`).join(" ");
@@ -1160,7 +1195,8 @@ function localPoints(L, W, outline) {
 // rear wheels and the back show behind a light body carrying the red stop
 // button, the dark lid with the light in front of it, and the camera at the
 // front.
-function mowerBody(scale, pal) {
+function mowerBody(scale, pal, look = "rwd") {
+  if (look === "awd") return mowerBodyAwd(scale, pal);
   const L = MOWER_LENGTH * scale;
   const W = MOWER_WIDTH * scale;
   return (
@@ -1174,15 +1210,48 @@ function mowerBody(scale, pal) {
   );
 }
 
+// The all-wheel drive mower (A3 AWD Pro) seen from above, its front towards
+// +X: a wheel pod at each corner standing out of the body, the black bumper
+// across the front with the twin cameras behind it, and on the light body the
+// dark lid with the LiDAR dome at its centre and the red strip behind it.
+function mowerBodyAwd(scale, pal) {
+  const L = MOWER_LENGTH * scale * LOOK_SIZE.awd;
+  const W = MOWER_WIDTH * scale * LOOK_SIZE.awd;
+  const rect = (u0, u1, v0, v1, attrs) =>
+    `<rect x="${num(u0 * L)}" y="${num(v0 * W)}" width="${num((u1 - u0) * L)}" height="${num((v1 - v0) * W)}" ${attrs}/>`;
+  const wheel = (u0, side) => {
+    const [v0, v1] = side < 0 ? [-0.52, -0.33] : [0.33, 0.52];
+    let tread = "";
+    for (let i = 1; i < 5; i++) {
+      const u = u0 + (0.26 * i) / 5;
+      tread += `<line x1="${num(u * L)}" y1="${num(v0 * W)}" x2="${num(u * L)}" y2="${num(v1 * W)}" stroke="#3d3d3d" stroke-width="${num(L * 0.012)}"/>`;
+    }
+    return rect(u0, u0 + 0.26, v0, v1, `rx="${num(W * 0.05)}" fill="#1f1f1f"`) + tread;
+  };
+  return (
+    wheel(0.18, -1) + wheel(0.18, 1) + wheel(-0.46, -1) + wheel(-0.46, 1) +
+    `<polygon points="${localPoints(L, W, AWD_OUTLINE)}" fill="${pal.mowerBody}" stroke="${pal.mowerEdge}" stroke-width="${num(L * 0.01)}" stroke-linejoin="round"/>` +
+    rect(0.32, 0.45, -0.2, 0.2, `rx="${num(W * 0.04)}" fill="#2b2b2b"`) +
+    `<circle cx="${num(L * 0.41)}" cy="${num(-W * 0.08)}" r="${num(W * 0.03)}" fill="#111" stroke="#8c8c8c" stroke-width="${num(W * 0.01)}"/>` +
+    `<circle cx="${num(L * 0.41)}" cy="${num(W * 0.08)}" r="${num(W * 0.03)}" fill="#111" stroke="#8c8c8c" stroke-width="${num(W * 0.01)}"/>` +
+    rect(0.45, 0.53, -0.52, 0.52, `rx="${num(L * 0.02)}" fill="#222"`) +
+    rect(0.47, 0.51, 0.3, 0.42, `fill="#E8433E"`) +
+    rect(-0.24, 0.26, -0.22, 0.22, `rx="${num(W * 0.08)}" fill="${pal.mowerTop}"`) +
+    rect(-0.31, -0.26, -0.17, 0.17, `rx="${num(W * 0.02)}" fill="#E8433E"`) +
+    `<circle cx="${num(L * 0.02)}" r="${num(W * 0.085)}" fill="#1a1a1a" stroke="#6a6a6a" stroke-width="${num(W * 0.015)}"/>` +
+    `<circle cx="${num(L * 0.02)}" r="${num(W * 0.03)}" fill="#444"/>`
+  );
+}
+
 // The mower out on the lawn, (X, Y) its centre, turned by `angle`
 // (clockwise on screen); a red mark ahead of it shows where it heads.
-function svgMower(X, Y, scale, angle, pal) {
-  const L = MOWER_LENGTH * scale;
-  const W = MOWER_WIDTH * scale;
+function svgMower(X, Y, scale, angle, pal, look = "rwd") {
+  const L = MOWER_LENGTH * scale * LOOK_SIZE[look];
+  const W = MOWER_WIDTH * scale * LOOK_SIZE[look];
   const tip = L * 0.5 + W * 0.32;
   return (
-    `<g transform="translate(${num(X)} ${num(Y)}) rotate(${num(angle)})" pointer-events="none">` +
-    mowerBody(scale, pal) +
+    `<g transform="translate(${num(X)} ${num(Y)}) rotate(${num(angle)})" pointer-events="none" data-look="${look}">` +
+    mowerBody(scale, pal, look) +
     `<path d="M${num(tip)} 0L${num(L * 0.5 + W * 0.1)} ${num(-W * 0.14)}V${num(W * 0.14)}Z" fill="#EE3C2F"/>` +
     `</g>`
   );
@@ -2817,15 +2886,16 @@ class DreameMowerCard extends HTMLElement {
     const screenAngle = (angle) => -(angle || 0) + tf.rotation;
     const dock = status.dock;
     const docked = this._docked();
+    const look = mowerLook(status.model);
     let station = null;
     if (dock) {
       const [X, Y] = tf.toMap(dock.x, dock.y);
       station = { x: X, y: Y, angle: screenAngle(dock.angle), length: STATION_LENGTH * scale };
-      parts.push(svgStation(X, Y, scale, station.angle, docked ? "#52FF8C" : "#52C3FF", pal, docked));
+      parts.push(svgStation(X, Y, scale, station.angle, docked ? "#52FF8C" : "#52C3FF", pal, docked, look));
     }
     if (!(docked && dock) && status.mower) {
       const [X, Y] = tf.toMap(status.mower.x, status.mower.y);
-      parts.push(svgMower(X, Y, scale, screenAngle(status.mower.heading), pal));
+      parts.push(svgMower(X, Y, scale, screenAngle(status.mower.heading), pal, look));
     }
     // What the sections draw over it.
     if (!this._edit) {

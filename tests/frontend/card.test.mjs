@@ -421,3 +421,16 @@ test("a section finds the mower's entities by their key", async () => {
   assert.equal(host.entity("sensor", "blade"), "sensor.a2_blades");
   assert.equal(host.entity("sensor", "other"), null);
 });
+
+test("an all-wheel drive mower is drawn as one, other models keep the two-wheel body", async () => {
+  const window = load("dreame-mower-card.js");
+  const hass = fakeHass();
+  const card = await mount(window, hass);
+  await sendFeed(window, hass, GEOMETRY, { ...DOCKED, model: "dreame.mower.g2541e" });
+  assert.equal($(card, "[data-look]").dataset.look, "awd");
+  // Another size of the same family shares the body.
+  await sendFeed(window, hass, { ...DOCKED, model: "dreame.mower.g2541f" });
+  assert.equal($(card, "[data-look]").dataset.look, "awd");
+  await sendFeed(window, hass, { ...DOCKED, model: "dreame.mower.p2255" });
+  assert.equal($(card, "[data-look]").dataset.look, "rwd");
+});
