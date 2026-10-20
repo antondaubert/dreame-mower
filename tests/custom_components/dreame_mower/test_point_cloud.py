@@ -1,7 +1,7 @@
 """Tests for the 3D maps (point clouds) and the endpoint that serves them."""
 
 import struct
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -102,6 +102,11 @@ class TestPointCloudStore:
         device.download_point_cloud.assert_called_once_with("ali_dreame/a/map0.bin")
         device.read_point_cloud_names.assert_called_once()
 
+    def test_a_machine_that_has_just_booted_reads_the_list(self, tmp_path):
+        device = _device(["ali_dreame/a/map0.bin"])
+        with patch("custom_components.dreame_mower.point_cloud.time.monotonic", return_value=5.0):
+            assert PointCloudStore(device, str(tmp_path)).get(0) == (CLOUD, "ali_dreame/a/map0.bin")
+
     def test_a_restart_reuses_the_file_on_disk(self, tmp_path):
         PointCloudStore(_device(["ali_dreame/a/map0.bin"]), str(tmp_path)).get(0)
         device = _device(["ali_dreame/a/map0.bin"])
@@ -113,7 +118,7 @@ class TestPointCloudStore:
         store = PointCloudStore(device, str(tmp_path))
         store.get(0)
         device.read_point_cloud_names.return_value = ["ali_dreame/b/map0.bin"]
-        store._names_read_at = 0.0  # the list is out of date
+        store._names_read_at = None  # the list is out of date
         assert store.get(0) == (CLOUD, "ali_dreame/b/map0.bin")
         assert device.download_point_cloud.call_count == 2
 

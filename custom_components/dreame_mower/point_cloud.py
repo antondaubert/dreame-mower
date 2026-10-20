@@ -50,7 +50,9 @@ class PointCloudStore:
         self._device = device
         self._cache_dir = cache_dir
         self._names: list[str | None] = []
-        self._names_read_at = 0.0
+        # None until the list was first read: the monotonic clock may start
+        # near zero, on a machine that has just booted.
+        self._names_read_at: float | None = None
         self._lock = threading.Lock()
 
     def get(self, map_index: int) -> tuple[bytes, str] | None:
@@ -59,7 +61,7 @@ class PointCloudStore:
         Runs in the executor: it may ask the mower and download the file.
         """
         with self._lock:
-            if time.monotonic() - self._names_read_at > NAMES_TTL_SECONDS:
+            if self._names_read_at is None or time.monotonic() - self._names_read_at > NAMES_TTL_SECONDS:
                 self._names = self._device.read_point_cloud_names()
                 self._names_read_at = time.monotonic()
             if not 0 <= map_index < len(self._names) or not (name := self._names[map_index]):
