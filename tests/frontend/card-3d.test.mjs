@@ -90,3 +90,16 @@ test("switching to a map without a cloud closes the 3D view", async () => {
   assert.ok($(card, ".cover").hidden);
   assert.equal(openButton(card), null);
 });
+
+test("the help of the 3D view offers to invert the ↑ ↓ keys", async () => {
+  const window = await page();
+  window.console.error = () => {};
+  const hass = hassWithClouds(1);
+  const card = await mount(window, hass);
+  await click(window, openButton(card));
+  await click(window, $(card, '.cover [data-pc3d="help"]'));
+  assert.ok(!$(card, ".cover .help").hidden);
+  const box = $(card, '.cover .help [data-pc3d="invert"]');
+  assert.equal(box.checked, false);
+  assert.match($(card, ".cover .help").textContent, /invert ↑ ↓/);
+});

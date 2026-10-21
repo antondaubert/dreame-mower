@@ -39,9 +39,27 @@
     ["A D", "strafe"],
     ["R F", "up, down"],
     ["H", "level the horizon"],
+    ["I", "invert ↑ ↓"],
     ["Shift", "faster"],
     ["", "Keys by position: W A S D is Z Q S D on AZERTY"],
   ];
+
+  // Whether ↑ ↓ pitch the other way, as this browser last chose.
+  const STORAGE_INVERT = "dreame-mower-card-3d.invert-pitch";
+  function storedInvert() {
+    try {
+      return localStorage.getItem(STORAGE_INVERT) === "1";
+    } catch (err) {
+      return false;  // storage may be blocked
+    }
+  }
+  function storeInvert(invert) {
+    try {
+      localStorage.setItem(STORAGE_INVERT, invert ? "1" : "0");
+    } catch (err) {
+      // storage may be blocked
+    }
+  }
 
   /** Parse an ASCII or binary PCD file into positions and optional 8-bit colours. */
   function parsePcd(buffer) {
@@ -130,6 +148,8 @@
       this.raycaster = new THREE.Raycaster();
       this.points = null;
       this.pointSize = POINT_SIZE;
+      this.invertPitch = false;
+      this.onInvert = null;  // the I key asks the section to invert ↑ ↓
       this.home = null;
       this.keys = new Set();
       this.pointers = new Map();
@@ -304,6 +324,7 @@
         if (FLIGHT.has(e.code)) { this.keys.add(e.code); e.preventDefault(); }
         if (e.key === "Shift") this.keys.add("Shift");
         if (e.code === "KeyH") this.levelHorizon();
+        if (e.code === "KeyI" && !e.repeat && this.onInvert) this.onInvert();
       });
       c.addEventListener("keyup", (e) => {
         e.stopPropagation();
@@ -325,7 +346,7 @@
       cam.position.addScaledVector(this.local(this.X), (k("KeyD") - k("KeyA")) * v);
       cam.position.addScaledVector(this.local(this.Y), (k("KeyR") + k("PageUp") - k("KeyF") - k("PageDown")) * v);
       cam.rotateOnWorldAxis(this.Z, (k("ArrowLeft") - k("ArrowRight")) * 1.2 * dt);
-      cam.rotateX((k("ArrowUp") - k("ArrowDown")) * 0.9 * dt);
+      cam.rotateX((k("ArrowUp") - k("ArrowDown")) * (this.invertPitch ? -0.9 : 0.9) * dt);
       cam.rotateZ((k("KeyQ") - k("KeyE")) * 1.2 * dt);
       this.dirty = true;
     }
@@ -357,6 +378,8 @@
 .pc3d .help { position: absolute; left: 8px; top: 8px; background: rgba(20, 20, 20, .9); color: #ddd; border: 1px solid #444; border-radius: 6px; padding: 8px 10px; font-size: 12px; display: grid; grid-template-columns: auto auto; gap: 2px 12px; }
 .pc3d .help[hidden] { display: none; }
 .pc3d .help b { font-weight: 600; white-space: nowrap; }
+.pc3d .help label { grid-column: 1 / -1; display: flex; gap: 6px; align-items: center; margin-top: 4px; cursor: pointer; }
+.pc3d .help label input { margin: 0; }
   `;
 
   const button = (action, icon, label) =>
@@ -460,7 +483,12 @@
         button("help", "mdi:help-circle-outline", "Controls") +
         button("fullscreen", "mdi:fullscreen", "Full screen") +
         "</div>" +
-        `<div class="status"></div><div class="help" hidden>${HELP.map(([k, v]) => `<b>${k}</b><span>${v}</span>`).join("")}</div>`;
+        `<div class="status"></div><div class="help" hidden>${HELP.map(([k, v]) => `<b>${k}</b><span>${v}</span>`).join("")}` +
+        '<label><input type="checkbox" data-pc3d="invert"> Invert ↑ ↓</label></div>';
+      el.querySelector('[data-pc3d="invert"]').checked = storedInvert();
+      el.addEventListener("change", (e) => {
+        if (e.target.dataset.pc3d === "invert") this.setInvert(e.target.checked);
+      });
       el.addEventListener("click", (e) => {
         const action = e.target.closest("[data-pc3d]")?.dataset.pc3d;
         if (action === "close") this.close();
@@ -481,10 +509,20 @@
         const THREE = await loadThree();
         if (!this.open || this.viewer) return;
         this.viewer = new Viewer(THREE, this.el.querySelector(".stage"));
+        this.viewer.invertPitch = storedInvert();
+        this.viewer.onInvert = () => this.setInvert(!this.viewer.invertPitch);
         this.load(this.map() || map);
       } catch (err) {
         if (this.open) this.setStatus(`Could not start the 3D view: ${err.message || err}`);
       }
+    }
+
+    /** Pitch the other way with ↑ ↓ or not, and remember it in this browser. */
+    setInvert(invert) {
+      storeInvert(invert);
+      if (this.viewer) this.viewer.invertPitch = invert;
+      const box = this.el && this.el.querySelector('[data-pc3d="invert"]');
+      if (box) box.checked = invert;
     }
 
     close() {
