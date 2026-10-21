@@ -30,7 +30,7 @@ from custom_components.dreame_mower.coordinator import DreameMowerCoordinator, z
 from custom_components.dreame_mower.dreame.const import MowingPreferenceMode
 from custom_components.dreame_mower.dreame.map_data_parser import MowerVectorMap, MowerZone
 from custom_components.dreame_mower.dreame.map_scene import SEGMENT_BREAK, stripe_angle
-from custom_components.dreame_mower.frontend import CARD_3D_URL, CARD_URL, async_setup_frontend
+from custom_components.dreame_mower.frontend import CARD_URL, async_setup_frontend
 from custom_components.dreame_mower.map_api import WS_OBSTACLE_PHOTO, WS_SUBSCRIBE_MAP, WS_WORK_LOG, WS_WORK_LOG_DETAILS, path_payload
 
 ENTITY_ID = "lawn_mower.robo"
@@ -172,10 +172,9 @@ async def test_card_resource_is_registered_and_updated(hass: HomeAssistant) -> N
     await async_setup_frontend(hass)
 
     urls = sorted(item["url"] for item in resources.async_items())
-    assert len(urls) == 3
-    assert urls[0].startswith(f"{CARD_3D_URL}?v=")
-    assert urls[1].startswith(f"{CARD_URL}?v=") and urls[1] != f"{CARD_URL}?v=0.1"
-    assert urls[2] == "/local/other.js"
+    assert len(urls) == 2
+    assert urls[0].startswith(f"{CARD_URL}?v=") and urls[0] != f"{CARD_URL}?v=0.1"
+    assert urls[1] == "/local/other.js"
 
 
 async def test_failing_resource_registration_still_serves_the_card(
@@ -199,7 +198,7 @@ async def test_card_resource_is_created_when_missing(hass: HomeAssistant) -> Non
     await async_setup_frontend(hass)
 
     resources = hass.data[LOVELACE_DATA].resources
-    assert [item["url"].split("?")[0] for item in resources.async_items()] == [CARD_URL, CARD_3D_URL]
+    assert [item["url"].split("?")[0] for item in resources.async_items()] == [CARD_URL]
 
 
 async def test_yaml_resources_are_left_alone(hass: HomeAssistant, caplog: pytest.LogCaptureFixture) -> None:

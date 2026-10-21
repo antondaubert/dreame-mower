@@ -14,10 +14,10 @@ import pytest
 
 from custom_components.dreame_mower import frontend
 from custom_components.dreame_mower.frontend import (
-    CARD_3D_PATH,
-    CARD_3D_URL,
     CARD_PATH,
     CARD_URL,
+    SECTION_3D_PATH,
+    SECTION_3D_URL,
     THREE_PATH,
     THREE_URL,
     async_setup_frontend,
@@ -42,7 +42,7 @@ def _lovelace(hass: HomeAssistant, resources: Any, mode: str = MODE_STORAGE) -> 
     hass.data["lovelace"] = SimpleNamespace(resources=resources, resource_mode=mode)
 
 
-async def test_the_cards_are_served_fed_and_added_once(hass: HomeAssistant) -> None:
+async def test_the_card_is_served_fed_and_added_once(hass: HomeAssistant) -> None:
     assert await async_setup_component(hass, "http", {})
     resources = _resources([])
     _lovelace(hass, resources)
@@ -57,10 +57,10 @@ async def test_the_cards_are_served_fed_and_added_once(hass: HomeAssistant) -> N
     serve.assert_awaited_once()
     assert [(config.url_path, config.path, config.cache_headers) for config in serve.await_args.args[0]] == [
         (CARD_URL, str(CARD_PATH), True),
-        (CARD_3D_URL, str(CARD_3D_PATH), True),
+        (SECTION_3D_URL, str(SECTION_3D_PATH), True),
         (THREE_URL, str(THREE_PATH), True),
     ]
-    assert CARD_PATH.is_file() and CARD_3D_PATH.is_file() and THREE_PATH.is_file()
+    assert CARD_PATH.is_file() and SECTION_3D_PATH.is_file() and THREE_PATH.is_file()
     assert [call.args[1].__name__ for call in register.call_args_list] == [
         "ws_subscribe_map",
         "ws_work_log",
@@ -69,12 +69,25 @@ async def test_the_cards_are_served_fed_and_added_once(hass: HomeAssistant) -> N
         "ws_point_clouds",
     ]
     view.assert_called_once()
-    # Each URL carries the version and a checksum of its file.
-    added = [call.args[0] for call in resources.async_create_item.await_args_list]
-    assert [item["url"].split("?v=")[0] for item in added] == [CARD_URL, CARD_3D_URL]
-    assert added[0]["url"].endswith(f".{frontend._card_checksum()}")
-    assert added[1]["url"].endswith(f".{frontend._card_checksum(CARD_3D_PATH)}")
-    assert all(item["res_type"] == "module" for item in added)
+    # The URL carries the version and a checksum of the file.
+    resources.async_create_item.assert_awaited_once()
+    url = resources.async_create_item.await_args.args[0]["url"]
+    assert url.startswith(f"{CARD_URL}?v=")
+    assert url.endswith(f".{frontend._card_checksum()}")
+    assert resources.async_create_item.await_args.args[0]["res_type"] == "module"
+
+
+async def test_the_3d_view_is_loaded_on_every_page(hass: HomeAssistant) -> None:
+    assert await async_setup_component(hass, "http", {})
+    hass.config.components.add("frontend")
+    with (
+        patch.object(hass.http, "async_register_static_paths", AsyncMock()),
+        patch.object(frontend, "async_register_command"),
+        patch.object(frontend, "add_extra_js_url") as extra,
+        patch.object(frontend, "_async_register_resource", AsyncMock()),
+    ):
+        await async_setup_frontend(hass)
+    extra.assert_called_once_with(hass, f"{SECTION_3D_URL}?v={frontend._card_checksum(SECTION_3D_PATH)}")
 
 
 async def test_a_failing_resource_leaves_the_card_served(hass: HomeAssistant, caplog: pytest.LogCaptureFixture) -> None:

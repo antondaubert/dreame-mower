@@ -113,6 +113,19 @@ class TestPointCloudStore:
         assert PointCloudStore(device, str(tmp_path)).get(0) == (CLOUD, "ali_dreame/a/map0.bin")
         device.download_point_cloud.assert_not_called()
 
+    def test_the_files_are_written_whole(self, tmp_path):
+        PointCloudStore(_device(["ali_dreame/a/map0.bin"]), str(tmp_path)).get(0)
+        assert sorted(path.name for path in tmp_path.iterdir()) == ["0.name", "0.pcd"]
+        assert (tmp_path / "0.pcd").read_bytes() == CLOUD
+        assert (tmp_path / "0.name").read_text() == "ali_dreame/a/map0.bin"
+
+    def test_lists_the_names_once_in_a_while(self, tmp_path):
+        device = _device([None, "ali_dreame/a/map1.bin"])
+        store = PointCloudStore(device, str(tmp_path))
+        assert store.names() == [None, "ali_dreame/a/map1.bin"]
+        assert store.get(1) == (CLOUD, "ali_dreame/a/map1.bin")
+        device.read_point_cloud_names.assert_called_once()
+
     def test_a_new_cloud_name_is_downloaded_again(self, tmp_path):
         device = _device(["ali_dreame/a/map0.bin"])
         store = PointCloudStore(device, str(tmp_path))
@@ -181,20 +194,29 @@ class TestPointCloudsCommand:
             {"id": 2, "index": 1, "name": "Meadow", "area": 900},
         ]
         coordinator.device.current_map_id = 2
-        hass.data.setdefault(DOMAIN, {})["entry1"] = {DATA_COORDINATOR: coordinator, DATA_POINT_CLOUD: Mock()}
+        store = Mock()
+        store.names = Mock(return_value=[None, "ali_dreame/a/map1.bin"])
+        hass.data.setdefault(DOMAIN, {})["entry1"] = {DATA_COORDINATOR: coordinator, DATA_POINT_CLOUD: store}
         return await hass_ws_client(hass)
 
-    async def test_lists_the_maps_and_the_active_one(self, ws):
+    async def test_lists_the_maps_their_clouds_and_the_active_one(self, ws):
         await ws.send_json({"id": 1, "type": "dreame_mower/point_clouds", "entity_id": "lawn_mower.shaun"})
         msg = await ws.receive_json()
         assert msg["success"]
         assert msg["result"] == {
             "maps": [
-                {"index": 0, "name": "Lawn", "url": "/api/dreame_mower/entry1/point_cloud/0"},
-                {"index": 1, "name": "Meadow", "url": "/api/dreame_mower/entry1/point_cloud/1"},
+                {"id": 1, "index": 0, "name": "Lawn", "url": "/api/dreame_mower/entry1/point_cloud/0", "has_cloud": False},
+                {"id": 2, "index": 1, "name": "Meadow", "url": "/api/dreame_mower/entry1/point_cloud/1", "has_cloud": True},
             ],
             "active_index": 1,
         }
+
+    async def test_a_mower_that_does_not_answer_is_an_error(self, hass, ws):
+        hass.data[DOMAIN]["entry1"][DATA_POINT_CLOUD].names.side_effect = TimeoutError("no answer")
+        await ws.send_json({"id": 1, "type": "dreame_mower/point_clouds", "entity_id": "lawn_mower.shaun"})
+        msg = await ws.receive_json()
+        assert not msg["success"]
+        assert msg["error"]["code"] == "home_assistant_error"
 
     @pytest.mark.parametrize("entity_id", ["lawn_mower.other", "lawn_mower.missing"])
     async def test_other_entities_are_refused(self, ws, entity_id):
