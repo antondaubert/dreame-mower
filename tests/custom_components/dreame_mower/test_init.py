@@ -16,7 +16,7 @@ from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.dreame_mower import async_setup_entry
+from custom_components.dreame_mower import async_remove_entry, async_setup_entry
 from custom_components.dreame_mower.config_flow import (
     CONF_ACCOUNT_TYPE,
     CONF_COUNTRY,
@@ -141,6 +141,24 @@ async def test_stopping_home_assistant_drops_the_cloud_connection(hass):
     await hass.async_block_till_done()
 
     coordinator.async_disconnect_device.assert_awaited_once()
+
+
+async def test_removing_the_entry_deletes_its_point_clouds(hass, tmp_path):
+    """The clouds kept on disk go with the entry, those of other entries stay."""
+    hass.config.config_dir = str(tmp_path)
+    entry = _make_entry()
+    ours = tmp_path / DOMAIN / "point_cloud" / entry.entry_id
+    other = tmp_path / DOMAIN / "point_cloud" / "other"
+    for directory in (ours, other):
+        directory.mkdir(parents=True)
+        (directory / "0.pcd").write_bytes(b"cloud")
+
+    await async_remove_entry(hass, entry)
+
+    assert not ours.exists()
+    assert (other / "0.pcd").exists()
+    # An entry that never kept a cloud is removed all the same.
+    await async_remove_entry(hass, entry)
 
 
 async def test_setup_drops_the_entities_earlier_versions_created(hass):

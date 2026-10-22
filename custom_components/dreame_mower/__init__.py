@@ -32,7 +32,7 @@ from .const import (
 from .coordinator import DreameMowerCoordinator
 from .config_flow import DEVICE_TYPE_SWBOT
 from .frontend import async_setup_frontend
-from .point_cloud import PointCloudStore
+from .point_cloud import PointCloudStore, async_remove_point_clouds, point_cloud_dir
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -151,7 +151,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     }
     if coordinator.device_type != DEVICE_TYPE_SWBOT:
         hass.data[DOMAIN][entry.entry_id][DATA_POINT_CLOUD] = PointCloudStore(
-            coordinator.device, hass.config.path(DOMAIN, "point_cloud", entry.entry_id)
+            coordinator.device, point_cloud_dir(hass, entry.entry_id)
         )
 
     # While a mowing session runs, keep the position reports coming; open map
@@ -336,6 +336,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data[DOMAIN].pop(entry.entry_id)
 
     return unload_ok
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Delete what the entry kept on disk."""
+    await async_remove_point_clouds(hass, entry.entry_id)
 
 
 async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:

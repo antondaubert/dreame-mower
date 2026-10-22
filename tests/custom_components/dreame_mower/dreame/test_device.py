@@ -5551,6 +5551,27 @@ async def test_an_offline_mower_is_not_asked_for_its_slots_after_a_delete(device
     device.fetch_vector_map.assert_called_once()
 
 
+def test_an_offline_mower_is_not_asked_for_its_point_clouds(device):
+    from custom_components.dreame_mower.dreame.point_cloud import PointCloudError
+
+    device._cloud_device.set_connected_state(True)
+    device._online = False
+
+    with pytest.raises(PointCloudError, match="offline"):
+        device.read_point_cloud_names()
+
+    assert device._cloud_device.action_calls == []
+
+
+def test_an_online_mower_lists_its_point_clouds(device):
+    device._cloud_device.set_connected_state(True)
+    device._online = True
+    device._cloud_device.action_result = lambda *_: {"out": [{"d": {"name": ["ali_dreame/a/map0.bin", ""]}}]}
+
+    assert device.read_point_cloud_names() == ["ali_dreame/a/map0.bin", None]
+    assert device._cloud_device.action_calls[0][2] == [{"m": "g", "t": "OBJ", "d": {"type": "3dmap"}}]
+
+
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("point_id,heading,sent", [(1, None, 0.5), (1, 180.0, 1.0), (None, None, 0.0)])

@@ -24,6 +24,10 @@
   const POINT_SIZE = 0.25;
   const POINT_STEP = 1.4;
 
+  // How long to wait before asking again for a list without a cloud for the
+  // map the card shows, in ms.
+  const RELIST_MS = 60000;
+
   // Parsed point clouds by endpoint, kept while the page lives so opening the
   // view again does not parse them again. The ETag tells whether the file changed.
   const parsedClouds = new Map();
@@ -392,24 +396,35 @@
       this.info = null;  // what the integration lists: { maps: [{ id, index, name, url, has_cloud }] }
       this.mapId = undefined;
       this.listing = null;
+      this.listedAt = 0;
       this.open = false;
       this.el = null;
       this.viewer = null;
       this.shown = null;
     }
 
-    connect() { this.list(); }
+    // The card connects its sections on every change of state; the list is
+    // asked for once per time the card is shown, then as update() sees fit.
+    connect() { if (!this.listedAt) this.list(); }
     resubscribe() { this.list(); }
-    disconnect() { this.close(); }
-    reset() { this.info = null; this.mapId = undefined; this.close(); this.list(); }
+    disconnect() { this.listedAt = 0; this.close(); }
+    reset() { this.info = null; this.mapId = undefined; this.listedAt = 0; this.close(); this.list(); }
     leave() { this.close(); }
 
     // The view follows the map the card shows, which is the mower's active map.
+    // While that map has no cloud in the list, the list is asked for again once
+    // in a while: it may have failed (the mower offline), come before the
+    // mower's maps were read, or the mower may store a cloud later.
+    // A card that is not shown asks nothing; connect() lists once it is again.
     update() {
+      if (!this.host.connected) return;
       const mapId = this.currentMapId();
-      if (mapId === this.mapId) return;
-      this.mapId = mapId;
-      this.list();
+      if (mapId !== this.mapId) {
+        this.mapId = mapId;
+        this.list();
+      } else if (mapId !== null && !this.map() && Date.now() - this.listedAt >= RELIST_MS) {
+        this.list();
+      }
     }
 
     currentMapId() {
@@ -428,6 +443,7 @@
       const { hass, entityId } = this.host;
       if (!hass || !entityId) return;
       this.mapId = this.currentMapId();
+      this.listedAt = Date.now();
       const listing = (this.listing = hass.callWS({ type: `${DOMAIN}/point_clouds`, entity_id: entityId }));
       try {
         const info = await listing;

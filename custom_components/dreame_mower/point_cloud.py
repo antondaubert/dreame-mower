@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import shutil
 import threading
 import time
 from http import HTTPStatus
@@ -36,6 +37,16 @@ _LOGGER = logging.getLogger(__name__)
 POINT_CLOUD_URL = "/api/dreame_mower/{entry_id}/point_cloud/{map_index}"
 # How long the list of stored clouds is trusted before the mower is asked again.
 NAMES_TTL_SECONDS = 600
+
+
+def point_cloud_dir(hass: HomeAssistant, entry_id: str) -> str:
+    """Return the directory the clouds of one entry are kept in."""
+    return hass.config.path(DOMAIN, "point_cloud", entry_id)
+
+
+async def async_remove_point_clouds(hass: HomeAssistant, entry_id: str) -> None:
+    """Delete the clouds kept for an entry that is removed."""
+    await hass.async_add_executor_job(shutil.rmtree, point_cloud_dir(hass, entry_id), True)
 
 
 def point_cloud_url(entry_id: str, map_index: int) -> str:
