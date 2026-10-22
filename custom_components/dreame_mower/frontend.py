@@ -2,9 +2,10 @@
 
 The card is one JavaScript module shipped with the integration. It is
 served from a fixed path, added to the dashboard resources (where those
-are managed in storage) and fed through the map websocket command. All of
-that happens once per Home Assistant instance, when the first entry is set
-up.
+are managed in storage) and fed through the map websocket command. Its 3D
+view is a section in a module of its own, loaded on every page, with the
+three.js build it imports and the point clouds it shows. All of that
+happens once per Home Assistant instance, when the first entry is set up.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import logging
 from pathlib import Path
 import zlib
 
+from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.components.http import StaticPathConfig  # type: ignore[attr-defined,unused-ignore]
 from homeassistant.components.lovelace.const import MODE_STORAGE
 from homeassistant.components.lovelace.resources import ResourceStorageCollection
@@ -22,12 +24,20 @@ from homeassistant.loader import async_get_integration
 
 from .const import DOMAIN
 from .map_api import ws_obstacle_photo, ws_subscribe_map, ws_work_log, ws_work_log_details
+from .point_cloud import DreameMowerPointCloudView, ws_point_clouds
 
 _LOGGER = logging.getLogger(__name__)
 
 CARD_FILE = "dreame-mower-card.js"
 CARD_URL = f"/{DOMAIN}/{CARD_FILE}"
 CARD_PATH = Path(__file__).parent / "frontend" / CARD_FILE
+# The card's 3D view, and the three.js build it imports once it opens.
+SECTION_3D_FILE = "dreame-mower-card-3d.js"
+SECTION_3D_URL = f"/{DOMAIN}/{SECTION_3D_FILE}"
+SECTION_3D_PATH = Path(__file__).parent / "frontend" / SECTION_3D_FILE
+THREE_FILE = "three-0.160.0.module.min.js"
+THREE_URL = f"/{DOMAIN}/{THREE_FILE}"
+THREE_PATH = Path(__file__).parent / "frontend" / THREE_FILE
 _DATA_READY = f"{DOMAIN}_frontend_ready"
 
 
@@ -35,12 +45,25 @@ async def async_setup_frontend(hass: HomeAssistant) -> None:
     """Serve the card, register the dashboard resource and the map feed."""
     if hass.data.get(_DATA_READY):
         return
-    await hass.http.async_register_static_paths([StaticPathConfig(CARD_URL, str(CARD_PATH), cache_headers=True)])
+    await hass.http.async_register_static_paths(
+        [
+            StaticPathConfig(CARD_URL, str(CARD_PATH), cache_headers=True),
+            StaticPathConfig(SECTION_3D_URL, str(SECTION_3D_PATH), cache_headers=True),
+            StaticPathConfig(THREE_URL, str(THREE_PATH), cache_headers=True),
+        ]
+    )
     async_register_command(hass, ws_subscribe_map)
     async_register_command(hass, ws_work_log)
     async_register_command(hass, ws_work_log_details)
     async_register_command(hass, ws_obstacle_photo)
+    async_register_command(hass, ws_point_clouds)
+    hass.http.register_view(DreameMowerPointCloudView())
     hass.data[_DATA_READY] = True
+    # The 3D view adds itself to the card from every page; the checksum in the
+    # URL makes browsers drop an older copy.
+    if "frontend" in hass.config.components:
+        checksum = await hass.async_add_executor_job(_card_checksum, SECTION_3D_PATH)
+        add_extra_js_url(hass, f"{SECTION_3D_URL}?v={checksum}")
     # The card is served and fed either way; without the resource it only has
     # to be added to the dashboards by hand.
     try:
@@ -51,8 +74,8 @@ async def async_setup_frontend(hass: HomeAssistant) -> None:
         _LOGGER.exception("Adding the map card to the dashboard resources failed; add %s by hand", CARD_URL)
 
 
-def _card_checksum() -> str:
-    return f"{zlib.crc32(CARD_PATH.read_bytes()):08x}"
+def _card_checksum(path: Path = CARD_PATH) -> str:
+    return f"{zlib.crc32(path.read_bytes()):08x}"
 
 
 async def _async_register_resource(hass: HomeAssistant, url: str) -> None:

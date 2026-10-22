@@ -14,6 +14,7 @@ DEFAULT_MAP_ROTATION: Final = 0
 # Data storage keys
 DATA_COORDINATOR = "coordinator"
 DATA_PLATFORMS = "platforms"
+DATA_POINT_CLOUD = "point_cloud"
 
 # How often to poll the cloud for firmware update availability.
 FIRMWARE_POLL_INTERVAL_HOURS = 24
