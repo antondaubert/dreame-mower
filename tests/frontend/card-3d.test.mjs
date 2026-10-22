@@ -103,3 +103,85 @@ test("the help of the 3D view offers to invert the ↑ ↓ keys", async () => {
   assert.equal(box.checked, false);
   assert.match($(card, ".cover .help").textContent, /invert ↑ ↓/);
 });
+
+// A Home Assistant whose list of clouds answers with what `answer` returns,
+// counting the lists asked for; the page's clock is set with now.at.
+function hassListing(window, answer) {
+  const hass = hassWithClouds(1);
+  hass.lists = 0;
+  hass.callWS = async (message) => {
+    if (message.type !== "dreame_mower/point_clouds") return {};
+    hass.lists++;
+    return answer();
+  };
+  let now = 1000000;
+  window.Date.now = () => now;
+  return { hass, now: { at: (ms) => (now = ms) } };
+}
+
+test("a list of clouds that failed is asked for again after a while", async () => {
+  const window = await page();
+  let offline = true;
+  const { hass, now } = hassListing(window, () => {
+    if (offline) throw new Error("the mower is offline");
+    return CLOUDS;
+  });
+  const card = await mount(window, hass);
+  const asked = hass.lists;
+  assert.equal(openButton(card), null);
+  offline = false;
+  // Not on every change of state.
+  await showMap(window, card, hass, 1);
+  assert.equal(hass.lists, asked);
+  now.at(1000000 + 60000);
+  await showMap(window, card, hass, 1);
+  assert.equal(hass.lists, asked + 1);
+  assert.ok(openButton(card));
+});
+
+test("a list of clouds without the map the card shows is asked for again", async () => {
+  const window = await page();
+  let maps = [];
+  const { hass, now } = hassListing(window, () => ({ maps, active_index: null }));
+  const card = await mount(window, hass);
+  const asked = hass.lists;
+  maps = CLOUDS.maps;
+  now.at(1000000 + 60000);
+  await showMap(window, card, hass, 1);
+  assert.equal(hass.lists, asked + 1);
+  assert.ok(openButton(card));
+  // Once it holds the map, a change of state asks nothing more.
+  now.at(1000000 + 180000);
+  await showMap(window, card, hass, 1);
+  assert.equal(hass.lists, asked + 1);
+});
+
+test("a cloud the mower stores later gets its button after a while", async () => {
+  const window = await page();
+  let clouds = { maps: CLOUDS.maps.map((m) => ({ ...m, has_cloud: false })), active_index: 0 };
+  const { hass, now } = hassListing(window, () => clouds);
+  const card = await mount(window, hass);
+  assert.equal(openButton(card), null);
+  clouds = CLOUDS;
+  now.at(1000000 + 60000);
+  await showMap(window, card, hass, 1);
+  assert.ok(openButton(card));
+});
+
+test("a card taken off the page asks nothing, and lists again once it is back", async () => {
+  const window = await page();
+  const { hass, now } = hassListing(window, () => {
+    throw new Error("the mower is offline");
+  });
+  const card = await mount(window, hass);
+  card.remove();
+  await settle(window);
+  const asked = hass.lists;
+  now.at(1000000 + 600000);
+  await showMap(window, card, hass, 1);
+  await showMap(window, card, hass, 2);
+  assert.equal(hass.lists, asked);
+  window.document.body.appendChild(card);
+  await settle(window);
+  assert.equal(hass.lists, asked + 1);
+});

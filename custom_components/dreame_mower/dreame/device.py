@@ -4142,6 +4142,10 @@ class DreameMowerDevice:
 
     def read_point_cloud_names(self) -> list[str | None]:
         """Return the stored 3D map (point cloud) file name of each map index."""
+        if not self._online:
+            # Asking an offline mower would hold the cloud connection until
+            # the request times out.
+            raise PointCloudError("the mower is offline")
         result = self._cloud_device.action(
             SCHEDULING_TASK_PROPERTY.siid,
             SCHEDULING_TASK_PROPERTY.piid,
