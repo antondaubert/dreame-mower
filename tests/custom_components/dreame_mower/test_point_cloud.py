@@ -172,7 +172,11 @@ class TestPointCloudView:
         assert await async_setup_component(hass, "http", {})
         hass.http.register_view(DreameMowerPointCloudView())
         client = await hass_client_no_auth()
-        assert (await client.get(point_cloud_url("entry1", 0))).status == 401
+        # A refused request makes Home Assistant look up the client's host
+        # name, which can take long without a resolver that answers at once.
+        with patch("homeassistant.components.http.ban.gethostbyaddr", return_value=("localhost", [], ["127.0.0.1"])) as lookup:
+            assert (await client.get(point_cloud_url("entry1", 0))).status == 401
+        lookup.assert_called_once()
 
 
 class TestPointCloudsCommand:
