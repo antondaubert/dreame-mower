@@ -20,6 +20,8 @@ const WORK_LOG_SUBSCRIBE_TYPE = `${DOMAIN}/work_log/subscribe`;
 // one repeats.
 const RESUBSCRIBE_DELAYS = [2000, 5000, 5000, 10000, 30000];
 const PAN_THRESHOLD_PX = 6;
+// How far a sideways swipe over a photo goes before it steps to the next one.
+const SWIPE_MIN_PX = 40;
 const DOUBLE_TAP_MS = 300;
 const DOUBLE_TAP_PX = 25;
 const TOAST_MS = 5000;
@@ -665,6 +667,9 @@ button.row:disabled { opacity: .45; cursor: default; }
 /* The bottom sheets: an obstacle's photo, the questions before a start and
    the map picker. */
 .scrim { position: absolute; inset: 0; z-index: 4; background: rgba(0,0,0,.28); }
+/* Pinned to the window over the card's width; left and width come from the card. */
+.scrim.pinned { position: fixed; right: auto; }
+.sheet.pinned { position: fixed; right: auto; max-height: 85vh; }
 .sheet {
   position: absolute;
   left: 0;
@@ -693,6 +698,14 @@ button.row:disabled { opacity: .45; cursor: default; }
 .sheet .wait { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 18px 12px;
   border-radius: 10px; background: var(--mower-surface); color: var(--mower-muted); font-size: 13px; text-align: center; aspect-ratio: 16 / 9; }
 .sheet .wait button { margin-top: 6px; }
+/* Fixed in size and place, so the arrows stay under the pointer while stepping. */
+.sheet .phead > .pnav { flex: 0 0 auto; display: grid; grid-template-columns: 32px 64px 32px; align-items: center; justify-items: center;
+  color: var(--mower-muted); font-size: 13px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.sheet .frame.swipe { touch-action: pan-y pinch-zoom; user-select: none; -webkit-user-select: none; }
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; padding: 4px 12px 10px; }
+.gallery button { position: relative; aspect-ratio: 16 / 9; padding: 0; border: 0; border-radius: 6px; overflow: hidden; cursor: pointer;
+  background: var(--mower-surface); color: var(--mower-muted); --mdc-icon-size: 18px; }
+.gallery img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .choice .pactions { display: flex; flex-direction: column; gap: 10px; }
 .choice .cpreview:empty { display: none; }
 .choice .cpreview svg.logmap { min-height: 0; height: min(32vh, 220px); touch-action: auto; border: 1px solid var(--mower-divider); }
@@ -1276,6 +1289,19 @@ const OTHER_GLYPH = '<circle cx="-.45" r=".13" fill="#fff" stroke="none"/><circl
 // The cone of an obstacle the mower ran into or saw with its LiDAR.
 const CONE_GLYPH = '<path d="M-.35-1H.35L.75.55H-.75Z M-1 .8H1"/>';
 
+// The obstacles the camera recognised and took a photo of.
+function photographed(obstacles) {
+  return obstacles.filter((obstacle) => obstacle.kind === "ai" && obstacle.image);
+}
+
+// A URL to show a JPEG sent as base64: a blob where the browser has them,
+// so a gallery of photos does not carry them in its markup.
+function photoUrl(base64) {
+  if (typeof URL.createObjectURL !== "function" || typeof atob !== "function") return `data:image/jpeg;base64,${base64}`;
+  const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+  return URL.createObjectURL(new Blob([bytes], { type: "image/jpeg" }));
+}
+
 // What tells an obstacle apart: for one the camera recognised its photo, or
 // where it is and what; for one the mower ran into its id.
 function obstacleKey(obstacle) {
@@ -1810,6 +1836,10 @@ class DreameMowerCard extends HTMLElement {
     this._log = null;
     // The details of the tasks opened so far, by task file.
     this._logDetails = new Map();
+    // The obstacle photos fetched so far, by image: what the service sent and
+    // a URL to show it by.
+    this._photos = new Map();
+    this._photoLoads = new Map();
     this._photo = null;
     this._edit = null;
     this._mapList = null;
@@ -1831,6 +1861,11 @@ class DreameMowerCard extends HTMLElement {
     this._gesture = null;
     this._lastTap = null;
     this._toastTimer = null;
+    this._swipeFrom = null;
+    this._onWindowResize = () => {
+      if (this._photo) this._placePhotoSheet();
+    };
+    this._cardObserver = null;
     this._onReady = () => this._resubscribeNow();
     // The socket went away: its subscription ids mean nothing on the next
     // socket, so the old subscription is dropped without unsubscribing.
@@ -1863,6 +1898,7 @@ class DreameMowerCard extends HTMLElement {
       this._clearSelection();
       this._closeWorkLog();
       this._logDetails.clear();
+      this._forgetPhotos();
       this._photo = null;
       this._edit = null;
       this._mapList = null;
@@ -1918,10 +1954,13 @@ class DreameMowerCard extends HTMLElement {
     if (this._resizeObserver) this._resizeObserver.observe(this._el.map);
     this._ensureSubscribed();
     if (this._log && !this._log.sub) this._followWorkLog(this._log);
+    window.addEventListener("resize", this._onWindowResize);
     this._invalidate("all");
   }
 
   disconnectedCallback() {
+    window.removeEventListener("resize", this._onWindowResize);
+    if (this._cardObserver) this._cardObserver.disconnect();
     this._unsubscribe();
     this._dropWorkLogFeed(true);
     this._clearRetry();
@@ -2422,6 +2461,23 @@ class DreameMowerCard extends HTMLElement {
     this._el.maint.addEventListener("focusout", (e) => this._onMaintenanceLeave(e));
     this._el.maps.addEventListener("click", (e) => this._onMapListClick(e));
     this._el.photo.addEventListener("click", (e) => this._onPhotoClick(e));
+    // A sideways swipe over the photo steps through the task's photos.
+    this._el.photo.addEventListener("pointerdown", (e) => {
+      const frame = e.target.closest(".frame.swipe");
+      this._swipeFrom = frame ? { id: e.pointerId, x: e.clientX, y: e.clientY } : null;
+      // A swipe that ends beside the sheet still ends here.
+      if (frame && frame.setPointerCapture) frame.setPointerCapture(e.pointerId);
+    });
+    this._el.photo.addEventListener("pointerup", (e) => {
+      const from = this._swipeFrom;
+      this._swipeFrom = null;
+      if (!from || from.id !== e.pointerId) return;
+      const dx = e.clientX - from.x;
+      if (Math.abs(dx) >= SWIPE_MIN_PX && Math.abs(dx) > 2 * Math.abs(e.clientY - from.y)) this._stepPhoto(dx < 0 ? 1 : -1);
+    });
+    this._el.photo.addEventListener("pointercancel", () => {
+      this._swipeFrom = null;
+    });
     this._el.settings.addEventListener("input", (e) => this._onSettingsInput(e, false));
     this._el.settings.addEventListener("change", (e) => this._onSettingsInput(e, true));
     if (window.ResizeObserver) {
@@ -5118,7 +5174,10 @@ class DreameMowerCard extends HTMLElement {
       detail.error = errorMessage(err);
     }
     detail.loading = false;
-    if (this._log === log && log.detail === detail) this._invalidate("log");
+    if (this._log === log && log.detail === detail) {
+      this._invalidate("log");
+      if (detail.data) this._loadGallery(log, detail);
+    }
   }
 
   // A task's details do not change once it is listed, so a task opened
@@ -5283,26 +5342,72 @@ class DreameMowerCard extends HTMLElement {
       fact("Started", START_LABELS[data.start_mode] || ""),
       fact("Ended", data.end ? formatDay(data.end) : ""),
     ];
-    // The obstacles it met; a pin on the map, or this row, opens a photo.
+    // The obstacles it met; a pin on the map, or a photo of the gallery,
+    // opens the photo larger.
     const obstacles = (data.obstacles || []).filter((obstacle) => !(obstacle.kind === "obstacle" && obstacle.type !== 0));
+    let gallery = "";
     if (obstacles.length) {
       const recognised = obstacles.filter((obstacle) => obstacle.kind === "ai");
       const kinds = [...new Set(recognised.map((obstacle) => aiObstacleKind(obstacle.type).label.toLowerCase()))];
-      const photos = recognised.filter((obstacle) => obstacle.image).length;
-      const desc = [kinds.length ? humanize(kinds.join(", ")) : `${obstacles.length} met`, recognised.length ? "tap a pin for its photo" : ""].filter(Boolean).join(" · ");
-      const first = recognised[0];
+      const pictured = photographed(obstacles);
+      const desc = [kinds.length ? humanize(kinds.join(", ")) : `${obstacles.length} met`, pictured.length ? "tap a photo to see it larger" : ""].filter(Boolean).join(" · ");
       rows.push(
-        (first ? `<button type="button" class="row short" data-photo="${esc(obstacleKey(first))}">` : `<div class="row short">`) +
-          `<span class="rt"><span class="t">Obstacles</span><span class="d">${esc(desc)}</span></span>` +
-          (photos ? `<span class="cam"><ha-icon icon="mdi:camera"></ha-icon>${photos}</span>` : `<span class="val">${obstacles.length}</span>`) +
-          (first ? `<ha-icon class="chev" icon="mdi:chevron-right"></ha-icon></button>` : `</div>`),
+        `<div class="row short"><span class="rt"><span class="t">Obstacles</span><span class="d">${esc(desc)}</span></span>` +
+          (pictured.length ? `<span class="cam"><ha-icon icon="mdi:camera"></ha-icon>${pictured.length}</span>` : `<span class="val">${obstacles.length}</span>`) +
+          `</div>`,
       );
+      gallery = this._galleryHtml(detail, pictured);
     }
     for (const fault of data.faults || []) {
       rows.push(`<div class="row short"><span class="rt"><span class="t">${esc(fault.description)}</span><span class="d">${esc(formatDay(fault.time))}</span></span></div>`);
     }
     parts.push(`<div class="list">${rows.filter(Boolean).join("")}</div>`);
+    parts.push(gallery);
     return parts.join("");
+  }
+
+  // The photos of a task; one the mower has yet to send shows as a
+  // placeholder until it is here.
+  _galleryHtml(detail, pictured) {
+    if (!pictured.length) return "";
+    const tiles = pictured.map((obstacle) => {
+      const data = this._photos.get(obstacle.image);
+      const label = aiObstacleKind(obstacle.type).label;
+      const inside = data
+        ? `<img alt="" src="${esc(data.url)}">`
+        : `<ha-icon icon="${detail.failed && detail.failed.has(obstacle.image) ? "mdi:image-off-outline" : "mdi:image-sync-outline"}"></ha-icon>`;
+      return `<button type="button" data-photo="${esc(obstacleKey(obstacle))}" title="${esc(label)}" aria-label="${esc(label)}">${inside}</button>`;
+    });
+    return `<div class="gallery">${tiles.join("")}</div>`;
+  }
+
+  // Redraws only the gallery of the open task, so the task's map keeps how
+  // it was zoomed while photos arrive.
+  _refreshGallery(detail) {
+    const log = this._log;
+    if (!log || log.detail !== detail || !detail.data) return;
+    const el = this._el.lbody.querySelector(".gallery");
+    if (!el) return;
+    el.outerHTML = this._galleryHtml(detail, photographed(detail.data.obstacles || []));
+    // What is shown now, so the next redraw of the task leaves it alone.
+    this._html.lbody = this._workLogDetail(detail);
+  }
+
+  // Fetches the photos of an open task one after the other, as the mower
+  // sends one at a time; stops once the task is closed or the card goes.
+  async _loadGallery(log, detail) {
+    const open = () => this.isConnected && this._log === log && log.detail === detail;
+    detail.failed = new Set();
+    for (const obstacle of photographed(detail.data.obstacles || [])) {
+      if (!open()) return;
+      if (this._photos.has(obstacle.image)) continue;
+      try {
+        await this._obstaclePhoto(obstacle.image);
+      } catch (err) {
+        detail.failed.add(obstacle.image);
+      }
+      this._refreshGallery(detail);
+    }
   }
 
   // The stop points an unfinished task left, while the mower still holds
@@ -5412,9 +5517,53 @@ class DreameMowerCard extends HTMLElement {
     const list = fromLog ? obstacles : (this._status && this._status.obstacles) || [];
     const obstacle = list.find((item) => (fromLog ? item.kind === "ai" : true) && obstacleKey(item) === key);
     if (!obstacle) return;
-    this._photo = { obstacle, fromLog, loading: false, error: null, data: null };
+    // From a task, the sheet steps through the photos the task has.
+    const pictured = fromLog ? photographed(list) : [];
+    const others = pictured.includes(obstacle) ? pictured : [];
+    this._photo = { obstacle, fromLog, others, loading: false, error: null, data: this._photos.get(obstacle.image) || null };
     this._invalidate("photo");
-    if (obstacle.kind === "ai" && obstacle.image) this._loadPhoto();
+    if (obstacle.kind === "ai" && obstacle.image && !this._photo.data) this._loadPhoto();
+  }
+
+  // Shows the photo before or after the open one in the task's gallery.
+  _stepPhoto(by) {
+    const photo = this._photo;
+    if (!photo || photo.others.length < 2) return;
+    const at = photo.others.indexOf(photo.obstacle);
+    const next = photo.others[(at + by + photo.others.length) % photo.others.length];
+    this._openObstacle(obstacleKey(next), photo.others);
+  }
+
+  // A photo of an obstacle, fetched once and then kept by the card.
+  // A photo asked for while it is on its way is not asked for again.
+  _obstaclePhoto(image) {
+    const known = this._photos.get(image);
+    if (known) return Promise.resolve(known);
+    let pending = this._photoLoads.get(image);
+    if (!pending) {
+      const photos = this._photos;
+      const loads = this._photoLoads;
+      pending = this._hass
+        .callWS({ type: `${DOMAIN}/obstacle_photo`, entity_id: this._config.entity, image })
+        .then((data) => {
+          data.url = photoUrl(data.image);
+          // The blob holds the photo; the card needs no second copy.
+          if (data.url.startsWith("blob:")) delete data.image;
+          if (photos === this._photos) photos.set(image, data);
+          else if (data.url.startsWith("blob:")) URL.revokeObjectURL(data.url);
+          return data;
+        })
+        .finally(() => loads.delete(image));
+      loads.set(image, pending);
+    }
+    return pending;
+  }
+
+  _forgetPhotos() {
+    for (const data of this._photos.values()) if (data.url.startsWith("blob:")) URL.revokeObjectURL(data.url);
+    // Photos of the other mower still on their way go to a map of their own.
+    this._photos = new Map();
+    this._photoLoads = new Map();
   }
 
   async _ignoreObstacle() {
@@ -5453,7 +5602,10 @@ class DreameMowerCard extends HTMLElement {
     photo.error = null;
     this._invalidate("photo");
     try {
-      photo.data = await this._hass.callWS({ type: `${DOMAIN}/obstacle_photo`, entity_id: this._config.entity, image: photo.obstacle.image });
+      photo.data = await this._obstaclePhoto(photo.obstacle.image);
+      // A photo the gallery could not get is there now.
+      const detail = this._log && this._log.detail;
+      if (detail && detail.failed && detail.failed.delete(photo.obstacle.image)) this._refreshGallery(detail);
     } catch (err) {
       photo.error = errorMessage(err);
     }
@@ -5473,6 +5625,8 @@ class DreameMowerCard extends HTMLElement {
       this._ignoreObstacle();
     } else if ("noGo" in target.dataset) {
       this._obstacleToNoGo();
+    } else if (target.dataset.step) {
+      this._stepPhoto(Number(target.dataset.step));
     }
   }
 
@@ -5480,6 +5634,7 @@ class DreameMowerCard extends HTMLElement {
     const el = this._el.photo;
     const photo = this._photo;
     el.hidden = !photo;
+    this._placePhotoSheet();
     if (!photo) {
       this._setHtml("photo", el, "");
       return;
@@ -5493,7 +5648,7 @@ class DreameMowerCard extends HTMLElement {
     } else if (photo.data) {
       const { width, height, boxes } = photo.data;
       picture =
-        `<div class="frame"><img alt="" src="data:image/jpeg;base64,${photo.data.image}">` +
+        `<div class="frame${photo.others.length > 1 ? " swipe" : ""}"><img alt="" draggable="false" src="${esc(photo.data.url)}">` +
         `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">${(boxes || [])
           .map((box) => `<rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}" fill="none" stroke="#EE3C2F" stroke-width="3"/>`)
           .join("")}</svg></div>`;
@@ -5511,6 +5666,11 @@ class DreameMowerCard extends HTMLElement {
       el,
       `<div class="grip"></div>` +
         `<div class="phead"><span>${esc(kind.label)} <small>${obstacle.confidence ? `· ${esc(obstacle.confidence)} % sure` : ""}</small></span>` +
+        (photo.others.length > 1
+          ? `<span class="pnav"><button type="button" class="iconbtn" data-step="-1" title="Previous photo" aria-label="Previous photo"><ha-icon icon="mdi:chevron-left"></ha-icon></button>` +
+            `<span>${photo.others.indexOf(obstacle) + 1} / ${photo.others.length}</span>` +
+            `<button type="button" class="iconbtn" data-step="1" title="Next photo" aria-label="Next photo"><ha-icon icon="mdi:chevron-right"></ha-icon></button></span>`
+          : "") +
         `<button type="button" class="iconbtn" data-close title="Close" aria-label="Close"><ha-icon icon="mdi:close"></ha-icon></button></div>` +
         picture +
         `<p>${
@@ -5518,6 +5678,44 @@ class DreameMowerCard extends HTMLElement {
         }</p>` +
         this._obstacleActions(photo),
     );
+  }
+
+  // The photo sheet sits at the bottom of the window, over the card's width,
+  // also where the card ends above it or goes on below. Where the page does
+  // not let it (a container of the card that holds fixed elements), it sits
+  // at the bottom of the card as the other sheets do.
+  _placePhotoSheet() {
+    const sheet = this._el.photo;
+    const scrim = this._el.scrim;
+    const unpin = () => {
+      for (const el of [sheet, scrim]) {
+        el.classList.remove("pinned");
+        el.style.left = el.style.width = "";
+      }
+    };
+    if (!this._photo || !this.isConnected) {
+      unpin();
+      if (this._cardObserver) this._cardObserver.disconnect();
+      return;
+    }
+    // The card can change its width without the window, e.g. as Home
+    // Assistant's sidebar opens or closes.
+    if (!this._cardObserver && typeof ResizeObserver === "function") {
+      this._cardObserver = new ResizeObserver(() => {
+        if (this._photo) this._placePhotoSheet();
+      });
+    }
+    if (this._cardObserver) this._cardObserver.observe(this._el.card);
+    const box = this._el.card.getBoundingClientRect();
+    for (const el of [sheet, scrim]) {
+      el.classList.add("pinned");
+      el.style.left = `${box.left}px`;
+      el.style.width = `${box.width}px`;
+    }
+    const placed = sheet.getBoundingClientRect();
+    // A fixed element sits on the layout viewport, which leaves out scrollbars.
+    const bottom = document.documentElement.clientHeight || window.innerHeight;
+    if (Math.abs(placed.bottom - bottom) > 2 || Math.abs(placed.left - box.left) > 2) unpin();
   }
 
   // What can be done with an obstacle on the map: ignore one the camera

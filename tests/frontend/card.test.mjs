@@ -613,3 +613,229 @@ test("the question about the stop point shows what the unfinished task mowed", a
   );
   assert.ok($(card, ".cpreview svg"));
 });
+
+test("a task's obstacle photos show as a gallery that opens them one by one", async () => {
+  const window = load("dreame-mower-card.js");
+  const ai = (image, type = 99) => ({ kind: "ai", type, x: 100, y: 100, image });
+  const details = {
+    result: "complete",
+    obstacles: [ai("1.1_0"), ai("1.2_0", 4), ai("1.3_0"), { kind: "ai", type: 99, x: 5, y: 5, image: null }, { kind: "obstacle", type: 0, id: 7, x: 1, y: 1 }],
+    faults: [],
+  };
+  const hass = fakeHass({
+    ws: (m) => {
+      if (m.type === "dreame_mower/work_log/details") return details;
+      if (m.type === "dreame_mower/obstacle_photo") {
+        if (m.image === "1.2_0") throw new Error("The mower did not send the photo; its connection may be weak");
+        return { image: "AAAA", width: 1280, height: 720, boxes: [] };
+      }
+      return {};
+    },
+  });
+  const card = await mount(window, hass);
+  await openTab(window, card, "history");
+  await sendWorkLog(window, hass, { totals: null, entries: [TASK], refreshing: false, error: null });
+  await click(window, $(card, `.loglist [data-entry="${TASK.start}"]`));
+  await settle(window);
+
+  const tiles = $$(card, ".gallery button");
+  assert.deepEqual(
+    tiles.map((tile) => tile.dataset.photo),
+    ["1.1_0", "1.2_0", "1.3_0"],
+  );
+  assert.deepEqual(
+    hass.calls.filter((m) => m.type === "dreame_mower/obstacle_photo").map((m) => m.image),
+    ["1.1_0", "1.2_0", "1.3_0"],
+  );
+  assert.ok(tiles[0].querySelector("img"));
+  assert.equal(tiles[1].querySelector("ha-icon").getAttribute("icon"), "mdi:image-off-outline");
+  assert.ok(tiles[2].querySelector("img"));
+
+  await click(window, tiles[2]);
+  assert.match($(card, ".photo .pnav").textContent, /3 \/ 3/);
+  assert.ok($(card, ".photo .frame img"));
+  await click(window, $(card, '.photo [data-step="1"]'));
+  assert.match($(card, ".photo .pnav").textContent, /1 \/ 3/);
+  // Photos shown before are not asked for again.
+  assert.equal(hass.calls.filter((m) => m.type === "dreame_mower/obstacle_photo").length, 3);
+});
+
+// A task with recognised obstacles; `photo` answers for each image.
+async function openTaskWithPhotos(window, { photo = () => ({ image: "AAAA", width: 1280, height: 720, boxes: [] }), extra = [] } = {}) {
+  const ai = (image, type = 99) => ({ kind: "ai", type, x: 100, y: 100, image });
+  const details = {
+    result: "complete",
+    geometry: { bounds: [0, 0, 10000, 8000], zones: [] },
+    obstacles: [ai("1.1_0"), ai("1.2_0", 4), ai("1.3_0"), ...extra],
+    faults: [],
+  };
+  const hass = fakeHass({
+    ws: (m) => {
+      if (m.type === "dreame_mower/work_log/details") return details;
+      if (m.type === "dreame_mower/obstacle_photo") return photo(m.image);
+      return {};
+    },
+  });
+  const card = await mount(window, hass);
+  await openTab(window, card, "history");
+  await sendWorkLog(window, hass, { totals: null, entries: [TASK], refreshing: false, error: null });
+  await click(window, $(card, `.loglist [data-entry="${TASK.start}"]`));
+  await settle(window);
+  return { card, hass };
+}
+
+async function swipe(window, element, dx, dy = 0) {
+  const at = (type, x, y) => element.dispatchEvent(new window.MouseEvent(type, { bubbles: true, composed: true, clientX: x, clientY: y }));
+  at("pointerdown", 200, 200);
+  at("pointerup", 200 + dx, 200 + dy);
+  await settle(window);
+}
+
+test("photos arriving leave the task's map as it was zoomed", async () => {
+  const window = load("dreame-mower-card.js");
+  let release;
+  const late = new Promise((resolve) => (release = resolve));
+  const { card, hass } = await openTaskWithPhotos(window, { photo: (image) => (image === "1.3_0" ? late.then(() => ({ image: "AAAA", width: 1, height: 1, boxes: [] })) : { image: "AAAA", width: 1, height: 1, boxes: [] }) });
+  const map = $(card, "svg.logmap");
+  assert.ok(map);
+
+  release();
+  await settle(window);
+
+  assert.equal($$(card, ".gallery img").length, 3);
+  assert.equal($(card, "svg.logmap"), map);
+  // Nor does a later update of the work log.
+  await sendWorkLog(window, hass, { totals: null, entries: [TASK], refreshing: false, error: null });
+  assert.equal($(card, "svg.logmap"), map);
+});
+
+test("a swipe that ended beside the sheet does not steer the next tap", async () => {
+  const window = load("dreame-mower-card.js");
+  const { card } = await openTaskWithPhotos(window);
+  await click(window, $$(card, ".gallery button")[0]);
+  const at = (element, type, x) => element.dispatchEvent(new window.MouseEvent(type, { bubbles: true, composed: true, clientX: x, clientY: 200 }));
+
+  // Pressed on the photo, let go over the dimmed card.
+  at($(card, ".photo .frame img"), "pointerdown", 300);
+  at($(card, ".scrim"), "pointerup", 100);
+  const next = $(card, '.photo [data-step="1"]');
+  at(next, "pointerdown", 500);
+  at(next, "pointerup", 500);
+  await click(window, next);
+
+  assert.equal($(card, ".photo .pnav").textContent, "2 / 3");
+});
+
+test("a photo the gallery could not get shows in it once the sheet got it", async () => {
+  const window = load("dreame-mower-card.js");
+  let tries = 0;
+  const { card } = await openTaskWithPhotos(window, {
+    photo: (image) => {
+      if (image === "1.2_0" && tries++ === 0) throw new Error("The mower did not send the photo; its connection may be weak");
+      return { image: "AAAA", width: 1, height: 1, boxes: [] };
+    },
+  });
+  const tile = () => $$(card, ".gallery button")[1];
+  assert.equal(tile().querySelector("ha-icon").getAttribute("icon"), "mdi:image-off-outline");
+
+  // Opening it asks the mower again.
+  await click(window, tile());
+
+  assert.ok(tile().querySelector("img"));
+  assert.ok($(card, ".photo .frame img"));
+});
+
+test("a swipe over the photo steps through the task's photos", async () => {
+  const window = load("dreame-mower-card.js");
+  const { card } = await openTaskWithPhotos(window);
+  await click(window, $$(card, ".gallery button")[0]);
+  const count = () => $(card, ".photo .pnav").textContent;
+
+  await swipe(window, $(card, ".photo .frame img"), -80);
+  assert.equal(count(), "2 / 3");
+  await swipe(window, $(card, ".photo .frame img"), 80);
+  assert.equal(count(), "1 / 3");
+  // Too short, or rather up and down, is no swipe.
+  await swipe(window, $(card, ".photo .frame img"), -20);
+  await swipe(window, $(card, ".photo .frame img"), -60, 90);
+  assert.equal(count(), "1 / 3");
+});
+
+test("an obstacle without a photo opens without stepping", async () => {
+  const window = load("dreame-mower-card.js");
+  const { card } = await openTaskWithPhotos(window, { extra: [{ kind: "ai", type: 99, x: 5, y: 5, image: null }] });
+
+  card._openObstacle("5,5,99", card._log.detail.data.obstacles);
+  await settle(window);
+
+  assert.equal($(card, ".photo .pnav"), null);
+  assert.match($(card, ".photo").textContent, /took no photo/);
+});
+
+test("the gallery stops fetching once its task is closed", async () => {
+  const window = load("dreame-mower-card.js");
+  let release;
+  const first = new Promise((resolve) => (release = resolve));
+  const { card, hass } = await openTaskWithPhotos(window, { photo: (image) => (image === "1.1_0" ? first : { image: "AAAA", width: 1, height: 1, boxes: [] }) });
+
+  await click(window, $(card, ".view.worklog [data-close]"));
+  release({ image: "AAAA", width: 1, height: 1, boxes: [] });
+  await settle(window);
+
+  assert.deepEqual(
+    hass.calls.filter((m) => m.type === "dreame_mower/obstacle_photo").map((m) => m.image),
+    ["1.1_0"],
+  );
+});
+
+test("photos are kept as blobs and let go when the card follows another mower", async () => {
+  const window = load("dreame-mower-card.js");
+  const made = [];
+  const revoked = [];
+  window.URL.createObjectURL = () => {
+    made.push(`blob:${made.length}`);
+    return made.at(-1);
+  };
+  window.URL.revokeObjectURL = (url) => revoked.push(url);
+  const { card } = await openTaskWithPhotos(window);
+
+  assert.deepEqual(made, ["blob:0", "blob:1", "blob:2"]);
+  assert.deepEqual($$(card, ".gallery img").map((img) => img.getAttribute("src")), made);
+  assert.equal(card._photos.get("1.1_0").image, undefined);
+
+  card.setConfig({ entity: "lawn_mower.other" });
+  assert.deepEqual(revoked, made);
+});
+
+test("the photo sheet sits at the bottom of the window over the card", async () => {
+  const window = load("dreame-mower-card.js");
+  // A card 600 px wide at 200 px from the left; a fixed sheet lands at the
+  // bottom of the window.
+  window.HTMLElement.prototype.getBoundingClientRect = function () {
+    if (this.tagName === "HA-CARD") return { left: 200, width: 600, top: 0, bottom: 500 };
+    const fixed = this.classList.contains("pinned");
+    return { left: fixed ? parseFloat(this.style.left) : 200, width: 600, top: 0, bottom: fixed ? window.innerHeight : 500 };
+  };
+  const { card } = await openTaskWithPhotos(window);
+
+  await click(window, $$(card, ".gallery button")[0]);
+  const sheet = $(card, ".sheet.photo");
+  assert.ok(sheet.classList.contains("pinned"));
+  assert.equal(sheet.style.left, "200px");
+  assert.equal(sheet.style.width, "600px");
+  assert.ok($(card, ".scrim").classList.contains("pinned"));
+
+  await click(window, $(card, ".photo [data-close]"));
+  assert.ok(!$(card, ".scrim").classList.contains("pinned"));
+});
+
+test("the photo sheet stays at the bottom of the card where the page holds fixed elements", async () => {
+  const window = load("dreame-mower-card.js");
+  // jsdom lays nothing out: the pinned sheet does not land where it should.
+  const { card } = await openTaskWithPhotos(window);
+
+  await click(window, $$(card, ".gallery button")[0]);
+
+  assert.ok(!$(card, ".sheet.photo").classList.contains("pinned"));
+  assert.equal($(card, ".sheet.photo").style.left, "");
+});
