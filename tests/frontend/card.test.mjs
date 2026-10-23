@@ -422,6 +422,58 @@ test("a section finds the mower's entities by their key", async () => {
   assert.equal(host.entity("sensor", "other"), null);
 });
 
+test("tapping the battery level opens the history of the battery sensor", async () => {
+  const window = load("dreame-mower-card.js");
+  const battery = { entity_id: "sensor.a2_battery", state: "80", attributes: { device_class: "battery" } };
+  const hass = fakeHass({ states: { "sensor.a2_battery": battery }, entities: { "sensor.a2_battery": entry("sensor.a2_battery", null) } });
+  const card = await mount(window, hass);
+  // The page the card goes to, and the event that has Home Assistant show it.
+  const pushed = [];
+  window.history.pushState = (state, title, url) => pushed.push(url);
+  window.addEventListener("location-changed", () => pushed.push("location-changed"));
+  await sendFeed(window, hass, GEOMETRY, { ...DOCKED, state: { ...DOCKED.state, battery: 80 } });
+  $(card, "[data-action='battery-history']").click();
+  await settle(window);
+  assert.deepEqual(pushed, ["/history?entity_id=sensor.a2_battery", "location-changed"]);
+});
+
+test("the battery level leads to the history only of the mower's own battery sensor", async () => {
+  const window = load("dreame-mower-card.js");
+  const sensor = (id, deviceClass) => ({ entity_id: id, state: "80", attributes: { device_class: deviceClass } });
+  // Another sensor of the mower, another device's battery and another
+  // integration's battery on the mower's device.
+  const states = {
+    "sensor.a2_blades": sensor("sensor.a2_blades", undefined),
+    "sensor.phone_battery": sensor("sensor.phone_battery", "battery"),
+    "sensor.other_battery": sensor("sensor.other_battery", "battery"),
+  };
+  const entities = {
+    "sensor.a2_blades": entry("sensor.a2_blades", "blade"),
+    "sensor.phone_battery": { ...entry("sensor.phone_battery", null), device_id: "device-phone" },
+    "sensor.other_battery": { ...entry("sensor.other_battery", null), platform: "other" },
+  };
+  const hass = fakeHass({ states, entities });
+  const card = await mount(window, hass);
+  await sendFeed(window, hass, GEOMETRY, { ...DOCKED, state: { ...DOCKED.state, battery: 80, charging: "charging" } });
+  assert.match($(card, ".status .sub").textContent, /80 %/);
+  assert.equal($(card, "[data-action='battery-history']"), null);
+  // The sensor turning up later makes the level tappable, with its look kept.
+  card.hass = {
+    ...hass,
+    states: { ...hass.states, "sensor.a2_battery": sensor("sensor.a2_battery", "battery") },
+    entities: { ...hass.entities, "sensor.a2_battery": entry("sensor.a2_battery", null) },
+  };
+  await settle(window);
+  const button = $(card, "[data-action='battery-history']");
+  assert.ok(button);
+  assert.equal(button.querySelector("ha-icon").getAttribute("icon"), "mdi:battery-charging-80");
+  assert.match(button.textContent, /80 %/);
+  // And gone again, the level is plain text.
+  card.hass = hass;
+  await settle(window);
+  assert.equal($(card, "[data-action='battery-history']"), null);
+});
+
 test("an all-wheel drive mower is drawn as one, other models keep the two-wheel body", async () => {
   const window = load("dreame-mower-card.js");
   const hass = fakeHass();
