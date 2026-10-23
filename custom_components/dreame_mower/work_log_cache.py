@@ -12,6 +12,7 @@ import asyncio
 from collections.abc import Callable, Iterable
 from datetime import datetime
 import logging
+import statistics
 import time
 from typing import Any
 
@@ -41,10 +42,58 @@ COMPLETION_DELAY_SECONDS = 30
 
 UNAVAILABLE = "The work log is not available right now"
 
+# What a task's battery use per m² is compared with: the median of the last
+# so many completed tasks of the same kind and a like area, from so many days
+# before it, once there are enough of them.
+RATING_RUNS = 15
+RATING_MIN_RUNS = 5
+RATING_DAYS = 60
+# How far the area of a task taken for comparison may be from the task's own,
+# as a share of it. This also keeps apart the maps of one mower where their
+# areas differ by more; the log does not say which map a task mowed.
+RATING_AREA_SHARE = 0.25
+# Below this area in m², going out and back weighs more than the mowing.
+RATING_MIN_AREA = 10
+# Above these shares of the usual use, a task took much or very much.
+RATING_HIGH = 1.15
+RATING_VERY_HIGH = 1.40
+
 
 def work_log_store(hass: HomeAssistant, entry_id: str) -> Store[dict[str, Any]]:
     """Where the work log of an entry is kept."""
     return Store(hass, STORAGE_VERSION, f"{DOMAIN}.work_log.{entry_id}")
+
+
+def rate_battery(entries: list[dict[str, Any]]) -> None:
+    """Add to the battery use of each completed task (newest first, as the
+    log keeps them) the usual use per m² of like tasks before it, and how it
+    compares: normal, high or very high. A task without enough like ones
+    before it, too small to tell, or one that did not finish (its way home
+    weighs in) gets no rating."""
+    rated: list[dict[str, Any]] = []
+    for entry in reversed(entries):
+        battery = entry.get("battery")
+        area = entry.get("area")
+        if (
+            battery
+            and battery.get("per_sqm") is not None
+            and isinstance(area, (int, float))
+            and area >= RATING_MIN_AREA
+            and entry.get("result") == "complete"
+        ):
+            like = [
+                before["battery"]["per_sqm"]
+                for before in rated
+                if before["mode"] == entry.get("mode")
+                and abs(before["area"] - area) <= RATING_AREA_SHARE * area
+                and entry["start"] - before["start"] <= RATING_DAYS * 24 * 3600
+            ][-RATING_RUNS:]
+            if len(like) >= RATING_MIN_RUNS:
+                usual = statistics.median(like)
+                share = battery["per_sqm"] / usual if usual > 0 else 1.0
+                battery["usual"] = round(usual, 3)
+                battery["rating"] = "very_high" if share > RATING_VERY_HIGH else "high" if share > RATING_HIGH else "normal"
+            rated.append(entry)
 
 
 def merge_entries(kept: list[dict[str, Any]], read: list[dict[str, Any]], start: int | None) -> list[dict[str, Any]]:
@@ -208,11 +257,14 @@ class WorkLogCache:
             )
 
     def entries_with_battery(self) -> list[dict[str, Any]]:
-        """The kept tasks, each with what it took of the battery where known."""
+        """The kept tasks, each with what it took of the battery where known,
+        and how that compares with like tasks."""
         battery = self.battery
         if battery is None:
             return self.entries
-        return [{**entry, "battery": battery.summary(entry)} for entry in self.entries]
+        entries = [{**entry, "battery": battery.summary(entry)} for entry in self.entries]
+        rate_battery(entries)
+        return entries
 
     def _start(self) -> int:
         """Since when the log counts, as a unix time."""

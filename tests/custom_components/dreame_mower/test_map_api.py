@@ -825,6 +825,25 @@ async def test_the_work_log_tells_what_each_task_took_of_the_battery(
     assert details["result"]["battery"] == {"used": 37.0, "per_sqm": 0.54, "source": "recorded", "samples": [[0, 100], [2340, 63]]}
 
 
+async def test_the_work_log_rates_what_each_task_took_of_the_battery(
+    hass: HomeAssistant, coordinator: DreameMowerCoordinator, work_log: WorkLogCache
+) -> None:
+    class Battery(_Battery):
+        def summary(self, entry: dict[str, Any]) -> dict[str, Any] | None:
+            per_sqm = 1.5 if entry["start"] == 1791540000 else 0.5
+            return {"used": per_sqm * 68.4, "per_sqm": per_sqm, "source": "recorded"}
+
+    cache = WorkLogCache(hass, coordinator, coordinator.entry, Battery())  # type: ignore[arg-type]
+    cache.entries = [_task(1791540000 - day * 86400, area=68.4) for day in range(6)]
+
+    newest, *older = cache.entries_with_battery()
+
+    assert newest["battery"]["usual"] == 0.5 and newest["battery"]["rating"] == "very_high"
+    assert all("rating" not in entry["battery"] for entry in older)
+    # The kept log itself stays as it was.
+    assert "battery" not in cache.entries[0]
+
+
 async def test_the_work_log_feed_needs_a_loaded_mower(
     hass: HomeAssistant, coordinator: DreameMowerCoordinator, hass_ws_client: WebSocketGenerator
 ) -> None:

@@ -622,6 +622,14 @@ button.row:disabled { opacity: .45; cursor: default; }
 .totals b { display: block; font-size: 20px; font-weight: 500; }
 .totals small { font-size: 12px; color: var(--mower-muted); }
 .lognote { margin: 8px 12px 0; font-size: 12px; color: var(--mower-muted); }
+/* A task's battery use per m², coloured by how it compares with like tasks. */
+.row .rt .d.facts { display: flex; align-items: baseline; gap: 4px; }
+.row .rt .d.facts > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.bat { flex: 0 0 auto; padding: 0 6px; border-radius: 8px; font-weight: 500; white-space: nowrap; color: var(--mower-muted); background: var(--mower-surface); }
+/* The hue mixed with the theme's text, so it reads on light and dark cards. */
+.bat.normal { color: color-mix(in srgb, #43a047 60%, var(--mower-text)); background: color-mix(in srgb, #43a047 16%, transparent); }
+.bat.high { color: color-mix(in srgb, #f9a825 60%, var(--mower-text)); background: color-mix(in srgb, #f9a825 24%, transparent); }
+.bat.very_high { color: color-mix(in srgb, var(--mower-error) 60%, var(--mower-text)); background: color-mix(in srgb, var(--mower-error) 14%, transparent); }
 .worklog .filter { padding: 10px 12px 4px; }
 /* A long log scrolls within the tab, so the card stays its size. */
 .worklog .loglist { max-height: min(60vh, 560px); overflow-y: auto; }
@@ -853,6 +861,25 @@ function stoppedOnDayOf(entry, points) {
 // Whether a task of the work log is an all-area or zone task left unfinished.
 function unfinishedTask(entry) {
   return ["all_area", "zone"].includes(entry.mode) && ["stopped", "incomplete"].includes(entry.result);
+}
+
+// How much of the battery a task took per m², coloured by how that compares
+// with like tasks before it; "~" marks a value read from hourly statistics.
+// Nothing for a task too small to tell.
+const BATTERY_MIN_AREA = 10;
+const BATTERY_RATINGS = { normal: "as usual", high: "more than usual", very_high: "much more than usual" };
+
+function batteryPill(entry) {
+  const battery = entry.battery;
+  if (!battery || battery.per_sqm === null || battery.per_sqm === undefined || !(entry.area >= BATTERY_MIN_AREA)) return "";
+  const rating = BATTERY_RATINGS[battery.rating] ? battery.rating : "";
+  const approx = battery.source === "statistics" ? "~" : "";
+  const title = [`Battery ${approx}${num(battery.used)} %`];
+  if (rating && battery.usual) {
+    const more = Math.round((battery.per_sqm / battery.usual - 1) * 100);
+    title.push(`${BATTERY_RATINGS[rating]} (${battery.usual.toFixed(2)} %/m², ${more >= 0 ? "+" : ""}${more} %)`);
+  }
+  return `<span class="bat ${rating}" title="${esc(title.join(" · "))}">${approx}${battery.per_sqm.toFixed(2)} %/m²</span>`;
 }
 
 function formatMinutes(minutes) {
@@ -5275,11 +5302,13 @@ class DreameMowerCard extends HTMLElement {
     const rows = entries
       .map((entry) => {
         const result = RESULT_ICONS[entry.result] ? entry.result : "incomplete";
-        const facts = [formatDay(entry.start), entry.area !== null && entry.area !== undefined ? `${entry.area} m²` : "", formatMinutes(entry.duration)];
+        const facts = [formatDay(entry.start), entry.area !== null && entry.area !== undefined ? `${num(entry.area)} m²` : "", formatMinutes(entry.duration)];
+        // The battery use stays whole; the facts before it give way.
+        const pill = batteryPill(entry);
         return (
           `<button type="button" class="row" data-entry="${esc(entry.start)}">` +
           `<ha-icon class="res ${result}" icon="${RESULT_ICONS[result]}"></ha-icon>` +
-          `<span class="rt"><span class="t">${esc(`${logTitle(entry)} · ${result}`)}</span><span class="d">${esc(facts.filter(Boolean).join(" · "))}</span></span>` +
+          `<span class="rt"><span class="t">${esc(`${logTitle(entry)} · ${result}`)}</span><span class="d facts"><span>${esc(facts.filter(Boolean).join(" · "))}</span>${pill}</span></span>` +
           (entry.photos ? `<span class="cam" title="Obstacles photographed"><ha-icon icon="mdi:camera"></ha-icon>${esc(entry.photos)}</span>` : "") +
           `<ha-icon class="chev" icon="mdi:chevron-right"></ha-icon></button>`
         );

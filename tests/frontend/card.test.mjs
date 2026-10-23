@@ -839,3 +839,39 @@ test("the photo sheet stays at the bottom of the card where the page holds fixed
   assert.ok(!$(card, ".sheet.photo").classList.contains("pinned"));
   assert.equal($(card, ".sheet.photo").style.left, "");
 });
+
+test("each task shows its battery use per m², coloured by how it compares", async () => {
+  const window = load("dreame-mower-card.js");
+  const hass = fakeHass();
+  const card = await mount(window, hass);
+  await openTab(window, card, "history");
+  const battery = (values) => ({ used: 37, per_sqm: 0.54, source: "recorded", ...values });
+  await sendWorkLog(window, hass, {
+    totals: null,
+    entries: [
+      { ...TASK, start: 5, battery: battery({ used: 102, per_sqm: 1.49, usual: 0.54, rating: "very_high" }) },
+      { ...TASK, start: 4, battery: battery({ per_sqm: 0.62, usual: 0.54, rating: "high" }) },
+      { ...TASK, start: 3, battery: battery({ usual: 0.54, rating: "normal", source: "statistics" }) },
+      { ...TASK, start: 2, battery: battery({}) },
+      { ...TASK, start: 1, area: 3.6, battery: battery({ per_sqm: 1.37 }) },
+      { ...TASK, start: 0, battery: null },
+    ],
+    refreshing: false,
+    error: null,
+  });
+
+  const pills = $$(card, ".loglist .row").map((row) => row.querySelector(".bat"));
+  assert.deepEqual(
+    pills.map((pill) => pill && [pill.className, pill.textContent]),
+    [
+      ["bat very_high", "1.49 %/m²"],
+      ["bat high", "0.62 %/m²"],
+      ["bat normal", "~0.54 %/m²"],
+      ["bat ", "0.54 %/m²"],
+      null,
+      null,
+    ],
+  );
+  assert.equal(pills[0].getAttribute("title"), "Battery 102 % · much more than usual (0.54 %/m², +176 %)");
+  assert.equal(pills[3].getAttribute("title"), "Battery 37 %");
+});
