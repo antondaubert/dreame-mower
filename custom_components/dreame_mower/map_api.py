@@ -19,7 +19,6 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 import logging
-import time
 from typing import Any
 
 import voluptuous as vol
@@ -32,24 +31,22 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import config_validation as cv, entity_registry as er
 
-from .const import CONF_MAP_ROTATION, DATA_COORDINATOR, DEFAULT_MAP_ROTATION, DOMAIN
+from .const import CONF_MAP_ROTATION, DATA_COORDINATOR, DATA_WORK_LOG, DEFAULT_MAP_ROTATION, DOMAIN
 from .coordinator import DreameMowerCoordinator, zone_settings
 from .dreame.const import DEVICE_SETTINGS_DO_NOT_DISTURB_KEY, DEVICE_SETTINGS_LOW_SPEED_AT_NIGHT_KEY
 from .dreame.const import cutting_height_max_cm
 from .dreame.status_text import status_text
 from .dreame.map_data_parser import MowerVectorMap
 from .dreame.map_scene import map_geometry, map_outline, trail_points
+from .work_log_cache import WorkLogCache
 
 _LOGGER = logging.getLogger(__name__)
 
 WS_SUBSCRIBE_MAP = f"{DOMAIN}/map/subscribe"
 WS_WORK_LOG = f"{DOMAIN}/work_log"
+WS_WORK_LOG_SUBSCRIBE = f"{DOMAIN}/work_log/subscribe"
 WS_WORK_LOG_DETAILS = f"{DOMAIN}/work_log/details"
 WS_OBSTACLE_PHOTO = f"{DOMAIN}/obstacle_photo"
-
-# How far back the work log goes when the mower does not say since when it
-# counts, in seconds.
-_WORK_LOG_FALLBACK_SECONDS = 180 * 24 * 3600
 
 
 def geometry_payload(geometry: dict[str, Any] | None, other_maps: list[dict[str, Any]]) -> dict[str, Any]:
@@ -262,14 +259,20 @@ class MapFeed:
 
 
 @callback
-def _coordinator_for(hass: HomeAssistant, entity_id: str) -> DreameMowerCoordinator | None:
+def _entry_data_for(hass: HomeAssistant, entity_id: str) -> dict[str, Any] | None:
     registry_entry = er.async_get(hass).async_get(entity_id)
     if registry_entry is None or registry_entry.platform != DOMAIN or registry_entry.config_entry_id is None:
         return None
     entry = hass.config_entries.async_get_entry(registry_entry.config_entry_id)
     if entry is None or entry.state is not ConfigEntryState.LOADED:
         return None
-    entry_data = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    entry_data: dict[str, Any] | None = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    return entry_data
+
+
+@callback
+def _coordinator_for(hass: HomeAssistant, entity_id: str) -> DreameMowerCoordinator | None:
+    entry_data = _entry_data_for(hass, entity_id)
     return None if entry_data is None else entry_data[DATA_COORDINATOR]
 
 
@@ -287,27 +290,68 @@ async def ws_subscribe_map(hass: HomeAssistant, connection: ActiveConnection, ms
     await feed.push()
 
 
+def work_log_payload(work_log: WorkLogCache) -> dict[str, Any]:
+    """The kept work log, and whether a read of the cloud is under way or failed."""
+    return {
+        "totals": work_log.totals,
+        "entries": work_log.entries,
+        "refreshing": work_log.refreshing,
+        "error": work_log.error,
+    }
+
+
+@callback
+def _work_log_for(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]) -> WorkLogCache | None:
+    entry_data = _entry_data_for(hass, msg["entity_id"])
+    work_log: WorkLogCache | None = None if entry_data is None else entry_data.get(DATA_WORK_LOG)
+    if work_log is None:
+        connection.send_error(msg["id"], ERR_NOT_FOUND, f"{msg['entity_id']} is not a loaded Dreame mower")
+    return work_log
+
+
 @websocket_command({vol.Required("type"): WS_WORK_LOG, vol.Required("entity_id"): cv.entity_id})
 @async_response
 async def ws_work_log(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]) -> None:
-    """The work log of the mower an entity belongs to: its totals and its tasks."""
-    coordinator = _coordinator_for(hass, msg["entity_id"])
-    if coordinator is None:
-        connection.send_error(msg["id"], ERR_NOT_FOUND, f"{msg['entity_id']} is not a loaded Dreame mower")
+    """The work log of a mower once, after reading the cloud for newer tasks."""
+    work_log = _work_log_for(hass, connection, msg)
+    if work_log is None:
         return
-    device = coordinator.device
-    totals = None
-    if coordinator.device_online:
-        try:
-            totals = await hass.async_add_executor_job(device.read_work_totals)
-        except Exception as ex:  # noqa: BLE001 - the list is worth showing without the totals
-            _LOGGER.debug("Work totals not available: %s", ex)
-    since = totals["start"] if totals else int(time.time()) - _WORK_LOG_FALLBACK_SECONDS
-    entries = await hass.async_add_executor_job(device.read_work_log, since)
-    if entries is None:
-        connection.send_error(msg["id"], ERR_HOME_ASSISTANT_ERROR, "The work log is not available right now")
+    # The read is shared with the log's followers; a caller that goes away
+    # does not end it.
+    await asyncio.shield(work_log.async_request_refresh())
+    if work_log.error and not work_log.entries:
+        connection.send_error(msg["id"], ERR_HOME_ASSISTANT_ERROR, work_log.error)
         return
-    connection.send_result(msg["id"], {"totals": totals, "entries": entries})
+    connection.send_result(msg["id"], {"totals": work_log.totals, "entries": work_log.entries})
+
+
+@websocket_command({vol.Required("type"): WS_WORK_LOG_SUBSCRIBE, vol.Required("entity_id"): cv.entity_id})
+@callback
+def ws_work_log_subscribe(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]) -> None:
+    """Send the kept work log of a mower now, read the cloud for newer tasks, and
+    send the log again whenever it changes."""
+    work_log = _work_log_for(hass, connection, msg)
+    if work_log is None:
+        return
+
+    @callback
+    def _send() -> None:
+        connection.send_message(event_message(msg["id"], work_log_payload(work_log)))
+
+    @callback
+    def _closed() -> None:
+        # The entry stops (a reload): the card subscribes to the new one.
+        connection.send_message(event_message(msg["id"], {"type": "closed"}))
+        connection.subscriptions.pop(msg["id"], None)
+
+    connection.subscriptions[msg["id"]] = work_log.add_listener(_send, _closed)
+    connection.send_result(msg["id"])
+    # A read that starts sends the log, saying the cloud is being read; one
+    # under way already would send it only when done.
+    reading = work_log.refreshing
+    work_log.async_request_refresh()
+    if reading:
+        _send()
 
 
 @websocket_command(

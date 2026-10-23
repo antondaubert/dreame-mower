@@ -486,3 +486,130 @@ test("an all-wheel drive mower is drawn as one, other models keep the two-wheel 
   await sendFeed(window, hass, { ...DOCKED, model: "dreame.mower.p2255" });
   assert.equal($(card, "[data-look]").dataset.look, "rwd");
 });
+
+// --- The work log ---
+
+const WORK_LOG = "dreame_mower/work_log/subscribe";
+const TASK = { start: 1791540000, duration: 39, area: 68.4, mode: "all_area", result: "complete", scheduled: true, file: "ali_dreame/task.json", photos: 0 };
+const OLDER = { ...TASK, start: 1791450000, file: "ali_dreame/older.json" };
+
+async function sendWorkLog(window, hass, event) {
+  const [subscription] = subscribed(hass, WORK_LOG);
+  subscription.callback(event);
+  await settle(window);
+}
+
+test("the work log shows the kept tasks while the cloud is read", async () => {
+  const window = load("dreame-mower-card.js");
+  const hass = fakeHass();
+  const card = await mount(window, hass);
+  await openTab(window, card, "history");
+  const body = () => $(card, ".view.worklog .sbody");
+
+  assert.deepEqual(plain(subscribed(hass, WORK_LOG).map((s) => s.message)), [{ type: WORK_LOG, entity_id: MOWER }]);
+  assert.equal(body().textContent, "Loading…");
+
+  await sendWorkLog(window, hass, { totals: null, entries: [OLDER], refreshing: true, error: null });
+  assert.equal($$(card, ".loglist .row").length, 1);
+  assert.equal($(card, ".lognote").textContent, "Updating…");
+
+  await sendWorkLog(window, hass, { totals: { area: 100, time: 80, count: 2, start: 1 }, entries: [TASK, OLDER], refreshing: false, error: null });
+  assert.equal($$(card, ".loglist .row").length, 2);
+  assert.equal($(card, ".lognote"), null);
+
+  // A failed read keeps the tasks and says so.
+  await sendWorkLog(window, hass, { totals: null, entries: [TASK], refreshing: false, error: "The work log is not available right now" });
+  assert.equal($$(card, ".loglist .row").length, 1);
+  assert.match($(card, ".lognote").textContent, /not available right now; showing the kept tasks/);
+
+  await openTab(window, card, "mow");
+  assert.deepEqual(subscribed(hass, WORK_LOG), []);
+});
+
+test("an empty work log that cannot be read says why", async () => {
+  const window = load("dreame-mower-card.js");
+  const hass = fakeHass();
+  const card = await mount(window, hass);
+  await openTab(window, card, "history");
+
+  await sendWorkLog(window, hass, { totals: null, entries: [], refreshing: false, error: "The work log is not available right now" });
+
+  assert.equal($(card, ".view.worklog .sbody").textContent, "The work log is not available right now");
+});
+
+test("the work log follows the socket coming back", async () => {
+  const window = load("dreame-mower-card.js");
+  const hass = fakeHass();
+  const card = await mount(window, hass);
+  await openTab(window, card, "history");
+  await sendWorkLog(window, hass, { totals: null, entries: [TASK], refreshing: false, error: null });
+
+  hass.fire("disconnected");
+  hass.fire("ready");
+  await settle(window);
+
+  assert.equal(subscribed(hass, WORK_LOG).length, 1);
+  assert.equal($$(card, ".loglist .row").length, 1);
+});
+
+test("a task opened again is shown without asking for its details again", async () => {
+  const window = load("dreame-mower-card.js");
+  const hass = fakeHass({ ws: (m) => (m.type === "dreame_mower/work_log/details" ? { result: "complete", area: 68.4, map_area: 75, duration: 39, obstacles: [], faults: [] } : {}) });
+  const card = await mount(window, hass);
+  await openTab(window, card, "history");
+  await sendWorkLog(window, hass, { totals: null, entries: [TASK], refreshing: false, error: null });
+
+  for (let i = 0; i < 2; i++) {
+    await click(window, $(card, `.loglist [data-entry="${TASK.start}"]`));
+    assert.match($(card, ".view.worklog .sbody").textContent, /68\.4 of 75 m²/);
+    await click(window, $(card, ".view.worklog [data-close]"));
+  }
+
+  assert.equal(hass.calls.filter((m) => m.type === "dreame_mower/work_log/details").length, 1);
+});
+
+test("the work log is followed again once a reloaded mower is back", async () => {
+  const window = load("dreame-mower-card.js");
+  const hass = fakeHass();
+  const card = await mount(window, hass);
+  await openTab(window, card, "history");
+  await sendWorkLog(window, hass, { totals: null, entries: [TASK], refreshing: false, error: null });
+  const [first] = subscribed(hass, WORK_LOG);
+
+  await sendWorkLog(window, hass, { type: "closed" });
+  assert.equal(first.active, false);
+  assert.deepEqual(subscribed(hass, WORK_LOG), []);
+  // What was shown stays meanwhile.
+  assert.equal($$(card, ".loglist .row").length, 1);
+
+  await new Promise((resolve) => setTimeout(resolve, 2100));
+  await settle(window);
+  assert.equal(subscribed(hass, WORK_LOG).length, 1);
+});
+
+test("the question about the stop point shows what the unfinished task mowed", async () => {
+  const window = load("dreame-mower-card.js");
+  const start = Date.UTC(2026, 9, 12, 10) / 1000;
+  const stopped = { ...TASK, start, mode: "zone", result: "stopped", file: "ali_dreame/stopped.json" };
+  const hass = fakeHass({
+    ws: (m) => {
+      if (m.type === "dreame_mower/work_log") return { totals: null, entries: [stopped] };
+      if (m.type === "dreame_mower/work_log/details")
+        return { geometry: { bounds: [0, 0, 10000, 8000], zones: [{ id: 4, polygon: [0, 0, 5000, 0, 5000, 5000] }] }, zones: [{ id: 4, result: "unfinished" }], tracks: [[[100, 100], [900, 900]]], obstacles: [] };
+      return {};
+    },
+  });
+  const card = await mount(window, hass);
+  const day = new Date(start * 1000);
+  const date = `${day.getFullYear()}.${String(day.getMonth() + 1).padStart(2, "0")}.${String(day.getDate()).padStart(2, "0")}`;
+  await sendFeed(window, hass, GEOMETRY, { ...DOCKED, stop_point_start: true, stop_points: [{ zone_id: 4, progress: 30.21, date }] });
+
+  card._askFromStopPoint([4]);
+  await settle(window);
+
+  assert.deepEqual(
+    hass.calls.map((m) => m.type),
+    ["dreame_mower/work_log", "dreame_mower/work_log/details"],
+  );
+  assert.ok($(card, ".cpreview svg"));
+});

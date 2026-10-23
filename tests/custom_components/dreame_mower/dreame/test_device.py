@@ -4849,6 +4849,31 @@ async def test_work_log_details_come_only_from_listed_tasks(device, tmp_path):
         assert device.read_work_log_details(file) is None
 
 
+async def test_work_log_details_stay_readable_for_tasks_of_earlier_reads(device, tmp_path):
+    """A later read that lists only newer tasks, or a kept log, leaves older tasks readable."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    device._hass_config_dir = str(tmp_path)
+    older, newer, kept = "ali_dreame/older.json", "ali_dreame/newer.json", "ali_dreame/kept.json"
+
+    def listing(start, file):
+        history = [{"piid": 1, "value": 100}, {"piid": 7, "value": 1}, {"piid": 8, "value": start}, {"piid": 9, "value": file}]
+        return [{"history": json.dumps(history)}]
+
+    device._cloud_device.event_history_result = listing(1791000000, older)
+    device.read_work_log(1704038400)
+    device._cloud_device.event_history_result = listing(1791540000, newer)
+    device.read_work_log(1791000000)
+    device.remember_work_log_files([kept])
+
+    for file in (older, newer, kept):
+        path = tmp_path / "www" / "dreame" / file
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"start": 1, "end": 2, "time": 1, "areas": 3.5, "mode": 100, "result": 1}))
+        with patch("builtins.open", _REAL_OPEN):
+            assert device.read_work_log_details(file)["area"] == 3.5
+
+
 def test_an_obstacle_photo_is_asked_for_until_the_mower_sends_it(device, tmp_path):
     device._hass_config_dir = str(tmp_path)
     device._ai_obstacles = [{"id": "p", "type": 0, "x": 0, "y": 0, "confidence": 95, "image": "p"}]

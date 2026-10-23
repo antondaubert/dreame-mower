@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import threading
+from datetime import timedelta
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
@@ -13,8 +15,9 @@ from homeassistant.const import CONF_NAME, CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.setup import async_setup_component
+from homeassistant.util import dt as dt_util
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
 from pytest_homeassistant_custom_component.typing import ClientSessionGenerator, WebSocketGenerator
 
 from custom_components.dreame_mower.config_flow import (
@@ -25,13 +28,21 @@ from custom_components.dreame_mower.config_flow import (
     CONF_MODEL,
     CONF_SERIAL,
 )
-from custom_components.dreame_mower.const import CONF_MAP_ROTATION, DATA_COORDINATOR, DOMAIN
+from custom_components.dreame_mower.const import CONF_MAP_ROTATION, DATA_COORDINATOR, DATA_WORK_LOG, DOMAIN
 from custom_components.dreame_mower.coordinator import DreameMowerCoordinator, zone_settings
 from custom_components.dreame_mower.dreame.const import MowingPreferenceMode
 from custom_components.dreame_mower.dreame.map_data_parser import MowerVectorMap, MowerZone
 from custom_components.dreame_mower.dreame.map_scene import SEGMENT_BREAK, stripe_angle
 from custom_components.dreame_mower.frontend import CARD_URL, async_setup_frontend
-from custom_components.dreame_mower.map_api import WS_OBSTACLE_PHOTO, WS_SUBSCRIBE_MAP, WS_WORK_LOG, WS_WORK_LOG_DETAILS, path_payload
+from custom_components.dreame_mower.map_api import (
+    WS_OBSTACLE_PHOTO,
+    WS_SUBSCRIBE_MAP,
+    WS_WORK_LOG,
+    WS_WORK_LOG_DETAILS,
+    WS_WORK_LOG_SUBSCRIBE,
+    path_payload,
+)
+from custom_components.dreame_mower.work_log_cache import OVERLAP_SECONDS, WorkLogCache
 
 ENTITY_ID = "lawn_mower.robo"
 
@@ -507,31 +518,270 @@ async def _ask(hass: HomeAssistant, hass_ws_client: WebSocketGenerator, message:
     return await client.receive_json()
 
 
-async def test_work_log_lists_the_tasks_since_the_totals_start(
-    hass: HomeAssistant, coordinator: DreameMowerCoordinator, hass_ws_client: WebSocketGenerator
+TOTALS = {"area": 17469, "time": 12850, "count": 356, "start": 1704038400}
+
+
+def _task(start: int, **values: Any) -> dict[str, Any]:
+    return {"start": start, "mode": "all_area", "result": "complete", "file": f"ali_dreame/{start}.json", **values}
+
+
+@pytest.fixture
+async def work_log(hass: HomeAssistant, coordinator: DreameMowerCoordinator) -> WorkLogCache:
+    """The kept work log of the mower, empty, with a cloud that lists nothing."""
+    device = coordinator.device
+    device.files = set()
+    device.callbacks = []
+    device.register_property_callback = device.callbacks.append
+    device.unregister_property_callback = device.callbacks.remove
+    device.remember_work_log_files = device.files.update
+    device.read_work_totals = lambda: TOTALS
+    device.read_work_log = lambda since: []
+    device.count_work_log_photos = lambda entries: None
+    cache = WorkLogCache(hass, coordinator, coordinator.entry)
+    await cache.async_load()
+    cache.async_start()
+    hass.data[DOMAIN][coordinator.entry.entry_id][DATA_WORK_LOG] = cache
+    return cache
+
+
+async def _follow_work_log(hass: HomeAssistant, hass_ws_client: WebSocketGenerator) -> Any:
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id({"type": WS_WORK_LOG_SUBSCRIBE, "entity_id": ENTITY_ID})
+    result = await client.receive_json()
+    assert result["success"], result
+    return client
+
+
+async def test_the_work_log_sends_what_it_keeps_before_reading_the_cloud(
+    hass: HomeAssistant, coordinator: DreameMowerCoordinator, work_log: WorkLogCache, hass_ws_client: WebSocketGenerator
 ) -> None:
-    totals = {"area": 17469, "time": 12850, "count": 356, "start": 1704038400}
-    entries = [{"start": 1791540000, "mode": "all_area", "result": "complete", "file": "ali_dreame/a.json"}]
+    kept, new = _task(1791000000), _task(1791540000, photos=2)
+    work_log.entries = [kept]
     asked: list[int] = []
+    coordinator.device.read_work_log = lambda since: asked.append(since) or [new]
+
+    client = await _follow_work_log(hass, hass_ws_client)
+    first, read = await _events(client, 2)
+
+    assert first == {"totals": None, "entries": [kept], "refreshing": True, "error": None}
+    assert read == {"totals": TOTALS, "entries": [new, kept], "refreshing": False, "error": None}
+    # Never read before: from the start of the log.
+    assert asked == [TOTALS["start"]]
+
+
+async def test_a_card_that_follows_during_a_read_gets_the_log_at_once(
+    hass: HomeAssistant, coordinator: DreameMowerCoordinator, work_log: WorkLogCache, hass_ws_client: WebSocketGenerator
+) -> None:
+    release = threading.Event()
+
+    def slow(since: int) -> list[dict[str, Any]]:
+        release.wait(5)
+        return [_task(1791540000)]
+
+    coordinator.device.read_work_log = slow
+    first = await _follow_work_log(hass, hass_ws_client)
+    await _events(first, 1)
+
+    second = await _follow_work_log(hass, hass_ws_client)
+    (now,) = await _events(second, 1)
+    release.set()
+    (done,) = await _events(second, 1)
+
+    assert now["refreshing"] is True and now["entries"] == []
+    assert done["refreshing"] is False and [entry["start"] for entry in done["entries"]] == [1791540000]
+
+
+async def test_later_reads_of_the_work_log_start_shortly_before_the_newest_task(
+    hass: HomeAssistant, coordinator: DreameMowerCoordinator, work_log: WorkLogCache, hass_ws_client: WebSocketGenerator
+) -> None:
+    asked: list[int] = []
+    tasks = [_task(1791540000), _task(1791000000)]
+    coordinator.device.read_work_log = lambda since: asked.append(since) or tasks
+    await work_log.async_request_refresh()
+
+    await work_log.async_request_refresh()
+
+    assert asked == [TOTALS["start"], 1791540000 - OVERLAP_SECONDS]
+    assert work_log.entries == tasks
+
+
+async def test_the_work_log_is_kept_across_restarts(
+    hass: HomeAssistant, coordinator: DreameMowerCoordinator, work_log: WorkLogCache
+) -> None:
+    coordinator.device.read_work_log = lambda since: [_task(1791540000)]
+    await work_log.async_request_refresh()
+
+    again = WorkLogCache(hass, coordinator, coordinator.entry)
+    coordinator.device.files.clear()
+    await again.async_load()
+
+    assert again.totals == TOTALS
+    assert [entry["start"] for entry in again.entries] == [1791540000]
+    # Its tasks can be opened before the cloud was read again.
+    assert coordinator.device.files == {"ali_dreame/1791540000.json"}
+
+
+async def test_the_work_log_keeps_its_tasks_when_the_cloud_does_not_answer(
+    hass: HomeAssistant, coordinator: DreameMowerCoordinator, work_log: WorkLogCache, hass_ws_client: WebSocketGenerator
+) -> None:
+    kept = _task(1791000000)
+    work_log.entries = [kept]
+    coordinator.device.read_work_log = lambda since: None
+
+    client = await _follow_work_log(hass, hass_ws_client)
+    _, read = await _events(client, 2)
+
+    assert read == {"totals": TOTALS, "entries": [kept], "refreshing": False, "error": "The work log is not available right now"}
+
+
+async def test_the_work_log_reads_no_totals_from_an_offline_mower(
+    hass: HomeAssistant, coordinator: DreameMowerCoordinator, work_log: WorkLogCache
+) -> None:
+    coordinator.device.online = False
+
+    def totals() -> dict[str, int]:
+        raise AssertionError("an offline mower is not asked")
+
+    coordinator.device.read_work_totals = totals
+    await work_log.async_request_refresh()
+
+    assert work_log.totals is None and work_log.error is None
+
+
+async def test_work_log_goes_back_half_a_year_without_totals(
+    hass: HomeAssistant, coordinator: DreameMowerCoordinator, work_log: WorkLogCache
+) -> None:
+    asked: list[int] = []
+    coordinator.device.read_work_totals = lambda: None
+    coordinator.device.read_work_log = lambda since: asked.append(since) or []
+
+    with patch("custom_components.dreame_mower.work_log_cache.time.time", return_value=1_800_000_000):
+        await work_log.async_request_refresh()
+
+    assert asked == [1_800_000_000 - 180 * 24 * 3600]
+
+
+async def test_a_finished_task_is_read_soon_after(
+    hass: HomeAssistant, coordinator: DreameMowerCoordinator, work_log: WorkLogCache
+) -> None:
+    asked: list[int] = []
+    coordinator.device.read_work_log = lambda since: asked.append(since) or [_task(1791540000)]
+
+    for notify in coordinator.device.callbacks:
+        notify("mission_completion_event", {"start_timestamp": 1791540000})
+    await hass.async_block_till_done()
+    assert asked == []
+
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=31))
+    await hass.async_block_till_done()
+
+    assert asked == [TOTALS["start"]]
+    assert work_log.entries[0]["start"] == 1791540000
+
+
+async def test_unloading_the_entry_closes_the_work_log_feed(
+    hass: HomeAssistant, coordinator: DreameMowerCoordinator, work_log: WorkLogCache, hass_ws_client: WebSocketGenerator
+) -> None:
+    client = await _follow_work_log(hass, hass_ws_client)
+    await _events(client, 2)
+
+    work_log.async_stop()
+
+    (closed,) = await _events(client, 1)
+    assert closed == {"type": "closed"}
+    assert coordinator.device.callbacks == []
+
+
+async def test_the_work_log_is_read_from_its_start_once_the_mower_says_where_that_is(
+    hass: HomeAssistant, coordinator: DreameMowerCoordinator, work_log: WorkLogCache
+) -> None:
+    asked: list[int] = []
+    totals: dict[str, int] | None = None
     coordinator.device.read_work_totals = lambda: totals
-    coordinator.device.read_work_log = lambda since: asked.append(since) or entries
+    coordinator.device.read_work_log = lambda since: asked.append(since) or [_task(1791540000)]
+
+    with patch("custom_components.dreame_mower.work_log_cache.time.time", return_value=1_791_600_000):
+        await work_log.async_request_refresh()
+        await work_log.async_request_refresh()
+        totals = TOTALS
+        await work_log.async_request_refresh()
+        await work_log.async_request_refresh()
+
+    fallback = 1_791_600_000 - 180 * 24 * 3600
+    assert asked == [fallback, 1791540000 - OVERLAP_SECONDS, TOTALS["start"], 1791540000 - OVERLAP_SECONDS]
+
+
+async def test_the_work_log_drops_tasks_from_before_its_start(
+    hass: HomeAssistant, coordinator: DreameMowerCoordinator, work_log: WorkLogCache
+) -> None:
+    work_log.entries = [_task(1791540000), _task(1700000000)]
+    coordinator.device.read_work_log = lambda since: []
+
+    await work_log.async_request_refresh()
+
+    assert [entry["start"] for entry in work_log.entries] == [1791540000]
+
+
+async def test_the_work_log_counts_the_photos_of_kept_tasks_anew(
+    hass: HomeAssistant, coordinator: DreameMowerCoordinator, work_log: WorkLogCache
+) -> None:
+    work_log.entries = [_task(1791000000, photos=0)]
+    coordinator.device.read_work_log = lambda since: [_task(1791540000, photos=0)]
+
+    def count(entries: list[dict[str, Any]]) -> None:
+        for entry in entries:
+            entry["photos"] = 2
+
+    coordinator.device.count_work_log_photos = count
+    await work_log.async_request_refresh()
+
+    assert [entry["photos"] for entry in work_log.entries] == [2, 2]
+
+
+async def test_unloading_ends_a_read_under_way(
+    hass: HomeAssistant, coordinator: DreameMowerCoordinator, work_log: WorkLogCache
+) -> None:
+    release = threading.Event()
+    coordinator.device.read_work_log = lambda since: release.wait(5) and []
+    refresh = work_log.async_request_refresh()
+    await asyncio.sleep(0)
+
+    work_log.async_stop()
+    release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await refresh
+
+    assert work_log.entries == []
+
+
+async def test_the_work_log_can_be_asked_once(
+    hass: HomeAssistant, coordinator: DreameMowerCoordinator, work_log: WorkLogCache, hass_ws_client: WebSocketGenerator
+) -> None:
+    coordinator.device.read_work_log = lambda since: [_task(1791540000)]
 
     result = await _ask(hass, hass_ws_client, {"type": WS_WORK_LOG, "entity_id": ENTITY_ID})
 
     assert result["success"], result
-    assert result["result"] == {"totals": totals, "entries": entries}
-    assert asked == [1704038400]
+    assert result["result"] == {"totals": TOTALS, "entries": [_task(1791540000)]}
 
 
-async def test_work_log_reports_a_cloud_that_does_not_answer(
-    hass: HomeAssistant, coordinator: DreameMowerCoordinator, hass_ws_client: WebSocketGenerator
+async def test_the_work_log_asked_once_reports_a_cloud_that_does_not_answer(
+    hass: HomeAssistant, coordinator: DreameMowerCoordinator, work_log: WorkLogCache, hass_ws_client: WebSocketGenerator
 ) -> None:
-    coordinator.device.read_work_totals = lambda: None
     coordinator.device.read_work_log = lambda since: None
 
     result = await _ask(hass, hass_ws_client, {"type": WS_WORK_LOG, "entity_id": ENTITY_ID})
 
     assert not result["success"]
+
+
+async def test_the_work_log_feed_needs_a_loaded_mower(
+    hass: HomeAssistant, coordinator: DreameMowerCoordinator, hass_ws_client: WebSocketGenerator
+) -> None:
+    result = await _ask(hass, hass_ws_client, {"type": WS_WORK_LOG_SUBSCRIBE, "entity_id": ENTITY_ID})
+
+    assert not result["success"]
+    assert result["error"]["code"] == "not_found"
 
 
 async def test_work_log_details_refuse_a_task_the_log_did_not_list(
@@ -550,21 +800,6 @@ async def test_work_log_details_refuse_a_task_the_log_did_not_list(
     assert listed["success"] and listed["result"] == {"result": "complete"}
     assert not other["success"]
     assert other["error"]["code"] == "not_found"
-
-
-async def test_work_log_goes_back_half_a_year_without_totals(
-    hass: HomeAssistant, coordinator: DreameMowerCoordinator, hass_ws_client: WebSocketGenerator
-) -> None:
-    asked: list[int] = []
-    coordinator.device.read_work_totals = lambda: None
-    coordinator.device.read_work_log = lambda since: asked.append(since) or []
-
-    with patch("custom_components.dreame_mower.map_api.time.time", return_value=1_800_000_000):
-        result = await _ask(hass, hass_ws_client, {"type": WS_WORK_LOG, "entity_id": ENTITY_ID})
-
-    assert result["success"]
-    assert result["result"] == {"totals": None, "entries": []}
-    assert asked == [1_800_000_000 - 180 * 24 * 3600]
 
 
 

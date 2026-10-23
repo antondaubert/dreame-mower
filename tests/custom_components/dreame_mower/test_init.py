@@ -161,6 +161,19 @@ async def test_removing_the_entry_deletes_its_point_clouds(hass, tmp_path):
     await async_remove_entry(hass, entry)
 
 
+async def test_removing_the_entry_deletes_its_kept_work_log(hass, hass_storage):
+    """The work log kept for the entry goes with it, that of another entry stays."""
+    entry = _make_entry()
+    ours, other = f"{DOMAIN}.work_log.{entry.entry_id}", f"{DOMAIN}.work_log.other"
+    for key in (ours, other):
+        hass_storage[key] = {"version": 1, "key": key, "data": {"entries": []}}
+
+    await async_remove_entry(hass, entry)
+
+    assert ours not in hass_storage
+    assert other in hass_storage
+
+
 async def test_setup_drops_the_entities_earlier_versions_created(hass):
     """Entities this version no longer creates must not linger as orphans."""
     entry = _make_entry()

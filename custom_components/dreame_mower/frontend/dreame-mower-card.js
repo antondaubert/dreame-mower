@@ -14,6 +14,7 @@ const CARD_TYPE = "dreame-mower-card";
 const EDITOR_TYPE = "dreame-mower-card-editor";
 const DOMAIN = "dreame_mower";
 const SUBSCRIBE_TYPE = `${DOMAIN}/map/subscribe`;
+const WORK_LOG_SUBSCRIBE_TYPE = `${DOMAIN}/work_log/subscribe`;
 
 // Delays before subscribing again after the feed closed or failed; the last
 // one repeats.
@@ -618,6 +619,7 @@ button.row:disabled { opacity: .45; cursor: default; }
 .totals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 10px 12px 0; padding: 10px 6px; border-radius: 10px; background: var(--mower-surface); text-align: center; }
 .totals b { display: block; font-size: 20px; font-weight: 500; }
 .totals small { font-size: 12px; color: var(--mower-muted); }
+.lognote { margin: 8px 12px 0; font-size: 12px; color: var(--mower-muted); }
 .worklog .filter { padding: 10px 12px 4px; }
 /* A long log scrolls within the tab, so the card stays its size. */
 .worklog .loglist { max-height: min(60vh, 560px); overflow-y: auto; }
@@ -1806,6 +1808,8 @@ class DreameMowerCard extends HTMLElement {
     this._busy = false;
     this._settings = null;
     this._log = null;
+    // The details of the tasks opened so far, by task file.
+    this._logDetails = new Map();
     this._photo = null;
     this._edit = null;
     this._mapList = null;
@@ -1832,6 +1836,7 @@ class DreameMowerCard extends HTMLElement {
     // socket, so the old subscription is dropped without unsubscribing.
     this._onDisconnected = () => {
       this._sub = null;
+      this._dropWorkLogFeed(false);
       this._eachSection("dropped");
     };
   }
@@ -1856,7 +1861,8 @@ class DreameMowerCard extends HTMLElement {
       this._tfKey = null;
       this._viewTouched = false;
       this._clearSelection();
-      this._log = null;
+      this._closeWorkLog();
+      this._logDetails.clear();
       this._photo = null;
       this._edit = null;
       this._mapList = null;
@@ -1911,11 +1917,13 @@ class DreameMowerCard extends HTMLElement {
     this._ensureDom();
     if (this._resizeObserver) this._resizeObserver.observe(this._el.map);
     this._ensureSubscribed();
+    if (this._log && !this._log.sub) this._followWorkLog(this._log);
     this._invalidate("all");
   }
 
   disconnectedCallback() {
     this._unsubscribe();
+    this._dropWorkLogFeed(true);
     this._clearRetry();
     this._eachSection("disconnect");
     LIVE_CARDS.delete(this);
@@ -2033,6 +2041,10 @@ class DreameMowerCard extends HTMLElement {
     this._clearRetry();
     this._retry = 0;
     this._subscribe();
+    if (this._log) {
+      this._dropWorkLogFeed(false);
+      this._followWorkLog(this._log);
+    }
     this._eachSection("resubscribe");
   }
 
@@ -2567,7 +2579,7 @@ class DreameMowerCard extends HTMLElement {
     if (tab === "history") {
       this._openWorkLog();
     } else {
-      this._log = null;
+      this._closeWorkLog();
       this._logPanZoom = null;
     }
     this._invalidate("header", "toolbar", "actions", "picker", "maint", "maps", "log", "schedules", "dyn");
@@ -4174,7 +4186,7 @@ class DreameMowerCard extends HTMLElement {
   _openEditor() {
     if (!this._hasMap()) return;
     this._settings = null;
-    this._log = null;
+    this._closeWorkLog();
     this._logPanZoom = null;
     this._picker = false;
     this._mapList = null;
@@ -4997,22 +5009,95 @@ class DreameMowerCard extends HTMLElement {
 
   // --- Work log ---
 
-  async _openWorkLog() {
+  // The work log follows what the integration keeps: the first message has
+  // the kept tasks, later ones what a read of the cloud added.
+  _openWorkLog() {
     if (!this._hass || !this._config) return;
-    this._log = { loading: true, error: null, totals: null, entries: [], filter: "all", detail: null };
+    this._closeWorkLog();
+    this._log = { loading: true, refreshing: false, error: null, totals: null, entries: [], filter: "all", detail: null, sub: null, retry: null, retries: 0 };
     this._invalidate("log");
-    const log = this._log;
-    try {
-      const result = await this._hass.callWS({ type: `${DOMAIN}/work_log`, entity_id: this._config.entity });
-      if (this._log !== log) return;
-      log.totals = result.totals;
-      log.entries = result.entries || [];
-    } catch (err) {
-      if (this._log !== log) return;
-      log.error = errorMessage(err);
+    this._followWorkLog(this._log);
+  }
+
+  _followWorkLog(log) {
+    if (!this.isConnected || !this._hass || !this._config || !this._hass.connection) return;
+    const sub = { unsub: null };
+    log.sub = sub;
+    const current = () => this._log === log && log.sub === sub;
+    this._hass.connection
+      .subscribeMessage(
+        (event) => {
+          if (current()) this._onWorkLogEvent(log, event);
+        },
+        { type: WORK_LOG_SUBSCRIBE_TYPE, entity_id: this._config.entity },
+        { resubscribe: false },
+      )
+      .then((unsub) => {
+        if (!current()) {
+          safeUnsubscribe(unsub);
+          return;
+        }
+        sub.unsub = unsub;
+        log.retries = 0;
+      })
+      .catch((err) => {
+        if (!current()) return;
+        log.sub = null;
+        log.loading = false;
+        log.error = errorMessage(err);
+        this._invalidate("log");
+        this._retryWorkLog(log);
+      });
+  }
+
+  // Follows the work log again after a delay, once the mower is available;
+  // an entry that reloads takes a while to be back.
+  _retryWorkLog(log) {
+    clearTimeout(log.retry);
+    const delay = RESUBSCRIBE_DELAYS[Math.min(log.retries, RESUBSCRIBE_DELAYS.length - 1)];
+    log.retries += 1;
+    log.retry = setTimeout(() => {
+      log.retry = null;
+      if (this._log !== log || log.sub || !this._hass || !this._config) return;
+      const stateObj = this._hass.states[this._config.entity];
+      if (!stateObj || stateObj.state === "unavailable") this._retryWorkLog(log);
+      else this._followWorkLog(log);
+    }, delay);
+  }
+
+  _onWorkLogEvent(log, event) {
+    if (!event || typeof event !== "object") return;
+    if (event.type === "closed") {
+      // The mower's entry reloads: follow the new one once it is back.
+      const sub = log.sub;
+      log.sub = null;
+      if (sub && sub.unsub) safeUnsubscribe(sub.unsub);
+      this._retryWorkLog(log);
+      return;
     }
+    log.totals = event.totals || null;
+    log.entries = event.entries || [];
+    log.refreshing = !!event.refreshing;
+    log.error = event.error || null;
     log.loading = false;
     this._invalidate("log");
+  }
+
+  // Stops following the work log and keeps what it shows. A dead socket's
+  // subscription is dropped without unsubscribing, as for the map feed.
+  _dropWorkLogFeed(unsubscribe) {
+    const log = this._log;
+    if (!log) return;
+    clearTimeout(log.retry);
+    log.retry = null;
+    const sub = log.sub;
+    log.sub = null;
+    if (unsubscribe && sub && sub.unsub) safeUnsubscribe(sub.unsub);
+  }
+
+  _closeWorkLog() {
+    this._dropWorkLogFeed(true);
+    this._log = null;
   }
 
   async _openWorkLogEntry(entry) {
@@ -5028,12 +5113,22 @@ class DreameMowerCard extends HTMLElement {
       return;
     }
     try {
-      detail.data = await this._hass.callWS({ type: `${DOMAIN}/work_log/details`, entity_id: this._config.entity, file: entry.file });
+      detail.data = await this._workLogDetails(entry.file);
     } catch (err) {
       detail.error = errorMessage(err);
     }
     detail.loading = false;
     if (this._log === log && log.detail === detail) this._invalidate("log");
+  }
+
+  // A task's details do not change once it is listed, so a task opened
+  // before is shown without asking again.
+  async _workLogDetails(file) {
+    const known = this._logDetails.get(file);
+    if (known) return known;
+    const data = await this._hass.callWS({ type: `${DOMAIN}/work_log/details`, entity_id: this._config.entity, file });
+    this._logDetails.set(file, data);
+    return data;
   }
 
   _onWorkLogClick(e) {
@@ -5042,7 +5137,7 @@ class DreameMowerCard extends HTMLElement {
     const data = target.dataset;
     if ("close" in data) {
       if (this._log.detail) this._log.detail = null;
-      else this._log = null;
+      else this._closeWorkLog();
     } else if (data.filter) {
       this._log.filter = data.filter;
     } else if (data.entry) {
@@ -5098,10 +5193,13 @@ class DreameMowerCard extends HTMLElement {
     this._logPanZoom = null;
     // The list is the tab itself; only a task has a way back to it.
     this._setHtml("lhead", this._el.lhead, "");
-    if (log.loading || log.error) {
+    const empty = !log.entries.length && !log.totals;
+    if (empty && (log.loading || log.refreshing || log.error)) {
       this._setHtml("lbody", this._el.lbody, `<div class="note">${esc(log.error || "Loading…")}</div>`);
       return;
     }
+    // The kept log shows while the cloud is read, and stays when it fails.
+    const status = log.refreshing ? "Updating…" : log.error ? `${log.error}; showing the kept tasks` : "";
     const totals = log.totals
       ? `<div class="totals"><div><b>${esc(num(log.totals.area))}</b><small>m² mowed</small></div>` +
         `<div><b>${esc(formatMinutes(log.totals.time))}</b><small>mowing</small></div>` +
@@ -5131,7 +5229,10 @@ class DreameMowerCard extends HTMLElement {
     this._setHtml(
       "lbody",
       this._el.lbody,
-      totals + filter + (rows ? `<div class="list loglist">${rows}</div>` : `<div class="note">No tasks</div>`),
+      (status ? `<div class="lognote">${esc(status)}</div>` : "") +
+        totals +
+        filter +
+        (rows ? `<div class="list loglist">${rows}</div>` : `<div class="note">No tasks</div>`),
     );
   }
 
@@ -5745,7 +5846,7 @@ class DreameMowerCard extends HTMLElement {
         .slice(0, 3);
       for (const entry of candidates) {
         if (!el || !el.isConnected) return;
-        const data = await this._hass.callWS({ type: `${DOMAIN}/work_log/details`, entity_id: this._config.entity, file: entry.file });
+        const data = await this._workLogDetails(entry.file);
         // The task has to be one on this map that worked these zones; the
         // stop points may stem from different tasks, so one zone will do.
         const zones = new Set(((data.geometry && data.geometry.zones) || []).map((zone) => zone.id));
