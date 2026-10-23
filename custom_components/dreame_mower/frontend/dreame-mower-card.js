@@ -139,6 +139,7 @@ button { font: inherit; color: inherit; }
 .status .state { font-size: 16px; font-weight: 500; line-height: 20px; }
 .status .sub { display: flex; align-items: center; gap: 4px; font-size: 13px; line-height: 18px; color: var(--mower-muted); --mdc-icon-size: 16px; }
 .status .sub.err { color: var(--mower-error); }
+.status .sub .battery { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: none; background: none; color: inherit; font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .iconbtn {
   flex: 0 0 auto;
   display: inline-flex;
@@ -1888,6 +1889,12 @@ class DreameMowerCard extends HTMLElement {
       this._stateObj = stateObj;
       this._invalidate("header", "toolbar", "actions", "dyn", "picker", "photo");
     }
+    // The battery level in the header leads to its sensor's history.
+    const battery = this._config ? this._batteryEntity() : null;
+    if (battery !== this._battery) {
+      this._battery = battery;
+      this._invalidate("header");
+    }
     // The settings and the schedules show other entities of the mower, which
     // change on their own.
     if (this._maint) this._invalidate("maint");
@@ -2578,7 +2585,13 @@ class DreameMowerCard extends HTMLElement {
     if (mower.battery !== null && mower.battery !== undefined) {
       const charging = mower.charging === "charging";
       const icon = charging ? batteryChargingIcon(mower.battery) : batteryIcon(mower.battery);
-      sub.push(`<ha-icon icon="${icon}"${charging ? ' style="color:#43a047"' : ""}></ha-icon>${esc(mower.battery)} %`);
+      const level = `<ha-icon icon="${icon}"${charging ? ' style="color:#43a047"' : ""}></ha-icon>${esc(mower.battery)} %`;
+      // Tapping the level opens the history of the battery sensor.
+      sub.push(
+        this._batteryEntity()
+          ? `<button type="button" class="battery" data-action="battery-history" title="Battery history" aria-label="Battery history">${level}</button>`
+          : level,
+      );
     }
     const where = this._whereText(mower);
     if (where) sub.push(esc(where));
@@ -3467,6 +3480,25 @@ class DreameMowerCard extends HTMLElement {
       this._entityIndex = { of: entities, entity: this._config.entity, index, all };
     }
     return this._entityIndex.index.get(`${domain}:${key === null ? "" : key}`) || null;
+  }
+
+  // The battery sensor of this mower's device, or null when it has none. It
+  // has no translation key, so it is the sensor with the battery device class.
+  _batteryEntity() {
+    const entities = (this._hass && this._hass.entities) || {};
+    if (!this._sensors || this._sensors.of !== entities || this._sensors.entity !== this._config.entity) {
+      // The device's sensors, listed once for each registry the card is handed.
+      const own = entities[this._config.entity];
+      const ids =
+        own && own.device_id
+          ? Object.values(entities)
+              .filter((e) => e.device_id === own.device_id && e.platform === DOMAIN && e.entity_id.startsWith("sensor."))
+              .map((e) => e.entity_id)
+          : [];
+      this._sensors = { of: entities, entity: this._config.entity, ids };
+    }
+    const states = this._hass.states;
+    return this._sensors.ids.find((id) => states[id] && states[id].attributes.device_class === "battery") || null;
   }
 
   // Every entity of this mower's device in `domain` with the translation key
@@ -5577,6 +5609,13 @@ class DreameMowerCard extends HTMLElement {
       case "stop-returning":
         await this._call(DOMAIN, "stop_returning");
         break;
+      case "battery-history": {
+        const id = this._batteryEntity();
+        if (!id) break;
+        window.history.pushState(null, "", `/history?entity_id=${encodeURIComponent(id)}`);
+        window.dispatchEvent(new CustomEvent("location-changed", { detail: { replace: false } }));
+        break;
+      }
       case "find":
         await this._call(DOMAIN, "find_robot", {}, { success: "Calling the mower; listen for its sound" });
         break;
