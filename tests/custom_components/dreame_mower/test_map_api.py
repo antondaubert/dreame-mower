@@ -775,6 +775,56 @@ async def test_the_work_log_asked_once_reports_a_cloud_that_does_not_answer(
     assert not result["success"]
 
 
+class _Battery:
+    """A battery log that knows one task."""
+
+    def __init__(self) -> None:
+        self.listeners: list[Any] = []
+        self.backfilled: list[list[dict[str, Any]]] = []
+
+    def add_listener(self, listener: Any) -> Any:
+        self.listeners.append(listener)
+        return lambda: self.listeners.remove(listener)
+
+    def summary(self, entry: dict[str, Any]) -> dict[str, Any] | None:
+        return {"used": 37.0, "per_sqm": 0.54, "source": "recorded"} if entry["start"] == 1791540000 else None
+
+    def details(self, task: dict[str, Any]) -> dict[str, Any] | None:
+        summary = self.summary(task)
+        return None if summary is None else {**summary, "samples": [[0, 100], [2340, 63]]}
+
+    async def async_backfill(self, entries: list[dict[str, Any]]) -> None:
+        self.backfilled.append(entries)
+
+
+async def test_the_work_log_tells_what_each_task_took_of_the_battery(
+    hass: HomeAssistant, coordinator: DreameMowerCoordinator, work_log: WorkLogCache, hass_ws_client: WebSocketGenerator
+) -> None:
+    work_log.async_stop()
+    battery = _Battery()
+    cache = WorkLogCache(hass, coordinator, coordinator.entry, battery)  # type: ignore[arg-type]
+    cache.async_start()
+    hass.data[DOMAIN][coordinator.entry.entry_id][DATA_WORK_LOG] = cache
+    coordinator.device.read_work_log = lambda since: [_task(1791540000), _task(1791000000)]
+    coordinator.device.read_work_log_details = lambda file: {"start": 1791540000, "area": 68.4}
+
+    client = await _follow_work_log(hass, hass_ws_client)
+    _, read = await _events(client, 2)
+    await hass.async_block_till_done()
+    assert [entry["battery"] for entry in read["entries"]] == [{"used": 37.0, "per_sqm": 0.54, "source": "recorded"}, None]
+    # The tasks read are handed on for the battery to fill in.
+    assert [[entry["start"] for entry in entries] for entries in battery.backfilled] == [[1791540000, 1791000000]]
+
+    # A task the battery log learns about goes out to the cards.
+    for listener in battery.listeners:
+        listener()
+    (again,) = await _events(client, 1)
+    assert again["entries"][0]["battery"]["used"] == 37.0
+
+    details = await _ask(hass, hass_ws_client, {"type": WS_WORK_LOG_DETAILS, "entity_id": ENTITY_ID, "file": "ali_dreame/1791540000.json"})
+    assert details["result"]["battery"] == {"used": 37.0, "per_sqm": 0.54, "source": "recorded", "samples": [[0, 100], [2340, 63]]}
+
+
 async def test_the_work_log_feed_needs_a_loaded_mower(
     hass: HomeAssistant, coordinator: DreameMowerCoordinator, hass_ws_client: WebSocketGenerator
 ) -> None:

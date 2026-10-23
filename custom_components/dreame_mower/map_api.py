@@ -294,7 +294,7 @@ def work_log_payload(work_log: WorkLogCache) -> dict[str, Any]:
     """The kept work log, and whether a read of the cloud is under way or failed."""
     return {
         "totals": work_log.totals,
-        "entries": work_log.entries,
+        "entries": work_log.entries_with_battery(),
         "refreshing": work_log.refreshing,
         "error": work_log.error,
     }
@@ -322,7 +322,7 @@ async def ws_work_log(hass: HomeAssistant, connection: ActiveConnection, msg: di
     if work_log.error and not work_log.entries:
         connection.send_error(msg["id"], ERR_HOME_ASSISTANT_ERROR, work_log.error)
         return
-    connection.send_result(msg["id"], {"totals": work_log.totals, "entries": work_log.entries})
+    connection.send_result(msg["id"], {"totals": work_log.totals, "entries": work_log.entries_with_battery()})
 
 
 @websocket_command({vol.Required("type"): WS_WORK_LOG_SUBSCRIBE, vol.Required("entity_id"): cv.entity_id})
@@ -376,6 +376,10 @@ async def ws_work_log_details(hass: HomeAssistant, connection: ActiveConnection,
     if details is None:
         connection.send_error(msg["id"], ERR_HOME_ASSISTANT_ERROR, "The details of this task are not available")
         return
+    entry_data = _entry_data_for(hass, msg["entity_id"])
+    work_log: WorkLogCache | None = None if entry_data is None else entry_data.get(DATA_WORK_LOG)
+    if work_log is not None and work_log.battery is not None and isinstance(details.get("start"), int):
+        details["battery"] = work_log.battery.details(details)
     connection.send_result(msg["id"], details)
 
 

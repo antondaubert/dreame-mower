@@ -20,6 +20,7 @@ from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.storage import Store
 
+from .battery_log import BatteryLog
 from .const import DOMAIN
 from .coordinator import DreameMowerCoordinator
 from .dreame.property.mission_completion import MISSION_COMPLETION_EVENT_PROPERTY_NAME
@@ -62,9 +63,18 @@ def merge_entries(kept: list[dict[str, Any]], read: list[dict[str, Any]], start:
 class WorkLogCache:
     """Keeps the work log of one mower and tells followers when it changes."""
 
-    def __init__(self, hass: HomeAssistant, coordinator: DreameMowerCoordinator, entry: ConfigEntry) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        coordinator: DreameMowerCoordinator,
+        entry: ConfigEntry,
+        battery: BatteryLog | None = None,
+    ) -> None:
         self._hass = hass
         self._coordinator = coordinator
+        # What the battery did over the tasks, where it is followed.
+        self.battery = battery
+        self._unsubscribe_battery: CALLBACK_TYPE | None = None
         self._store = work_log_store(hass, entry.entry_id)
         self.totals: dict[str, Any] | None = None
         self.entries: list[dict[str, Any]] = []
@@ -89,14 +99,19 @@ class WorkLogCache:
 
     @callback
     def async_start(self) -> None:
-        """Follow the mower for finished tasks."""
+        """Follow the mower for finished tasks, and the battery over them."""
         self._coordinator.device.register_property_callback(self._on_property)
+        if self.battery is not None:
+            self._unsubscribe_battery = self.battery.add_listener(self._notify)
 
     @callback
     def async_stop(self) -> None:
         """Stop following the mower and close the followers."""
         self._stopped = True
         self._coordinator.device.unregister_property_callback(self._on_property)
+        if self._unsubscribe_battery is not None:
+            self._unsubscribe_battery()
+            self._unsubscribe_battery = None
         if self._cancel_completion is not None:
             self._cancel_completion()
             self._cancel_completion = None
@@ -186,6 +201,18 @@ class WorkLogCache:
         await self._store.async_save(
             {"totals": self.totals, "entries": self.entries, "covered_since": self._covered_since}
         )
+        if self.battery is not None:
+            # Tasks from before the battery was followed, filled in once.
+            self._coordinator.entry.async_create_background_task(
+                self._hass, self.battery.async_backfill(self.entries), f"{DOMAIN} battery backfill"
+            )
+
+    def entries_with_battery(self) -> list[dict[str, Any]]:
+        """The kept tasks, each with what it took of the battery where known."""
+        battery = self.battery
+        if battery is None:
+            return self.entries
+        return [{**entry, "battery": battery.summary(entry)} for entry in self.entries]
 
     def _start(self) -> int:
         """Since when the log counts, as a unix time."""

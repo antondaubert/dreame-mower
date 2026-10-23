@@ -162,15 +162,16 @@ async def test_removing_the_entry_deletes_its_point_clouds(hass, tmp_path):
 
 
 async def test_removing_the_entry_deletes_its_kept_work_log(hass, hass_storage):
-    """The work log kept for the entry goes with it, that of another entry stays."""
+    """The work log and battery log kept for the entry go with it, those of another entry stay."""
     entry = _make_entry()
-    ours, other = f"{DOMAIN}.work_log.{entry.entry_id}", f"{DOMAIN}.work_log.other"
-    for key in (ours, other):
-        hass_storage[key] = {"version": 1, "key": key, "data": {"entries": []}}
+    ours = [f"{DOMAIN}.work_log.{entry.entry_id}", f"{DOMAIN}.battery.{entry.entry_id}"]
+    other = f"{DOMAIN}.work_log.other"
+    for key in (*ours, other):
+        hass_storage[key] = {"version": 1, "key": key, "data": {}}
 
     await async_remove_entry(hass, entry)
 
-    assert ours not in hass_storage
+    assert not set(ours) & set(hass_storage)
     assert other in hass_storage
 
 
@@ -470,3 +471,19 @@ async def test_unloading_drops_entities_still_waiting_for_the_reads(hass):
         assert await async_unload_entry(hass, entry) is True
 
     coordinator.async_cancel_probe.assert_called_once_with()
+
+
+async def test_setup_follows_the_work_log_and_the_battery_over_it(hass):
+    """A mower entry keeps its work log, and the battery log the log hands its tasks to."""
+    from custom_components.dreame_mower.battery_log import BatteryLog
+    from custom_components.dreame_mower.const import DATA_WORK_LOG
+
+    coordinator = _make_coordinator()
+    await _setup_with(hass, coordinator)
+
+    (entry_data,) = hass.data[DOMAIN].values()
+    work_log = entry_data[DATA_WORK_LOG]
+    assert isinstance(work_log.battery, BatteryLog)
+    # Both follow the mower: the battery its updates, both its finished tasks.
+    assert coordinator.async_add_listener.call_count >= 1
+    assert coordinator.device.register_property_callback.call_count >= 2
