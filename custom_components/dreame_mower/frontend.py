@@ -23,7 +23,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.loader import async_get_integration
 
 from .const import DOMAIN
-from .map_api import ws_obstacle_photo, ws_subscribe_map, ws_work_log, ws_work_log_details
+from .map_api import ws_obstacle_photo, ws_subscribe_map, ws_work_log, ws_work_log_details, ws_work_log_subscribe
 from .point_cloud import DreameMowerPointCloudView, ws_point_clouds
 
 _LOGGER = logging.getLogger(__name__)
@@ -54,6 +54,7 @@ async def async_setup_frontend(hass: HomeAssistant) -> None:
     )
     async_register_command(hass, ws_subscribe_map)
     async_register_command(hass, ws_work_log)
+    async_register_command(hass, ws_work_log_subscribe)
     async_register_command(hass, ws_work_log_details)
     async_register_command(hass, ws_obstacle_photo)
     async_register_command(hass, ws_point_clouds)

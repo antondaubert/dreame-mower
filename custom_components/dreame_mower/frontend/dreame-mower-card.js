@@ -14,11 +14,18 @@ const CARD_TYPE = "dreame-mower-card";
 const EDITOR_TYPE = "dreame-mower-card-editor";
 const DOMAIN = "dreame_mower";
 const SUBSCRIBE_TYPE = `${DOMAIN}/map/subscribe`;
+const WORK_LOG_SUBSCRIBE_TYPE = `${DOMAIN}/work_log/subscribe`;
+
+// The room the list of tasks leaves below itself when it reaches down to
+// the bottom of the window.
+const LOG_LIST_GAP_PX = 12;
 
 // Delays before subscribing again after the feed closed or failed; the last
 // one repeats.
 const RESUBSCRIBE_DELAYS = [2000, 5000, 5000, 10000, 30000];
 const PAN_THRESHOLD_PX = 6;
+// How far a sideways swipe over a photo goes before it steps to the next one.
+const SWIPE_MIN_PX = 40;
 const DOUBLE_TAP_MS = 300;
 const DOUBLE_TAP_PX = 25;
 const TOAST_MS = 5000;
@@ -618,9 +625,31 @@ button.row:disabled { opacity: .45; cursor: default; }
 .totals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 10px 12px 0; padding: 10px 6px; border-radius: 10px; background: var(--mower-surface); text-align: center; }
 .totals b { display: block; font-size: 20px; font-weight: 500; }
 .totals small { font-size: 12px; color: var(--mower-muted); }
+.lognote { margin: 8px 12px 0; font-size: 12px; color: var(--mower-muted); }
+/* A task's battery over its time, below its obstacles. */
+.battery-course { padding: 4px 12px 10px; }
+.battery-course .bhead { display: flex; flex-direction: column; gap: 2px; padding: 6px 4px 8px; }
+.battery-course .bhead b { font-size: 14px; font-weight: 500; }
+.battery-course .bhead span { font-size: 12px; color: var(--mower-muted); }
+.battery-course svg { display: block; width: 100%; height: auto; }
+.battery-course svg { max-width: 560px; }
+.battery-course text { font-size: 10px; fill: var(--mower-muted); }
+.battery-course .grid { stroke: var(--mower-divider); stroke-width: 1; }
+.battery-course .grid.minor { stroke-dasharray: 3 4; }
+.battery-course .charge { fill: #43a047; fill-opacity: .14; }
+.battery-course .level { fill: none; stroke: var(--mower-brand); stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
+/* A task's battery use per m², coloured by how it compares with like tasks. */
+.row .rt .d.facts { display: flex; align-items: baseline; gap: 4px; }
+.row .rt .d.facts > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.bat { flex: 0 0 auto; padding: 0 6px; border-radius: 8px; font-weight: 500; white-space: nowrap; color: var(--mower-muted); background: var(--mower-surface); }
+/* The hue mixed with the theme's text, so it reads on light and dark cards. */
+.bat.normal { color: color-mix(in srgb, #43a047 60%, var(--mower-text)); background: color-mix(in srgb, #43a047 16%, transparent); }
+.bat.high { color: color-mix(in srgb, #f9a825 60%, var(--mower-text)); background: color-mix(in srgb, #f9a825 24%, transparent); }
+.bat.very_high { color: color-mix(in srgb, var(--mower-error) 60%, var(--mower-text)); background: color-mix(in srgb, var(--mower-error) 14%, transparent); }
 .worklog .filter { padding: 10px 12px 4px; }
 /* A long log scrolls within the tab, so the card stays its size. */
-.worklog .loglist { max-height: min(60vh, 560px); overflow-y: auto; }
+/* At least this high; _fitLogList gives it the room down to the bottom of the window. */
+.worklog .loglist { max-height: max(min(60vh, 560px), var(--log-room, 0px)); overflow-y: auto; }
 .logmapwrap { position: relative; }
 .logmap {
   display: block;
@@ -663,6 +692,9 @@ button.row:disabled { opacity: .45; cursor: default; }
 /* The bottom sheets: an obstacle's photo, the questions before a start and
    the map picker. */
 .scrim { position: absolute; inset: 0; z-index: 4; background: rgba(0,0,0,.28); }
+/* Pinned to the window over the card's width; left and width come from the card. */
+.scrim.pinned { position: fixed; right: auto; }
+.sheet.pinned { position: fixed; right: auto; max-height: 85vh; }
 .sheet {
   position: absolute;
   left: 0;
@@ -691,6 +723,14 @@ button.row:disabled { opacity: .45; cursor: default; }
 .sheet .wait { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 18px 12px;
   border-radius: 10px; background: var(--mower-surface); color: var(--mower-muted); font-size: 13px; text-align: center; aspect-ratio: 16 / 9; }
 .sheet .wait button { margin-top: 6px; }
+/* Fixed in size and place, so the arrows stay under the pointer while stepping. */
+.sheet .phead > .pnav { flex: 0 0 auto; display: grid; grid-template-columns: 32px 64px 32px; align-items: center; justify-items: center;
+  color: var(--mower-muted); font-size: 13px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.sheet .frame.swipe { touch-action: pan-y pinch-zoom; user-select: none; -webkit-user-select: none; }
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; padding: 4px 12px 10px; }
+.gallery button { position: relative; aspect-ratio: 16 / 9; padding: 0; border: 0; border-radius: 6px; overflow: hidden; cursor: pointer;
+  background: var(--mower-surface); color: var(--mower-muted); --mdc-icon-size: 18px; }
+.gallery img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .choice .pactions { display: flex; flex-direction: column; gap: 10px; }
 .choice .cpreview:empty { display: none; }
 .choice .cpreview svg.logmap { min-height: 0; height: min(32vh, 220px); touch-action: auto; border: 1px solid var(--mower-divider); }
@@ -838,6 +878,139 @@ function stoppedOnDayOf(entry, points) {
 // Whether a task of the work log is an all-area or zone task left unfinished.
 function unfinishedTask(entry) {
   return ["all_area", "zone"].includes(entry.mode) && ["stopped", "incomplete"].includes(entry.result);
+}
+
+// A task's battery: what it took, in legs between recharges, and its course
+// over the task's time with the recharges shaded. Only the line where the
+// course is not known (a task from hourly statistics).
+const CHART_WIDTH = 340;
+const CHART_HEIGHT = 120;
+const CHART_LEFT = 34;
+const CHART_TOP = 8;
+const CHART_BOTTOM = 18;
+// How much the level has to rise, in %, to count as a recharge; a smaller
+// rise is the level wavering, and so is a smaller dip within a recharge.
+const RECHARGE_MIN = 3;
+
+// The recharges of a course, as [first, last] sample indexes.
+function batteryRecharges(samples) {
+  const runs = [];
+  let from = null;
+  for (let i = 1; i <= samples.length; i++) {
+    const rising = i < samples.length && samples[i][1] > samples[i - 1][1];
+    if (rising && from === null) from = i - 1;
+    if (rising || from === null) continue;
+    const last = runs[runs.length - 1];
+    if (last && samples[last[1]][1] - samples[from][1] < RECHARGE_MIN) last[1] = i - 1;
+    else runs.push([from, i - 1]);
+    from = null;
+  }
+  return runs.filter(([first, last]) => samples[last][1] - samples[first][1] >= RECHARGE_MIN);
+}
+
+// The course in words: each leg on the battery from its first level to its
+// last, with the recharges between, before or after them.
+function batteryLegs(samples, recharges) {
+  const parts = [];
+  const leg = (first, last) => {
+    if (last > first) parts.push(`${num(samples[first][1])} → ${num(samples[last][1])} %`);
+  };
+  let at = 0;
+  for (const [first, last] of recharges) {
+    leg(at, first);
+    parts.push("recharged");
+    at = last;
+  }
+  leg(at, samples.length - 1);
+  return parts.join(", ");
+}
+
+function batteryBlock(battery, summary) {
+  if (!battery) return "";
+  const approx = battery.source === "statistics" ? "~" : "";
+  const samples = battery.samples && battery.samples.length >= 2 ? battery.samples : null;
+  const recharges = samples ? batteryRecharges(samples) : [];
+  const facts = [];
+  const legs = samples ? batteryLegs(samples, recharges) : "";
+  if (legs) facts.push(legs);
+  facts.push(`${approx}${num(battery.used)} % used`);
+  if (battery.per_sqm !== null && battery.per_sqm !== undefined) facts.push(`${approx}${battery.per_sqm.toFixed(2)} %/m²`);
+  if (summary && summary.usual) facts.push(`usual ${summary.usual.toFixed(2)} %/m²`);
+  const head = `<div class="bhead"><b>Battery</b><span>${esc(facts.join(" · "))}</span></div>`;
+  return `<div class="battery-course">${head}${samples ? batteryChart(samples, recharges) : ""}</div>`;
+}
+
+// The chart is drawn at about the size it shows at, so its labels keep
+// their size; the line above it says the same in words.
+function batteryChart(samples, recharges) {
+  const end = Math.max(samples[samples.length - 1][0], 60);
+  const plotWidth = CHART_WIDTH - CHART_LEFT;
+  const plotHeight = CHART_HEIGHT - CHART_TOP - CHART_BOTTOM;
+  const x = (seconds) => num(CHART_LEFT + (seconds / end) * plotWidth);
+  const y = (level) => num(CHART_TOP + plotHeight - (Math.max(0, Math.min(100, level)) / 100) * plotHeight);
+  const parts = recharges.map(
+    ([first, last]) => `<rect class="charge" x="${x(samples[first][0])}" y="${CHART_TOP}" width="${num(x(samples[last][0]) - x(samples[first][0]))}" height="${plotHeight}"/>`,
+  );
+  for (const level of [0, 25, 50, 75, 100]) {
+    parts.push(`<line class="${level % 50 ? "grid minor" : "grid"}" x1="${CHART_LEFT}" x2="${CHART_WIDTH}" y1="${y(level)}" y2="${y(level)}"/>`);
+  }
+  for (const level of [0, 50, 100]) parts.push(`<text x="${CHART_LEFT - 5}" y="${num(y(level) + 4)}" text-anchor="end">${level} %</text>`);
+  parts.push(`<text x="${CHART_LEFT}" y="${CHART_HEIGHT - 3}">0</text>`);
+  parts.push(`<text x="${CHART_WIDTH}" y="${CHART_HEIGHT - 3}" text-anchor="end">${esc(formatMinutes(Math.round(end / 60)))}</text>`);
+  const line = samples.map(([seconds, level]) => `${x(seconds)},${y(level)}`).join(" ");
+  parts.push(`<polyline class="level" points="${line}"/>`);
+  return `<svg viewBox="0 0 ${CHART_WIDTH} ${CHART_HEIGHT}" aria-hidden="true">${parts.join("")}</svg>`;
+}
+
+// How much of the battery a task took per m², coloured by how that compares
+// with like tasks before it; "~" marks a value read from hourly statistics.
+// Nothing for a task too small to tell.
+const BATTERY_MIN_AREA = 10;
+const BATTERY_RATINGS = { normal: "as usual", high: "more than usual", very_high: "much more than usual" };
+
+function batteryPill(entry) {
+  const battery = entry.battery;
+  if (!battery || battery.per_sqm === null || battery.per_sqm === undefined || !(entry.area >= BATTERY_MIN_AREA)) return "";
+  const rating = BATTERY_RATINGS[battery.rating] ? battery.rating : "";
+  const approx = battery.source === "statistics" ? "~" : "";
+  const title = [`Battery ${approx}${num(battery.used)} %`];
+  if (rating && battery.usual) {
+    const more = Math.round((battery.per_sqm / battery.usual - 1) * 100);
+    title.push(`${BATTERY_RATINGS[rating]} (${battery.usual.toFixed(2)} %/m², ${more >= 0 ? "+" : ""}${more} %)`);
+  }
+  return `<span class="bat ${rating}" title="${esc(title.join(" · "))}">${approx}${battery.per_sqm.toFixed(2)} %/m²</span>`;
+}
+
+// A setting a task was mowed with, as `label` gives it for a record of the
+// settings kept with the task. Where the map keeps its settings per zone,
+// each zone the task worked (or every zone) has its own record or follows
+// the map's: the setting they share, or "per zone" where they differ.
+// Nothing for a task recorded without them.
+const TURNING_LABELS = { efficient: "Efficient", lawn_care: "Lawn care" };
+// How the mowing direction turns from one session to the next.
+const DIRECTION_EACH_SESSION = { crisscross: "+45° each session", chequerboard: "+90° each session" };
+
+function taskSetting(data, label) {
+  const settings = data.settings;
+  if (!settings || !settings.areas) return "";
+  const areas = settings.areas;
+  // The task's own file says best whether it mowed per zone.
+  const perZone = typeof data.per_zone === "boolean" ? data.per_zone : Boolean(settings.per_zone);
+  let records = [areas["0"]];
+  if (perZone) {
+    const worked = (data.zones || []).map((zone) => String(zone.id));
+    const zones = worked.length ? worked : Object.keys(areas).filter((area) => area !== "0");
+    if (zones.length) records = zones.map((zone) => areas[zone] || areas["0"]);
+  }
+  const values = [...new Set(records.filter(Boolean).map(label).filter(Boolean))];
+  if (values.length === 1) return values[0];
+  return values.length ? "per zone" : "";
+}
+
+function directionLabel(record) {
+  if (record.mowing_direction === undefined || record.mowing_direction === null) return "";
+  const each = DIRECTION_EACH_SESSION[record.mowing_direction_mode];
+  return [`${record.mowing_direction}°`, each].filter(Boolean).join(" · ");
 }
 
 function formatMinutes(minutes) {
@@ -1273,6 +1446,19 @@ const PAW_GLYPH =
 const OTHER_GLYPH = '<circle cx="-.45" r=".13" fill="#fff" stroke="none"/><circle r=".13" fill="#fff" stroke="none"/><circle cx=".45" r=".13" fill="#fff" stroke="none"/>';
 // The cone of an obstacle the mower ran into or saw with its LiDAR.
 const CONE_GLYPH = '<path d="M-.35-1H.35L.75.55H-.75Z M-1 .8H1"/>';
+
+// The obstacles the camera recognised and took a photo of.
+function photographed(obstacles) {
+  return obstacles.filter((obstacle) => obstacle.kind === "ai" && obstacle.image);
+}
+
+// A URL to show a JPEG sent as base64: a blob where the browser has them,
+// so a gallery of photos does not carry them in its markup.
+function photoUrl(base64) {
+  if (typeof URL.createObjectURL !== "function" || typeof atob !== "function") return `data:image/jpeg;base64,${base64}`;
+  const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+  return URL.createObjectURL(new Blob([bytes], { type: "image/jpeg" }));
+}
 
 // What tells an obstacle apart: for one the camera recognised its photo, or
 // where it is and what; for one the mower ran into its id.
@@ -1806,6 +1992,12 @@ class DreameMowerCard extends HTMLElement {
     this._busy = false;
     this._settings = null;
     this._log = null;
+    // The details of the tasks opened so far, by task file.
+    this._logDetails = new Map();
+    // The obstacle photos fetched so far, by image: what the service sent and
+    // a URL to show it by.
+    this._photos = new Map();
+    this._photoLoads = new Map();
     this._photo = null;
     this._edit = null;
     this._mapList = null;
@@ -1827,11 +2019,19 @@ class DreameMowerCard extends HTMLElement {
     this._gesture = null;
     this._lastTap = null;
     this._toastTimer = null;
+    this._swipeFrom = null;
+    // The window or the card changed its size.
+    this._onWindowResize = () => {
+      if (this._photo) this._placePhotoSheet();
+      if (this._log) this._fitLogList();
+    };
+    this._cardObserver = null;
     this._onReady = () => this._resubscribeNow();
     // The socket went away: its subscription ids mean nothing on the next
     // socket, so the old subscription is dropped without unsubscribing.
     this._onDisconnected = () => {
       this._sub = null;
+      this._dropWorkLogFeed(false);
       this._eachSection("dropped");
     };
   }
@@ -1856,7 +2056,9 @@ class DreameMowerCard extends HTMLElement {
       this._tfKey = null;
       this._viewTouched = false;
       this._clearSelection();
-      this._log = null;
+      this._closeWorkLog();
+      this._logDetails.clear();
+      this._forgetPhotos();
       this._photo = null;
       this._edit = null;
       this._mapList = null;
@@ -1911,11 +2113,20 @@ class DreameMowerCard extends HTMLElement {
     this._ensureDom();
     if (this._resizeObserver) this._resizeObserver.observe(this._el.map);
     this._ensureSubscribed();
+    if (this._log && !this._log.sub) this._followWorkLog(this._log);
+    window.addEventListener("resize", this._onWindowResize);
+    // The card can change its size without the window, e.g. as Home
+    // Assistant's sidebar opens or closes, or cards above it settle.
+    if (!this._cardObserver && typeof ResizeObserver === "function") this._cardObserver = new ResizeObserver(this._onWindowResize);
+    if (this._cardObserver) this._cardObserver.observe(this._el.card);
     this._invalidate("all");
   }
 
   disconnectedCallback() {
+    window.removeEventListener("resize", this._onWindowResize);
+    if (this._cardObserver) this._cardObserver.disconnect();
     this._unsubscribe();
+    this._dropWorkLogFeed(true);
     this._clearRetry();
     this._eachSection("disconnect");
     LIVE_CARDS.delete(this);
@@ -2033,6 +2244,10 @@ class DreameMowerCard extends HTMLElement {
     this._clearRetry();
     this._retry = 0;
     this._subscribe();
+    if (this._log) {
+      this._dropWorkLogFeed(false);
+      this._followWorkLog(this._log);
+    }
     this._eachSection("resubscribe");
   }
 
@@ -2410,6 +2625,23 @@ class DreameMowerCard extends HTMLElement {
     this._el.maint.addEventListener("focusout", (e) => this._onMaintenanceLeave(e));
     this._el.maps.addEventListener("click", (e) => this._onMapListClick(e));
     this._el.photo.addEventListener("click", (e) => this._onPhotoClick(e));
+    // A sideways swipe over the photo steps through the task's photos.
+    this._el.photo.addEventListener("pointerdown", (e) => {
+      const frame = e.target.closest(".frame.swipe");
+      this._swipeFrom = frame ? { id: e.pointerId, x: e.clientX, y: e.clientY } : null;
+      // A swipe that ends beside the sheet still ends here.
+      if (frame && frame.setPointerCapture) frame.setPointerCapture(e.pointerId);
+    });
+    this._el.photo.addEventListener("pointerup", (e) => {
+      const from = this._swipeFrom;
+      this._swipeFrom = null;
+      if (!from || from.id !== e.pointerId) return;
+      const dx = e.clientX - from.x;
+      if (Math.abs(dx) >= SWIPE_MIN_PX && Math.abs(dx) > 2 * Math.abs(e.clientY - from.y)) this._stepPhoto(dx < 0 ? 1 : -1);
+    });
+    this._el.photo.addEventListener("pointercancel", () => {
+      this._swipeFrom = null;
+    });
     this._el.settings.addEventListener("input", (e) => this._onSettingsInput(e, false));
     this._el.settings.addEventListener("change", (e) => this._onSettingsInput(e, true));
     if (window.ResizeObserver) {
@@ -2466,6 +2698,8 @@ class DreameMowerCard extends HTMLElement {
     // Which tab shows, and what of the card belongs to it; cheap enough to
     // follow every change.
     this._renderTabs();
+    // Only now is the list where it shows.
+    if (dirty.has("log")) this._fitLogList();
   }
 
   _setHtml(key, el, html) {
@@ -2567,7 +2801,7 @@ class DreameMowerCard extends HTMLElement {
     if (tab === "history") {
       this._openWorkLog();
     } else {
-      this._log = null;
+      this._closeWorkLog();
       this._logPanZoom = null;
     }
     this._invalidate("header", "toolbar", "actions", "picker", "maint", "maps", "log", "schedules", "dyn");
@@ -3866,7 +4100,7 @@ class DreameMowerCard extends HTMLElement {
   _mowingSummary() {
     const feed = this._settingsFeed();
     const values = (feed && feed.areas && feed.areas["0"]) || {};
-    const each = { crisscross: "+45° each session", chequerboard: "+90° each session" }[values.mowing_direction_mode];
+    const each = DIRECTION_EACH_SESSION[values.mowing_direction_mode];
     const parts = [
       feed && feed.mode === "per_zone" ? "Per zone" : "",
       values.cutting_height !== undefined && values.cutting_height !== null ? `${values.cutting_height} cm` : "",
@@ -4174,7 +4408,7 @@ class DreameMowerCard extends HTMLElement {
   _openEditor() {
     if (!this._hasMap()) return;
     this._settings = null;
-    this._log = null;
+    this._closeWorkLog();
     this._logPanZoom = null;
     this._picker = false;
     this._mapList = null;
@@ -4997,22 +5231,95 @@ class DreameMowerCard extends HTMLElement {
 
   // --- Work log ---
 
-  async _openWorkLog() {
+  // The work log follows what the integration keeps: the first message has
+  // the kept tasks, later ones what a read of the cloud added.
+  _openWorkLog() {
     if (!this._hass || !this._config) return;
-    this._log = { loading: true, error: null, totals: null, entries: [], filter: "all", detail: null };
+    this._closeWorkLog();
+    this._log = { loading: true, refreshing: false, error: null, totals: null, entries: [], filter: "all", detail: null, sub: null, retry: null, retries: 0 };
     this._invalidate("log");
-    const log = this._log;
-    try {
-      const result = await this._hass.callWS({ type: `${DOMAIN}/work_log`, entity_id: this._config.entity });
-      if (this._log !== log) return;
-      log.totals = result.totals;
-      log.entries = result.entries || [];
-    } catch (err) {
-      if (this._log !== log) return;
-      log.error = errorMessage(err);
+    this._followWorkLog(this._log);
+  }
+
+  _followWorkLog(log) {
+    if (!this.isConnected || !this._hass || !this._config || !this._hass.connection) return;
+    const sub = { unsub: null };
+    log.sub = sub;
+    const current = () => this._log === log && log.sub === sub;
+    this._hass.connection
+      .subscribeMessage(
+        (event) => {
+          if (current()) this._onWorkLogEvent(log, event);
+        },
+        { type: WORK_LOG_SUBSCRIBE_TYPE, entity_id: this._config.entity },
+        { resubscribe: false },
+      )
+      .then((unsub) => {
+        if (!current()) {
+          safeUnsubscribe(unsub);
+          return;
+        }
+        sub.unsub = unsub;
+        log.retries = 0;
+      })
+      .catch((err) => {
+        if (!current()) return;
+        log.sub = null;
+        log.loading = false;
+        log.error = errorMessage(err);
+        this._invalidate("log");
+        this._retryWorkLog(log);
+      });
+  }
+
+  // Follows the work log again after a delay, once the mower is available;
+  // an entry that reloads takes a while to be back.
+  _retryWorkLog(log) {
+    clearTimeout(log.retry);
+    const delay = RESUBSCRIBE_DELAYS[Math.min(log.retries, RESUBSCRIBE_DELAYS.length - 1)];
+    log.retries += 1;
+    log.retry = setTimeout(() => {
+      log.retry = null;
+      if (this._log !== log || log.sub || !this._hass || !this._config) return;
+      const stateObj = this._hass.states[this._config.entity];
+      if (!stateObj || stateObj.state === "unavailable") this._retryWorkLog(log);
+      else this._followWorkLog(log);
+    }, delay);
+  }
+
+  _onWorkLogEvent(log, event) {
+    if (!event || typeof event !== "object") return;
+    if (event.type === "closed") {
+      // The mower's entry reloads: follow the new one once it is back.
+      const sub = log.sub;
+      log.sub = null;
+      if (sub && sub.unsub) safeUnsubscribe(sub.unsub);
+      this._retryWorkLog(log);
+      return;
     }
+    log.totals = event.totals || null;
+    log.entries = event.entries || [];
+    log.refreshing = !!event.refreshing;
+    log.error = event.error || null;
     log.loading = false;
     this._invalidate("log");
+  }
+
+  // Stops following the work log and keeps what it shows. A dead socket's
+  // subscription is dropped without unsubscribing, as for the map feed.
+  _dropWorkLogFeed(unsubscribe) {
+    const log = this._log;
+    if (!log) return;
+    clearTimeout(log.retry);
+    log.retry = null;
+    const sub = log.sub;
+    log.sub = null;
+    if (unsubscribe && sub && sub.unsub) safeUnsubscribe(sub.unsub);
+  }
+
+  _closeWorkLog() {
+    this._dropWorkLogFeed(true);
+    this._log = null;
   }
 
   async _openWorkLogEntry(entry) {
@@ -5028,12 +5335,25 @@ class DreameMowerCard extends HTMLElement {
       return;
     }
     try {
-      detail.data = await this._hass.callWS({ type: `${DOMAIN}/work_log/details`, entity_id: this._config.entity, file: entry.file });
+      detail.data = await this._workLogDetails(entry.file);
     } catch (err) {
       detail.error = errorMessage(err);
     }
     detail.loading = false;
-    if (this._log === log && log.detail === detail) this._invalidate("log");
+    if (this._log === log && log.detail === detail) {
+      this._invalidate("log");
+      if (detail.data) this._loadGallery(log, detail);
+    }
+  }
+
+  // A task's details do not change once it is listed, so a task opened
+  // before is shown without asking again.
+  async _workLogDetails(file) {
+    const known = this._logDetails.get(file);
+    if (known) return known;
+    const data = await this._hass.callWS({ type: `${DOMAIN}/work_log/details`, entity_id: this._config.entity, file });
+    this._logDetails.set(file, data);
+    return data;
   }
 
   _onWorkLogClick(e) {
@@ -5042,7 +5362,7 @@ class DreameMowerCard extends HTMLElement {
     const data = target.dataset;
     if ("close" in data) {
       if (this._log.detail) this._log.detail = null;
-      else this._log = null;
+      else this._closeWorkLog();
     } else if (data.filter) {
       this._log.filter = data.filter;
     } else if (data.entry) {
@@ -5098,10 +5418,13 @@ class DreameMowerCard extends HTMLElement {
     this._logPanZoom = null;
     // The list is the tab itself; only a task has a way back to it.
     this._setHtml("lhead", this._el.lhead, "");
-    if (log.loading || log.error) {
+    const empty = !log.entries.length && !log.totals;
+    if (empty && (log.loading || log.refreshing || log.error)) {
       this._setHtml("lbody", this._el.lbody, `<div class="note">${esc(log.error || "Loading…")}</div>`);
       return;
     }
+    // The kept log shows while the cloud is read, and stays when it fails.
+    const status = log.refreshing ? "Updating…" : log.error ? `${log.error}; showing the kept tasks` : "";
     const totals = log.totals
       ? `<div class="totals"><div><b>${esc(num(log.totals.area))}</b><small>m² mowed</small></div>` +
         `<div><b>${esc(formatMinutes(log.totals.time))}</b><small>mowing</small></div>` +
@@ -5118,11 +5441,13 @@ class DreameMowerCard extends HTMLElement {
     const rows = entries
       .map((entry) => {
         const result = RESULT_ICONS[entry.result] ? entry.result : "incomplete";
-        const facts = [formatDay(entry.start), entry.area !== null && entry.area !== undefined ? `${entry.area} m²` : "", formatMinutes(entry.duration)];
+        const facts = [formatDay(entry.start), entry.area !== null && entry.area !== undefined ? `${num(entry.area)} m²` : "", formatMinutes(entry.duration)];
+        // The battery use stays whole; the facts before it give way.
+        const pill = batteryPill(entry);
         return (
           `<button type="button" class="row" data-entry="${esc(entry.start)}">` +
           `<ha-icon class="res ${result}" icon="${RESULT_ICONS[result]}"></ha-icon>` +
-          `<span class="rt"><span class="t">${esc(`${logTitle(entry)} · ${result}`)}</span><span class="d">${esc(facts.filter(Boolean).join(" · "))}</span></span>` +
+          `<span class="rt"><span class="t">${esc(`${logTitle(entry)} · ${result}`)}</span><span class="d facts"><span>${esc(facts.filter(Boolean).join(" · "))}</span>${pill}</span></span>` +
           (entry.photos ? `<span class="cam" title="Obstacles photographed"><ha-icon icon="mdi:camera"></ha-icon>${esc(entry.photos)}</span>` : "") +
           `<ha-icon class="chev" icon="mdi:chevron-right"></ha-icon></button>`
         );
@@ -5131,8 +5456,23 @@ class DreameMowerCard extends HTMLElement {
     this._setHtml(
       "lbody",
       this._el.lbody,
-      totals + filter + (rows ? `<div class="list loglist">${rows}</div>` : `<div class="note">No tasks</div>`),
+      (status ? `<div class="lognote">${esc(status)}</div>` : "") +
+        totals +
+        filter +
+        (rows ? `<div class="list loglist">${rows}</div>` : `<div class="note">No tasks</div>`),
     );
+  }
+
+  // The list of tasks reaches down to the bottom of the window, so on a
+  // dashboard of its own it fills the screen; it is never lower than its
+  // usual height, and scrolls within itself either way.
+  _fitLogList() {
+    const list = this._el.lbody.querySelector(".loglist");
+    // A list not laid out (its tab or the card hidden) has no place to go from.
+    if (!list || !list.getClientRects().length) return;
+    const bottom = document.documentElement.clientHeight || window.innerHeight;
+    const room = Math.floor(bottom - list.getBoundingClientRect().top - LOG_LIST_GAP_PX);
+    list.style.setProperty("--log-room", `${Math.max(0, room)}px`);
   }
 
   // One task: its map with the lanes it mowed, where it stopped, and what
@@ -5179,29 +5519,78 @@ class DreameMowerCard extends HTMLElement {
     const rows = [
       fact("Mowed", mowed.join(" · ")),
       fact("Cutting height", height.join(" · ")),
+      fact("Mowing direction", taskSetting(data, (values) => directionLabel(values))),
+      fact("Turning", taskSetting(data, (values) => TURNING_LABELS[values.turning_method] || "")),
       fact("Started", START_LABELS[data.start_mode] || ""),
       fact("Ended", data.end ? formatDay(data.end) : ""),
     ];
-    // The obstacles it met; a pin on the map, or this row, opens a photo.
+    // The obstacles it met; a pin on the map, or a photo of the gallery,
+    // opens the photo larger.
     const obstacles = (data.obstacles || []).filter((obstacle) => !(obstacle.kind === "obstacle" && obstacle.type !== 0));
+    let gallery = "";
     if (obstacles.length) {
       const recognised = obstacles.filter((obstacle) => obstacle.kind === "ai");
       const kinds = [...new Set(recognised.map((obstacle) => aiObstacleKind(obstacle.type).label.toLowerCase()))];
-      const photos = recognised.filter((obstacle) => obstacle.image).length;
-      const desc = [kinds.length ? humanize(kinds.join(", ")) : `${obstacles.length} met`, recognised.length ? "tap a pin for its photo" : ""].filter(Boolean).join(" · ");
-      const first = recognised[0];
+      const pictured = photographed(obstacles);
+      const desc = [kinds.length ? humanize(kinds.join(", ")) : `${obstacles.length} met`, pictured.length ? "tap a photo to see it larger" : ""].filter(Boolean).join(" · ");
       rows.push(
-        (first ? `<button type="button" class="row short" data-photo="${esc(obstacleKey(first))}">` : `<div class="row short">`) +
-          `<span class="rt"><span class="t">Obstacles</span><span class="d">${esc(desc)}</span></span>` +
-          (photos ? `<span class="cam"><ha-icon icon="mdi:camera"></ha-icon>${photos}</span>` : `<span class="val">${obstacles.length}</span>`) +
-          (first ? `<ha-icon class="chev" icon="mdi:chevron-right"></ha-icon></button>` : `</div>`),
+        `<div class="row short"><span class="rt"><span class="t">Obstacles</span><span class="d">${esc(desc)}</span></span>` +
+          (pictured.length ? `<span class="cam"><ha-icon icon="mdi:camera"></ha-icon>${pictured.length}</span>` : `<span class="val">${obstacles.length}</span>`) +
+          `</div>`,
       );
+      gallery = this._galleryHtml(detail, pictured);
     }
     for (const fault of data.faults || []) {
       rows.push(`<div class="row short"><span class="rt"><span class="t">${esc(fault.description)}</span><span class="d">${esc(formatDay(fault.time))}</span></span></div>`);
     }
     parts.push(`<div class="list">${rows.filter(Boolean).join("")}</div>`);
+    parts.push(gallery);
+    parts.push(batteryBlock(data.battery, detail.entry.battery));
     return parts.join("");
+  }
+
+  // The photos of a task; one the mower has yet to send shows as a
+  // placeholder until it is here.
+  _galleryHtml(detail, pictured) {
+    if (!pictured.length) return "";
+    const tiles = pictured.map((obstacle) => {
+      const data = this._photos.get(obstacle.image);
+      const label = aiObstacleKind(obstacle.type).label;
+      const inside = data
+        ? `<img alt="" src="${esc(data.url)}">`
+        : `<ha-icon icon="${detail.failed && detail.failed.has(obstacle.image) ? "mdi:image-off-outline" : "mdi:image-sync-outline"}"></ha-icon>`;
+      return `<button type="button" data-photo="${esc(obstacleKey(obstacle))}" title="${esc(label)}" aria-label="${esc(label)}">${inside}</button>`;
+    });
+    return `<div class="gallery">${tiles.join("")}</div>`;
+  }
+
+  // Redraws only the gallery of the open task, so the task's map keeps how
+  // it was zoomed while photos arrive.
+  _refreshGallery(detail) {
+    const log = this._log;
+    if (!log || log.detail !== detail || !detail.data) return;
+    const el = this._el.lbody.querySelector(".gallery");
+    if (!el) return;
+    el.outerHTML = this._galleryHtml(detail, photographed(detail.data.obstacles || []));
+    // What is shown now, so the next redraw of the task leaves it alone.
+    this._html.lbody = this._workLogDetail(detail);
+  }
+
+  // Fetches the photos of an open task one after the other, as the mower
+  // sends one at a time; stops once the task is closed or the card goes.
+  async _loadGallery(log, detail) {
+    const open = () => this.isConnected && this._log === log && log.detail === detail;
+    detail.failed = new Set();
+    for (const obstacle of photographed(detail.data.obstacles || [])) {
+      if (!open()) return;
+      if (this._photos.has(obstacle.image)) continue;
+      try {
+        await this._obstaclePhoto(obstacle.image);
+      } catch (err) {
+        detail.failed.add(obstacle.image);
+      }
+      this._refreshGallery(detail);
+    }
   }
 
   // The stop points an unfinished task left, while the mower still holds
@@ -5311,9 +5700,53 @@ class DreameMowerCard extends HTMLElement {
     const list = fromLog ? obstacles : (this._status && this._status.obstacles) || [];
     const obstacle = list.find((item) => (fromLog ? item.kind === "ai" : true) && obstacleKey(item) === key);
     if (!obstacle) return;
-    this._photo = { obstacle, fromLog, loading: false, error: null, data: null };
+    // From a task, the sheet steps through the photos the task has.
+    const pictured = fromLog ? photographed(list) : [];
+    const others = pictured.includes(obstacle) ? pictured : [];
+    this._photo = { obstacle, fromLog, others, loading: false, error: null, data: this._photos.get(obstacle.image) || null };
     this._invalidate("photo");
-    if (obstacle.kind === "ai" && obstacle.image) this._loadPhoto();
+    if (obstacle.kind === "ai" && obstacle.image && !this._photo.data) this._loadPhoto();
+  }
+
+  // Shows the photo before or after the open one in the task's gallery.
+  _stepPhoto(by) {
+    const photo = this._photo;
+    if (!photo || photo.others.length < 2) return;
+    const at = photo.others.indexOf(photo.obstacle);
+    const next = photo.others[(at + by + photo.others.length) % photo.others.length];
+    this._openObstacle(obstacleKey(next), photo.others);
+  }
+
+  // A photo of an obstacle, fetched once and then kept by the card.
+  // A photo asked for while it is on its way is not asked for again.
+  _obstaclePhoto(image) {
+    const known = this._photos.get(image);
+    if (known) return Promise.resolve(known);
+    let pending = this._photoLoads.get(image);
+    if (!pending) {
+      const photos = this._photos;
+      const loads = this._photoLoads;
+      pending = this._hass
+        .callWS({ type: `${DOMAIN}/obstacle_photo`, entity_id: this._config.entity, image })
+        .then((data) => {
+          data.url = photoUrl(data.image);
+          // The blob holds the photo; the card needs no second copy.
+          if (data.url.startsWith("blob:")) delete data.image;
+          if (photos === this._photos) photos.set(image, data);
+          else if (data.url.startsWith("blob:")) URL.revokeObjectURL(data.url);
+          return data;
+        })
+        .finally(() => loads.delete(image));
+      loads.set(image, pending);
+    }
+    return pending;
+  }
+
+  _forgetPhotos() {
+    for (const data of this._photos.values()) if (data.url.startsWith("blob:")) URL.revokeObjectURL(data.url);
+    // Photos of the other mower still on their way go to a map of their own.
+    this._photos = new Map();
+    this._photoLoads = new Map();
   }
 
   async _ignoreObstacle() {
@@ -5352,7 +5785,10 @@ class DreameMowerCard extends HTMLElement {
     photo.error = null;
     this._invalidate("photo");
     try {
-      photo.data = await this._hass.callWS({ type: `${DOMAIN}/obstacle_photo`, entity_id: this._config.entity, image: photo.obstacle.image });
+      photo.data = await this._obstaclePhoto(photo.obstacle.image);
+      // A photo the gallery could not get is there now.
+      const detail = this._log && this._log.detail;
+      if (detail && detail.failed && detail.failed.delete(photo.obstacle.image)) this._refreshGallery(detail);
     } catch (err) {
       photo.error = errorMessage(err);
     }
@@ -5372,6 +5808,8 @@ class DreameMowerCard extends HTMLElement {
       this._ignoreObstacle();
     } else if ("noGo" in target.dataset) {
       this._obstacleToNoGo();
+    } else if (target.dataset.step) {
+      this._stepPhoto(Number(target.dataset.step));
     }
   }
 
@@ -5379,6 +5817,7 @@ class DreameMowerCard extends HTMLElement {
     const el = this._el.photo;
     const photo = this._photo;
     el.hidden = !photo;
+    this._placePhotoSheet();
     if (!photo) {
       this._setHtml("photo", el, "");
       return;
@@ -5392,7 +5831,7 @@ class DreameMowerCard extends HTMLElement {
     } else if (photo.data) {
       const { width, height, boxes } = photo.data;
       picture =
-        `<div class="frame"><img alt="" src="data:image/jpeg;base64,${photo.data.image}">` +
+        `<div class="frame${photo.others.length > 1 ? " swipe" : ""}"><img alt="" draggable="false" src="${esc(photo.data.url)}">` +
         `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">${(boxes || [])
           .map((box) => `<rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}" fill="none" stroke="#EE3C2F" stroke-width="3"/>`)
           .join("")}</svg></div>`;
@@ -5410,6 +5849,11 @@ class DreameMowerCard extends HTMLElement {
       el,
       `<div class="grip"></div>` +
         `<div class="phead"><span>${esc(kind.label)} <small>${obstacle.confidence ? `· ${esc(obstacle.confidence)} % sure` : ""}</small></span>` +
+        (photo.others.length > 1
+          ? `<span class="pnav"><button type="button" class="iconbtn" data-step="-1" title="Previous photo" aria-label="Previous photo"><ha-icon icon="mdi:chevron-left"></ha-icon></button>` +
+            `<span>${photo.others.indexOf(obstacle) + 1} / ${photo.others.length}</span>` +
+            `<button type="button" class="iconbtn" data-step="1" title="Next photo" aria-label="Next photo"><ha-icon icon="mdi:chevron-right"></ha-icon></button></span>`
+          : "") +
         `<button type="button" class="iconbtn" data-close title="Close" aria-label="Close"><ha-icon icon="mdi:close"></ha-icon></button></div>` +
         picture +
         `<p>${
@@ -5417,6 +5861,35 @@ class DreameMowerCard extends HTMLElement {
         }</p>` +
         this._obstacleActions(photo),
     );
+  }
+
+  // The photo sheet sits at the bottom of the window, over the card's width,
+  // also where the card ends above it or goes on below. Where the page does
+  // not let it (a container of the card that holds fixed elements), it sits
+  // at the bottom of the card as the other sheets do.
+  _placePhotoSheet() {
+    const sheet = this._el.photo;
+    const scrim = this._el.scrim;
+    const unpin = () => {
+      for (const el of [sheet, scrim]) {
+        el.classList.remove("pinned");
+        el.style.left = el.style.width = "";
+      }
+    };
+    if (!this._photo || !this.isConnected) {
+      unpin();
+      return;
+    }
+    const box = this._el.card.getBoundingClientRect();
+    for (const el of [sheet, scrim]) {
+      el.classList.add("pinned");
+      el.style.left = `${box.left}px`;
+      el.style.width = `${box.width}px`;
+    }
+    const placed = sheet.getBoundingClientRect();
+    // A fixed element sits on the layout viewport, which leaves out scrollbars.
+    const bottom = document.documentElement.clientHeight || window.innerHeight;
+    if (Math.abs(placed.bottom - bottom) > 2 || Math.abs(placed.left - box.left) > 2) unpin();
   }
 
   // What can be done with an obstacle on the map: ignore one the camera
@@ -5745,7 +6218,7 @@ class DreameMowerCard extends HTMLElement {
         .slice(0, 3);
       for (const entry of candidates) {
         if (!el || !el.isConnected) return;
-        const data = await this._hass.callWS({ type: `${DOMAIN}/work_log/details`, entity_id: this._config.entity, file: entry.file });
+        const data = await this._workLogDetails(entry.file);
         // The task has to be one on this map that worked these zones; the
         // stop points may stem from different tasks, so one zone will do.
         const zones = new Set(((data.geometry && data.geometry.zones) || []).map((zone) => zone.id));

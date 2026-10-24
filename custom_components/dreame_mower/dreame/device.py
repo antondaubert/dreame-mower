@@ -907,12 +907,21 @@ class DreameMowerDevice:
         if records is None:
             return None
         entries = work_log_entries(records)
-        self._work_log_files = {entry["file"] for entry in entries if entry["file"]}
+        self.remember_work_log_files(entry["file"] for entry in entries if entry["file"])
+        self.count_work_log_photos(entries)
+        return entries
+
+    def count_work_log_photos(self, entries: list[dict[str, Any]]) -> None:
+        """Count the photographed obstacles of each task anew, e.g. of a kept log
+        whose tasks gained photos since. Blocking: reads local files only."""
         with self._seen_lock:
             seen = list(self._seen())
         for entry in entries:
             entry["photos"] = len(self._task_photos(entry, seen))
-        return entries
+
+    def remember_work_log_files(self, files: Iterable[str]) -> None:
+        """Let the details of these tasks be read, e.g. of a log kept from an earlier read."""
+        self._work_log_files |= set(files)
 
     def _task_file_path(self, file: str) -> str | None:
         """Where a task's file is kept, or None for a name that leads elsewhere."""
@@ -949,9 +958,9 @@ class DreameMowerDevice:
     def read_work_log_details(self, file: str) -> dict[str, Any] | None:
         """Read the details of one task of the work log from its file. Blocking.
 
-        Only a file the last read of the log listed is read. A copy kept from
-        before is used, otherwise the file is downloaded and kept. Returns
-        None when the file cannot be had.
+        Only a file a read of the log listed, or one remembered from a kept
+        log, is read. A copy kept from before is used, otherwise the file is
+        downloaded and kept. Returns None when the file cannot be had.
         """
         if file not in self._work_log_files:
             raise ValueError("This task is not in the work log")

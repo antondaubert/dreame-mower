@@ -64,6 +64,7 @@ async def test_the_card_is_served_fed_and_added_once(hass: HomeAssistant) -> Non
     assert [call.args[1].__name__ for call in register.call_args_list] == [
         "ws_subscribe_map",
         "ws_work_log",
+        "ws_work_log_subscribe",
         "ws_work_log_details",
         "ws_obstacle_photo",
         "ws_point_clouds",

@@ -22,6 +22,7 @@ from .const import (
     DATA_COORDINATOR,
     DATA_PLATFORMS,
     DATA_POINT_CLOUD,
+    DATA_WORK_LOG,
     DOMAIN,
     FIRMWARE_POLL_INTERVAL_HOURS,
     ONLINE_POLL_INTERVAL_SECONDS,
@@ -33,6 +34,8 @@ from .coordinator import DreameMowerCoordinator
 from .config_flow import DEVICE_TYPE_SWBOT
 from .frontend import async_setup_frontend
 from .point_cloud import PointCloudStore, async_remove_point_clouds, point_cloud_dir
+from .battery_log import BatteryLog, battery_store
+from .work_log_cache import WorkLogCache, async_remove_work_log
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -153,6 +156,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data[DOMAIN][entry.entry_id][DATA_POINT_CLOUD] = PointCloudStore(
             coordinator.device, point_cloud_dir(hass, entry.entry_id)
         )
+        # The work log kept from earlier reads; reading the cloud for newer
+        # tasks waits until a card asks or the mower finishes a task. The
+        # battery is followed over every task.
+        battery = BatteryLog(hass, coordinator, entry)
+        await battery.async_load()
+        battery.async_start()
+        entry.async_on_unload(battery.async_stop)
+        work_log = WorkLogCache(hass, coordinator, entry, battery)
+        await work_log.async_load()
+        work_log.async_start()
+        hass.data[DOMAIN][entry.entry_id][DATA_WORK_LOG] = work_log
+        entry.async_on_unload(work_log.async_stop)
 
     # While a mowing session runs, keep the position reports coming; open map
     # cards hear when the entry goes away.
@@ -341,6 +356,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Delete what the entry kept on disk."""
     await async_remove_point_clouds(hass, entry.entry_id)
+    await async_remove_work_log(hass, entry.entry_id)
+    await battery_store(hass, entry.entry_id).async_remove()
 
 
 async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:

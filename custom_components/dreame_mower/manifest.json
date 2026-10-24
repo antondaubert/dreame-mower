@@ -3,7 +3,8 @@
   "name": "Dreame Mower",
   "after_dependencies": [
     "frontend",
-    "lovelace"
+    "lovelace",
+    "recorder"
   ],
   "codeowners": [
     "@antondaubert"
