@@ -887,6 +887,38 @@ function batteryPill(entry) {
   return `<span class="bat ${rating}" title="${esc(title.join(" · "))}">${approx}${battery.per_sqm.toFixed(2)} %/m²</span>`;
 }
 
+// A setting a task was mowed with, as `label` gives it for a record of the
+// settings kept with the task. Where the map keeps its settings per zone,
+// each zone the task worked (or every zone) has its own record or follows
+// the map's: the setting they share, or "per zone" where they differ.
+// Nothing for a task recorded without them.
+const TURNING_LABELS = { efficient: "Efficient", lawn_care: "Lawn care" };
+// How the mowing direction turns from one session to the next.
+const DIRECTION_EACH_SESSION = { crisscross: "+45° each session", chequerboard: "+90° each session" };
+
+function taskSetting(data, label) {
+  const settings = data.settings;
+  if (!settings || !settings.areas) return "";
+  const areas = settings.areas;
+  // The task's own file says best whether it mowed per zone.
+  const perZone = typeof data.per_zone === "boolean" ? data.per_zone : Boolean(settings.per_zone);
+  let records = [areas["0"]];
+  if (perZone) {
+    const worked = (data.zones || []).map((zone) => String(zone.id));
+    const zones = worked.length ? worked : Object.keys(areas).filter((area) => area !== "0");
+    if (zones.length) records = zones.map((zone) => areas[zone] || areas["0"]);
+  }
+  const values = [...new Set(records.filter(Boolean).map(label).filter(Boolean))];
+  if (values.length === 1) return values[0];
+  return values.length ? "per zone" : "";
+}
+
+function directionLabel(record) {
+  if (record.mowing_direction === undefined || record.mowing_direction === null) return "";
+  const each = DIRECTION_EACH_SESSION[record.mowing_direction_mode];
+  return [`${record.mowing_direction}°`, each].filter(Boolean).join(" · ");
+}
+
 function formatMinutes(minutes) {
   if (minutes === null || minutes === undefined) return "–";
   return minutes >= 60 ? `${Math.floor(minutes / 60)} h ${minutes % 60} min` : `${minutes} min`;
@@ -3974,7 +4006,7 @@ class DreameMowerCard extends HTMLElement {
   _mowingSummary() {
     const feed = this._settingsFeed();
     const values = (feed && feed.areas && feed.areas["0"]) || {};
-    const each = { crisscross: "+45° each session", chequerboard: "+90° each session" }[values.mowing_direction_mode];
+    const each = DIRECTION_EACH_SESSION[values.mowing_direction_mode];
     const parts = [
       feed && feed.mode === "per_zone" ? "Per zone" : "",
       values.cutting_height !== undefined && values.cutting_height !== null ? `${values.cutting_height} cm` : "",
@@ -5393,6 +5425,8 @@ class DreameMowerCard extends HTMLElement {
     const rows = [
       fact("Mowed", mowed.join(" · ")),
       fact("Cutting height", height.join(" · ")),
+      fact("Mowing direction", taskSetting(data, (values) => directionLabel(values))),
+      fact("Turning", taskSetting(data, (values) => TURNING_LABELS[values.turning_method] || "")),
       fact("Started", START_LABELS[data.start_mode] || ""),
       fact("Ended", data.end ? formatDay(data.end) : ""),
     ];

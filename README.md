@@ -17,7 +17,7 @@ Provided "as-is" under the MIT License for personal, non-commercial use with dev
 
 - **Map card** - the active map drawn live: striped lawns, no-go areas, obstacles with their photos, and the mower with the lanes it has cut. Tap edges, zones or spot areas to mow just those.
 - **Control** - start, pause, end and dock; mow the whole map, zones, edges or spot areas; go on from where an unfinished task stopped.
-- **Work log** - past tasks with the area, the time, the battery each took per m² (marked when a task used more than like ones before it), a map of the lanes each one mowed and the photos of the obstacles it met.
+- **Work log** - past tasks with the area, the time, the battery each took per m² (marked when a task used more than like ones before it), the mowing direction and turning each was mowed with, a map of the lanes each one mowed and the photos of the obstacles it met.
 - **Mowing settings** - cutting height, mowing direction, edges and obstacle avoidance, per map or per zone.
 - **Map editor** - no-go zones, ignore-obstacle and spot areas, maintenance points; rename, split and merge zones; rename, back up, restore and switch maps.
 - **Mower settings** - rain protection, charging period, frost protection, Do Not Disturb, lights, anti-theft alarms, child lock, robot voice and more, each where the mower offers it.

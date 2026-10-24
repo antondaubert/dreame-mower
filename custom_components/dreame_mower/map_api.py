@@ -380,6 +380,7 @@ async def ws_work_log_details(hass: HomeAssistant, connection: ActiveConnection,
     work_log: WorkLogCache | None = None if entry_data is None else entry_data.get(DATA_WORK_LOG)
     if work_log is not None and work_log.battery is not None and isinstance(details.get("start"), int):
         details["battery"] = work_log.battery.details(details)
+        details["settings"] = work_log.battery.settings(details)
     connection.send_result(msg["id"], details)
 
 

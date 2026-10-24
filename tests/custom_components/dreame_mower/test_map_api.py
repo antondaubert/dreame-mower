@@ -796,6 +796,9 @@ class _Battery:
     async def async_backfill(self, entries: list[dict[str, Any]]) -> None:
         self.backfilled.append(entries)
 
+    def settings(self, task: dict[str, Any]) -> dict[str, Any] | None:
+        return {"per_zone": False, "areas": {"0": {"turning_method": "efficient"}}} if task["start"] == 1791540000 else None
+
 
 async def test_the_work_log_tells_what_each_task_took_of_the_battery(
     hass: HomeAssistant, coordinator: DreameMowerCoordinator, work_log: WorkLogCache, hass_ws_client: WebSocketGenerator
@@ -823,6 +826,7 @@ async def test_the_work_log_tells_what_each_task_took_of_the_battery(
 
     details = await _ask(hass, hass_ws_client, {"type": WS_WORK_LOG_DETAILS, "entity_id": ENTITY_ID, "file": "ali_dreame/1791540000.json"})
     assert details["result"]["battery"] == {"used": 37.0, "per_sqm": 0.54, "source": "recorded", "samples": [[0, 100], [2340, 63]]}
+    assert details["result"]["settings"] == {"per_zone": False, "areas": {"0": {"turning_method": "efficient"}}}
 
 
 async def test_the_work_log_rates_what_each_task_took_of_the_battery(

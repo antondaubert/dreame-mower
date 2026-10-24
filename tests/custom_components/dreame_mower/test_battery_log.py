@@ -20,6 +20,7 @@ from custom_components.dreame_mower.battery_log import (
 )
 from custom_components.dreame_mower.config_flow import CONF_MAC
 from custom_components.dreame_mower.const import DOMAIN
+from custom_components.dreame_mower.dreame.const import MowingPreferenceMode
 
 MAC = "11:22:33:44:55:66"
 START = 1_792_749_600
@@ -47,6 +48,8 @@ class Coordinator:
             unregister_property_callback=self.callbacks.remove,
         )
         self.listeners: list[Any] = []
+        self.mowing_settings: dict[int, dict[str, Any]] = {}
+        self.mowing_preference_mode: Any = None
 
     def async_add_listener(self, listener: Any) -> Any:
         self.listeners.append(listener)
@@ -108,6 +111,49 @@ async def test_a_task_is_recorded_with_its_recharge(hass: HomeAssistant, clock: 
     # Another task is not this one.
     assert log.summary(_task(START + 600)) is None
     assert hass_storage[f"{DOMAIN}.battery.{entry.entry_id}"]["data"]["courses"] == [course]
+
+
+async def test_a_task_keeps_the_direction_and_turning_it_started_with(hass: HomeAssistant, clock: Clock, entry: MockConfigEntry) -> None:
+    coordinator = Coordinator()
+    log = await _log(hass, coordinator, entry)
+    record = {"mowing_direction": 90, "mowing_direction_mode": "crisscross", "turning_method": "lawn_care", "cutting_height": 4.0}
+    coordinator.mowing_settings = {0: record, 4: {**record, "mowing_direction": 30}}
+    coordinator.mowing_preference_mode = MowingPreferenceMode.PER_ZONE
+
+    coordinator.update(mowing_session_active=True)
+    # A change while the task runs is not what it started with.
+    coordinator.mowing_settings = {0: {**record, "turning_method": "efficient"}}
+    coordinator.update(mowing_session_active=False)
+
+    kept = {"mowing_direction": 90, "mowing_direction_mode": "crisscross", "turning_method": "lawn_care"}
+    assert log.settings(_task()) == {"per_zone": True, "areas": {"0": kept, "4": {**kept, "mowing_direction": 30}}}
+    # Nothing for a task without a course.
+    assert log.settings(_task(START + 3600)) is None
+
+
+async def test_settings_not_known_at_a_task_start_are_taken_soon_after(
+    hass: HomeAssistant, clock: Clock, entry: MockConfigEntry
+) -> None:
+    coordinator = Coordinator()
+    log = await _log(hass, coordinator, entry)
+    record = {"mowing_direction": 90, "turning_method": "efficient"}
+
+    # Right after a restart: the records are read after the task is seen.
+    coordinator.update(mowing_session_active=True)
+    clock.now = START + 120
+    coordinator.mowing_settings = {0: record}
+    coordinator.update(battery_percent=99)
+    assert log.settings(_task()) == {"per_zone": None, "areas": {"0": record}}
+
+    # Too late into a task, nothing is taken.
+    coordinator.update(mowing_session_active=False)
+    clock.now = START + 86400
+    coordinator.mowing_settings = {4: record}
+    coordinator.update(mowing_session_active=True)
+    clock.now = START + 86400 + 1200
+    coordinator.mowing_settings = {0: record}
+    coordinator.update(battery_percent=98)
+    assert log.settings(_task(START + 86400)) is None
 
 
 async def test_a_task_cut_off_by_a_restart_goes_on(hass: HomeAssistant, clock: Clock, entry: MockConfigEntry, hass_storage: dict[str, Any]) -> None:

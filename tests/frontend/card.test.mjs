@@ -901,3 +901,36 @@ test("the list of tasks reaches down to the bottom of the window", async () => {
   window.dispatchEvent(new window.Event("resize"));
   assert.equal(room(), "256px");
 });
+
+test("a task shows the mowing direction and turning it was mowed with", async () => {
+  const window = load("dreame-mower-card.js");
+  let details = {};
+  const hass = fakeHass({
+    ws: (m) => (m.type === "dreame_mower/work_log/details" ? { result: "complete", area: 68.4, obstacles: [], faults: [], ...details } : {}),
+  });
+  const card = await mount(window, hass);
+  await openTab(window, card, "history");
+  const record = { mowing_direction: 90, mowing_direction_mode: "crisscross", turning_method: "lawn_care" };
+  const zone30 = { ...record, mowing_direction: 30, mowing_direction_mode: "fixed" };
+  const facts = async (value) => {
+    details = value;
+    card._logDetails.clear();
+    await sendWorkLog(window, hass, { totals: null, entries: [TASK], refreshing: false, error: null });
+    await click(window, $(card, `.loglist [data-entry="${TASK.start}"]`));
+    const rows = Object.fromEntries($$(card, ".view.worklog .row.short").map((row) => [row.querySelector(".t").textContent, (row.querySelector(".val") || {}).textContent]));
+    await click(window, $(card, ".view.worklog [data-close]"));
+    return [rows["Mowing direction"], rows.Turning];
+  };
+
+  // Map-wide: the map's record, whatever the zones keep.
+  assert.deepEqual(await facts({ per_zone: false, settings: { per_zone: false, areas: { 0: record, 4: zone30 } } }), ["90° · +45° each session", "Lawn care"]);
+  // Per zone: what the zones share; a zone without a record follows the map's.
+  assert.deepEqual(await facts({ per_zone: true, settings: { per_zone: true, areas: { 0: record, 4: zone30, 5: zone30 } } }), ["30°", "Lawn care"]);
+  assert.deepEqual(await facts({ per_zone: true, zones: [{ id: 4 }, { id: 6 }], settings: { per_zone: true, areas: { 0: record, 4: zone30 } } }), ["per zone", "Lawn care"]);
+  // Only the zones the task worked count; the task's file says it mowed per zone.
+  assert.deepEqual(await facts({ per_zone: true, zones: [{ id: 4 }], settings: { per_zone: null, areas: { 0: record, 4: zone30 } } }), ["30°", "Lawn care"]);
+  // A value that cannot be told is left out rather than set against the others.
+  assert.deepEqual(await facts({ per_zone: true, settings: { per_zone: true, areas: { 0: record, 4: zone30, 5: { mowing_direction: 30, turning_method: 7 } } } }), ["30°", "Lawn care"]);
+  // A task recorded without them shows neither.
+  assert.deepEqual(await facts({ settings: null }), [undefined, undefined]);
+});

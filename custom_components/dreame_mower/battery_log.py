@@ -1,8 +1,10 @@
-"""The battery of a mower over its mowing tasks.
+"""The battery of a mower over its mowing tasks, and how each was mowed.
 
 While a task runs, every change of the battery level is kept with its time,
 recharges in between included, so the work log can tell how much of a charge
-each task took and show its course. Tasks from before the log began are
+each task took and show its course. The mowing direction and turning method
+a task starts with are kept with it too, as the work log does not tell.
+Tasks from before the log began are
 filled in once from Home Assistant's recorder: those it still keeps every
 change of with their course, older ones with what its hourly statistics hold.
 """
@@ -23,6 +25,13 @@ from homeassistant.helpers.storage import Store
 from .config_flow import CONF_MAC
 from .const import DOMAIN
 from .coordinator import DreameMowerCoordinator
+from .dreame.const import (
+    DIRECTION_ANGLE_KEY,
+    DIRECTION_MODE_KEY,
+    MOWING_PREFERENCE_GLOBAL_AREA_ID,
+    TURNING_METHOD_KEY,
+    MowingPreferenceMode,
+)
 from .dreame.property.mission_completion import MISSION_COMPLETION_EVENT_PROPERTY_NAME
 
 _LOGGER = logging.getLogger(__name__)
@@ -46,6 +55,12 @@ END_SLACK_SECONDS = 10 * 60
 SOURCE_RECORDED = "recorded"
 SOURCE_HISTORY = "history"
 SOURCE_STATISTICS = "statistics"
+
+# The settings of a map's mowing records kept with a task.
+_TASK_SETTINGS = (DIRECTION_ANGLE_KEY, DIRECTION_MODE_KEY, TURNING_METHOD_KEY)
+# How long into a task its settings are still taken when they were not known
+# at its start (right after a restart or a switch of maps), in seconds.
+SETTINGS_LATE_SECONDS = 10 * 60
 
 
 def battery_store(hass: HomeAssistant, entry_id: str) -> Store[dict[str, Any]]:
@@ -149,6 +164,15 @@ class BatteryLog:
             "source": course["source"],
         }
 
+    def settings(self, task: dict[str, Any]) -> dict[str, Any] | None:
+        """The mowing direction and turning method a task of the work log
+        started with: {per_zone, areas: {area id: settings}}, the map-wide
+        record under "0" and each zone that keeps its own; per_zone is None
+        when it was not known. None for a task recorded without them."""
+        course = self.course_for(task["start"])
+        settings: dict[str, Any] | None = None if course is None else course.get("settings")
+        return settings
+
     def details(self, task: dict[str, Any]) -> dict[str, Any] | None:
         """What a task took of the battery, with its course where one is
         kept: [seconds since the start, percent]."""
@@ -190,11 +214,19 @@ class BatteryLog:
                 # Its task ended while Home Assistant was away.
                 self._finish(unfinished)
         if active and self._current is None:
-            self._current = {"start": int(now), "end": None, "source": SOURCE_RECORDED, "samples": []}
+            self._current = {
+                "start": int(now),
+                "end": None,
+                "source": SOURCE_RECORDED,
+                "samples": [],
+                "settings": _task_settings(self._coordinator),
+            }
             self.courses.append(self._current)
         current = self._current
         if current is None:
             return
+        if current.get("settings") is None and now - current["start"] <= SETTINGS_LATE_SECONDS:
+            current["settings"] = _task_settings(self._coordinator)
         samples = current["samples"]
         # A level of 0 is one the mower has not reported yet.
         if isinstance(percent, (int, float)) and percent > 0 and (not samples or samples[-1][1] != percent):
@@ -371,6 +403,23 @@ def _samples_between(levels: list[tuple[float, float]], start: int, end: int) ->
         if start < at <= end and (not samples or samples[-1][1] != level):
             samples.append([int(at - start), level])
     return samples
+
+
+def _task_settings(coordinator: DreameMowerCoordinator) -> dict[str, Any] | None:
+    """The mowing direction and turning method of the current map's records,
+    the map-wide one and each zone's, and whether the zones keep their own.
+    None until the map-wide record is known."""
+    records = coordinator.mowing_settings
+    if MOWING_PREFERENCE_GLOBAL_AREA_ID not in records:
+        return None
+    mode = coordinator.mowing_preference_mode
+    return {
+        "per_zone": None if mode is None else mode == MowingPreferenceMode.PER_ZONE,
+        "areas": {
+            str(area_id): {key: record[key] for key in _TASK_SETTINGS if key in record}
+            for area_id, record in records.items()
+        },
+    }
 
 
 def _last_seen(course: dict[str, Any]) -> int:
