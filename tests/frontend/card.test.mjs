@@ -875,3 +875,29 @@ test("each task shows its battery use per m², coloured by how it compares", asy
   assert.equal(pills[0].getAttribute("title"), "Battery 102 % · much more than usual (0.54 %/m², +176 %)");
   assert.equal(pills[3].getAttribute("title"), "Battery 37 %");
 });
+
+test("the list of tasks reaches down to the bottom of the window", async () => {
+  const window = load("dreame-mower-card.js");
+  let top = 100;
+  window.HTMLElement.prototype.getBoundingClientRect = function () {
+    return { left: 0, width: 400, top: this.classList.contains("loglist") ? top : 0, bottom: 0 };
+  };
+  // What is hidden has no layout.
+  window.HTMLElement.prototype.getClientRects = function () {
+    return this.closest("[hidden]") ? [] : [{}];
+  };
+  const hass = fakeHass();
+  const card = await mount(window, hass);
+  const room = () => $(card, ".loglist").style.getPropertyValue("--log-room");
+
+  // The kept log arrives before the tab shows: the list is fitted once it does.
+  $(card, '.tabs [data-tab="history"]').dispatchEvent(new window.MouseEvent("click", { bubbles: true, composed: true }));
+  subscribed(hass, WORK_LOG)[0].callback({ totals: null, entries: [TASK, OLDER], refreshing: false, error: null });
+  await settle(window);
+  // jsdom's window is 768 px high: from 100 px down, less the gap below.
+  assert.equal(room(), "656px");
+
+  top = 500;
+  window.dispatchEvent(new window.Event("resize"));
+  assert.equal(room(), "256px");
+});

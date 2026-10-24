@@ -16,6 +16,10 @@ const DOMAIN = "dreame_mower";
 const SUBSCRIBE_TYPE = `${DOMAIN}/map/subscribe`;
 const WORK_LOG_SUBSCRIBE_TYPE = `${DOMAIN}/work_log/subscribe`;
 
+// The room the list of tasks leaves below itself when it reaches down to
+// the bottom of the window.
+const LOG_LIST_GAP_PX = 12;
+
 // Delays before subscribing again after the feed closed or failed; the last
 // one repeats.
 const RESUBSCRIBE_DELAYS = [2000, 5000, 5000, 10000, 30000];
@@ -632,7 +636,8 @@ button.row:disabled { opacity: .45; cursor: default; }
 .bat.very_high { color: color-mix(in srgb, var(--mower-error) 60%, var(--mower-text)); background: color-mix(in srgb, var(--mower-error) 14%, transparent); }
 .worklog .filter { padding: 10px 12px 4px; }
 /* A long log scrolls within the tab, so the card stays its size. */
-.worklog .loglist { max-height: min(60vh, 560px); overflow-y: auto; }
+/* At least this high; _fitLogList gives it the room down to the bottom of the window. */
+.worklog .loglist { max-height: max(min(60vh, 560px), var(--log-room, 0px)); overflow-y: auto; }
 .logmapwrap { position: relative; }
 .logmap {
   display: block;
@@ -1889,8 +1894,10 @@ class DreameMowerCard extends HTMLElement {
     this._lastTap = null;
     this._toastTimer = null;
     this._swipeFrom = null;
+    // The window or the card changed its size.
     this._onWindowResize = () => {
       if (this._photo) this._placePhotoSheet();
+      if (this._log) this._fitLogList();
     };
     this._cardObserver = null;
     this._onReady = () => this._resubscribeNow();
@@ -1982,6 +1989,10 @@ class DreameMowerCard extends HTMLElement {
     this._ensureSubscribed();
     if (this._log && !this._log.sub) this._followWorkLog(this._log);
     window.addEventListener("resize", this._onWindowResize);
+    // The card can change its size without the window, e.g. as Home
+    // Assistant's sidebar opens or closes, or cards above it settle.
+    if (!this._cardObserver && typeof ResizeObserver === "function") this._cardObserver = new ResizeObserver(this._onWindowResize);
+    if (this._cardObserver) this._cardObserver.observe(this._el.card);
     this._invalidate("all");
   }
 
@@ -2561,6 +2572,8 @@ class DreameMowerCard extends HTMLElement {
     // Which tab shows, and what of the card belongs to it; cheap enough to
     // follow every change.
     this._renderTabs();
+    // Only now is the list where it shows.
+    if (dirty.has("log")) this._fitLogList();
   }
 
   _setHtml(key, el, html) {
@@ -5324,6 +5337,18 @@ class DreameMowerCard extends HTMLElement {
     );
   }
 
+  // The list of tasks reaches down to the bottom of the window, so on a
+  // dashboard of its own it fills the screen; it is never lower than its
+  // usual height, and scrolls within itself either way.
+  _fitLogList() {
+    const list = this._el.lbody.querySelector(".loglist");
+    // A list not laid out (its tab or the card hidden) has no place to go from.
+    if (!list || !list.getClientRects().length) return;
+    const bottom = document.documentElement.clientHeight || window.innerHeight;
+    const room = Math.floor(bottom - list.getBoundingClientRect().top - LOG_LIST_GAP_PX);
+    list.style.setProperty("--log-room", `${Math.max(0, room)}px`);
+  }
+
   // One task: its map with the lanes it mowed, where it stopped, and what
   // there is to know about it.
   _workLogDetail(detail) {
@@ -5724,17 +5749,8 @@ class DreameMowerCard extends HTMLElement {
     };
     if (!this._photo || !this.isConnected) {
       unpin();
-      if (this._cardObserver) this._cardObserver.disconnect();
       return;
     }
-    // The card can change its width without the window, e.g. as Home
-    // Assistant's sidebar opens or closes.
-    if (!this._cardObserver && typeof ResizeObserver === "function") {
-      this._cardObserver = new ResizeObserver(() => {
-        if (this._photo) this._placePhotoSheet();
-      });
-    }
-    if (this._cardObserver) this._cardObserver.observe(this._el.card);
     const box = this._el.card.getBoundingClientRect();
     for (const el of [sheet, scrim]) {
       el.classList.add("pinned");
