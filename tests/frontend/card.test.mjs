@@ -934,3 +934,48 @@ test("a task shows the mowing direction and turning it was mowed with", async ()
   // A task recorded without them shows neither.
   assert.deepEqual(await facts({ settings: null }), [undefined, undefined]);
 });
+
+test("a task shows its battery over its time, below its obstacles", async () => {
+  const window = load("dreame-mower-card.js");
+  let battery = null;
+  const hass = fakeHass({
+    ws: (m) => (m.type === "dreame_mower/work_log/details" ? { result: "complete", area: 68.4, obstacles: [], faults: [], battery } : {}),
+  });
+  const card = await mount(window, hass);
+  await openTab(window, card, "history");
+  const open = async (value, summary = null) => {
+    battery = value;
+    card._logDetails.clear();
+    await sendWorkLog(window, hass, { totals: null, entries: [{ ...TASK, battery: summary }], refreshing: false, error: null });
+    await click(window, $(card, `.loglist [data-entry="${TASK.start}"]`));
+    const block = $(card, ".view.worklog .battery-course");
+    const result = block && { line: block.querySelector(".bhead span").textContent, chart: block.querySelector("svg") };
+    await click(window, $(card, ".view.worklog [data-close]"));
+    return result;
+  };
+
+  // Down, recharged step by step, down again.
+  const samples = [[0, 100], [3480, 15], [3600, 40], [5000, 95], [7080, 79]];
+  const recorded = await open({ used: 101, per_sqm: 1.477, source: "recorded", samples }, { used: 101, per_sqm: 1.477, usual: 0.54, rating: "very_high" });
+  assert.equal(recorded.line, "100 → 15 %, recharged, 95 → 79 % · 101 % used · 1.48 %/m² · usual 0.54 %/m²");
+  assert.equal(recorded.chart.querySelectorAll("polyline").length, 1);
+  assert.equal(recorded.chart.querySelector("polyline").getAttribute("points").split(" ").length, 5);
+  // The recharge is shaded, in one piece.
+  assert.equal(recorded.chart.querySelectorAll("rect").length, 1);
+
+  const line = async (levels) => (await open({ used: 0, per_sqm: null, source: "recorded", samples: levels.map((level, i) => [i * 60, level]) })).line;
+  // A level that wavers while mowing is no recharge, nor is a dip while charging the end of one.
+  assert.equal(await line([100, 80, 81, 80, 40]), "100 → 40 % · 0 % used");
+  assert.equal(await line([100, 15, 40, 39, 95, 79]), "100 → 15 %, recharged, 95 → 79 % · 0 % used");
+  // Recharges at the start or the end of a task, or only one.
+  assert.equal(await line([30, 50, 90, 60]), "recharged, 90 → 60 % · 0 % used");
+  assert.equal(await line([100, 50, 80]), "100 → 50 %, recharged · 0 % used");
+  assert.equal(await line([20, 40, 60]), "recharged · 0 % used");
+
+  // From hourly statistics: only the line.
+  const hourly = await open({ used: 38, per_sqm: 0.556, source: "statistics", samples: null });
+  assert.equal(hourly.line, "~38 % used · ~0.56 %/m²");
+  assert.equal(hourly.chart, null);
+
+  assert.equal(await open(null), null);
+});

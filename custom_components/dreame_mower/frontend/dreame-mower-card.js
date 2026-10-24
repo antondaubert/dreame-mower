@@ -626,6 +626,18 @@ button.row:disabled { opacity: .45; cursor: default; }
 .totals b { display: block; font-size: 20px; font-weight: 500; }
 .totals small { font-size: 12px; color: var(--mower-muted); }
 .lognote { margin: 8px 12px 0; font-size: 12px; color: var(--mower-muted); }
+/* A task's battery over its time, below its obstacles. */
+.battery-course { padding: 4px 12px 10px; }
+.battery-course .bhead { display: flex; flex-direction: column; gap: 2px; padding: 6px 4px 8px; }
+.battery-course .bhead b { font-size: 14px; font-weight: 500; }
+.battery-course .bhead span { font-size: 12px; color: var(--mower-muted); }
+.battery-course svg { display: block; width: 100%; height: auto; }
+.battery-course svg { max-width: 560px; }
+.battery-course text { font-size: 10px; fill: var(--mower-muted); }
+.battery-course .grid { stroke: var(--mower-divider); stroke-width: 1; }
+.battery-course .grid.minor { stroke-dasharray: 3 4; }
+.battery-course .charge { fill: #43a047; fill-opacity: .14; }
+.battery-course .level { fill: none; stroke: var(--mower-brand); stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
 /* A task's battery use per m², coloured by how it compares with like tasks. */
 .row .rt .d.facts { display: flex; align-items: baseline; gap: 4px; }
 .row .rt .d.facts > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -866,6 +878,88 @@ function stoppedOnDayOf(entry, points) {
 // Whether a task of the work log is an all-area or zone task left unfinished.
 function unfinishedTask(entry) {
   return ["all_area", "zone"].includes(entry.mode) && ["stopped", "incomplete"].includes(entry.result);
+}
+
+// A task's battery: what it took, in legs between recharges, and its course
+// over the task's time with the recharges shaded. Only the line where the
+// course is not known (a task from hourly statistics).
+const CHART_WIDTH = 340;
+const CHART_HEIGHT = 120;
+const CHART_LEFT = 34;
+const CHART_TOP = 8;
+const CHART_BOTTOM = 18;
+// How much the level has to rise, in %, to count as a recharge; a smaller
+// rise is the level wavering, and so is a smaller dip within a recharge.
+const RECHARGE_MIN = 3;
+
+// The recharges of a course, as [first, last] sample indexes.
+function batteryRecharges(samples) {
+  const runs = [];
+  let from = null;
+  for (let i = 1; i <= samples.length; i++) {
+    const rising = i < samples.length && samples[i][1] > samples[i - 1][1];
+    if (rising && from === null) from = i - 1;
+    if (rising || from === null) continue;
+    const last = runs[runs.length - 1];
+    if (last && samples[last[1]][1] - samples[from][1] < RECHARGE_MIN) last[1] = i - 1;
+    else runs.push([from, i - 1]);
+    from = null;
+  }
+  return runs.filter(([first, last]) => samples[last][1] - samples[first][1] >= RECHARGE_MIN);
+}
+
+// The course in words: each leg on the battery from its first level to its
+// last, with the recharges between, before or after them.
+function batteryLegs(samples, recharges) {
+  const parts = [];
+  const leg = (first, last) => {
+    if (last > first) parts.push(`${num(samples[first][1])} → ${num(samples[last][1])} %`);
+  };
+  let at = 0;
+  for (const [first, last] of recharges) {
+    leg(at, first);
+    parts.push("recharged");
+    at = last;
+  }
+  leg(at, samples.length - 1);
+  return parts.join(", ");
+}
+
+function batteryBlock(battery, summary) {
+  if (!battery) return "";
+  const approx = battery.source === "statistics" ? "~" : "";
+  const samples = battery.samples && battery.samples.length >= 2 ? battery.samples : null;
+  const recharges = samples ? batteryRecharges(samples) : [];
+  const facts = [];
+  const legs = samples ? batteryLegs(samples, recharges) : "";
+  if (legs) facts.push(legs);
+  facts.push(`${approx}${num(battery.used)} % used`);
+  if (battery.per_sqm !== null && battery.per_sqm !== undefined) facts.push(`${approx}${battery.per_sqm.toFixed(2)} %/m²`);
+  if (summary && summary.usual) facts.push(`usual ${summary.usual.toFixed(2)} %/m²`);
+  const head = `<div class="bhead"><b>Battery</b><span>${esc(facts.join(" · "))}</span></div>`;
+  return `<div class="battery-course">${head}${samples ? batteryChart(samples, recharges) : ""}</div>`;
+}
+
+// The chart is drawn at about the size it shows at, so its labels keep
+// their size; the line above it says the same in words.
+function batteryChart(samples, recharges) {
+  const end = Math.max(samples[samples.length - 1][0], 60);
+  const plotWidth = CHART_WIDTH - CHART_LEFT;
+  const plotHeight = CHART_HEIGHT - CHART_TOP - CHART_BOTTOM;
+  const x = (seconds) => num(CHART_LEFT + (seconds / end) * plotWidth);
+  const y = (level) => num(CHART_TOP + plotHeight - (Math.max(0, Math.min(100, level)) / 100) * plotHeight);
+  const parts = recharges.map(
+    ([first, last]) => `<rect class="charge" x="${x(samples[first][0])}" y="${CHART_TOP}" width="${num(x(samples[last][0]) - x(samples[first][0]))}" height="${plotHeight}"/>`,
+  );
+  for (const level of [0, 25, 50, 75, 100]) {
+    parts.push(`<line class="${level % 50 ? "grid minor" : "grid"}" x1="${CHART_LEFT}" x2="${CHART_WIDTH}" y1="${y(level)}" y2="${y(level)}"/>`);
+  }
+  for (const level of [0, 50, 100]) parts.push(`<text x="${CHART_LEFT - 5}" y="${num(y(level) + 4)}" text-anchor="end">${level} %</text>`);
+  parts.push(`<text x="${CHART_LEFT}" y="${CHART_HEIGHT - 3}">0</text>`);
+  parts.push(`<text x="${CHART_WIDTH}" y="${CHART_HEIGHT - 3}" text-anchor="end">${esc(formatMinutes(Math.round(end / 60)))}</text>`);
+  const line = samples.map(([seconds, level]) => `${x(seconds)},${y(level)}`).join(" ");
+  parts.push(`<polyline class="level" points="${line}"/>`);
+  return `<svg viewBox="0 0 ${CHART_WIDTH} ${CHART_HEIGHT}" aria-hidden="true">${parts.join("")}</svg>`;
 }
 
 // How much of the battery a task took per m², coloured by how that compares
@@ -5451,6 +5545,7 @@ class DreameMowerCard extends HTMLElement {
     }
     parts.push(`<div class="list">${rows.filter(Boolean).join("")}</div>`);
     parts.push(gallery);
+    parts.push(batteryBlock(data.battery, detail.entry.battery));
     return parts.join("");
   }
 
