@@ -293,7 +293,7 @@
         },
         "edge_blade_offset": {
           "name": "Edge blade offset",
-          "description": "Whether the blade disc shifts to the side for the edge laps so the mower cuts closer to the boundary. Switching this on also raises a single edge lap to two."
+          "description": "Whether the blade disc shifts to the side for the edge laps so the mower cuts closer to the boundary. Switching this on also raises a single edge lap to two. Only mowers whose blade disc can shift offer it."
         },
         "edge_obstacle_avoidance": {
           "name": "Obstacle avoidance on edges",

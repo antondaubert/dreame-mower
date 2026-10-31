@@ -203,7 +203,8 @@ MOWING_PREFERENCE_DIRECTION_ANGLE_INDEX = 6
 # Edge mowing slots, all of them flags that are 1 while the behaviour is on:
 #   auto         mow the edges on their own once an all-area or zone run finished
 #   blade offset shift the blade disc sideways for the edge laps, which cuts
-#                closer to the boundary than the centred disc reaches
+#                closer to the boundary than the centred disc reaches; a model
+#                with a fixed disc carries the slot too but does not act on it
 #   safe         keep a small buffer from the boundary while mowing the edges
 MOWING_PREFERENCE_EDGE_MOWING_AUTO_INDEX = 7
 MOWING_PREFERENCE_EDGE_BLADE_OFFSET_INDEX = 10
@@ -339,6 +340,24 @@ def has_camera(model: str | None) -> bool:
     if not model:
         return True
     return not _model_code(model).startswith(_CAMERA_LESS_MODELS)
+
+
+# Model codes whose blade disc sits fixed in the middle and cannot shift to
+# the side for the edge laps. Their mowing preference records carry the blade
+# offset slot all the same.
+_FIXED_BLADE_DISC_MODELS = (
+    "g2405", "g2420", "g2422", "g2540", "g2552", "g2566", "g2583", "p2255", "yc2530", "yc2611",
+)
+
+
+def supports_edge_blade_offset(model: str | None) -> bool:
+    """Return True when the model can shift its blade disc to the side for the edges.
+
+    An unknown model is taken to support it, which keeps every setting reachable.
+    """
+    if not model:
+        return True
+    return not _model_code(model).startswith(_FIXED_BLADE_DISC_MODELS)
 
 # Device settings ("CFG") record
 #

@@ -12,6 +12,7 @@ from custom_components.dreame_mower.dreame.const import (
     has_camera,
     map_status_to_activity,
     supports_cutting_height,
+    supports_edge_blade_offset,
 )
 
 
@@ -102,4 +103,34 @@ class TestCameraSupport:
     def test_unknown_or_missing_models_are_taken_to_have_one(self):
         assert has_camera("dreame.mower.x9999") is True
         assert has_camera(None) is True
+
+
+class TestEdgeBladeOffsetSupport:
+    """Test the model-dependent edge blade offset helper."""
+
+    @pytest.mark.parametrize(
+        "model",
+        ["dreame.mower.g2408", "dreame.mower.g2568a", "dreame.mower.g2541e", "mova.mower.g2529b"],
+    )
+    def test_shifting_disc_models(self, model):
+        assert supports_edge_blade_offset(model) is True
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "dreame.mower.g2422",
+            "dreame.mower.p2255",
+            "dreame.mower.g2420",
+            "dreame.mower.g2566",
+            "mova.mower.g2405c",
+            "mova.mower.g2583",
+            "mova.mower.yc2611",
+        ],
+    )
+    def test_fixed_disc_models(self, model):
+        assert supports_edge_blade_offset(model) is False
+
+    def test_unknown_or_missing_models_are_taken_to_support_it(self):
+        assert supports_edge_blade_offset("dreame.mower.x9999") is True
+        assert supports_edge_blade_offset(None) is True
 

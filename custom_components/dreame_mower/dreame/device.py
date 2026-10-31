@@ -82,6 +82,7 @@ from .const import (
     OBSTACLE_HEIGHTS_CM,
     TURNING_METHOD_KEY,
     has_camera,
+    supports_edge_blade_offset,
     AiObstacleKind,
     MowingEfficiency,
     TurningMethod,
@@ -1643,7 +1644,11 @@ class DreameMowerDevice:
         Area 0 is the map-wide record; the others are the zones that hold one.
         """
         camera = has_camera(self._model)
-        return {area_id: self._record_mowing_settings(record, camera) for area_id, record in self._mowing_records.items()}
+        offset_disc = supports_edge_blade_offset(self._model)
+        return {
+            area_id: self._record_mowing_settings(record, camera, offset_disc)
+            for area_id, record in self._mowing_records.items()
+        }
 
     @property
     def mowing_direction(self) -> dict[str, int] | None:
@@ -4591,12 +4596,14 @@ class DreameMowerDevice:
         return record[MOWING_PREFERENCE_CUTTING_HEIGHT_INDEX] / 10.0
 
     @staticmethod
-    def _record_edge_mowing_settings(record: Sequence[int]) -> dict[str, bool] | None:
+    def _record_edge_mowing_settings(record: Sequence[int], offset_disc: bool = True) -> dict[str, bool] | None:
         """Return the edge mowing settings a record carries.
 
         Settings the record is too short to carry are left out rather than
         reported as off, so a firmware that predates one is told apart from a
-        device that has it switched off.
+        device that has it switched off. The blade offset is left out as well on
+        a mower whose blade disc cannot shift, which carries the slot without
+        acting on it.
         """
         settings: dict[str, bool] = {}
         for key, index in (
@@ -4604,6 +4611,8 @@ class DreameMowerDevice:
             (EDGE_BLADE_OFFSET_KEY, MOWING_PREFERENCE_EDGE_BLADE_OFFSET_INDEX),
             (EDGE_MOWING_SAFE_KEY, MOWING_PREFERENCE_EDGE_MOWING_SAFE_INDEX),
         ):
+            if key == EDGE_BLADE_OFFSET_KEY and not offset_disc:
+                continue
             if len(record) > index:
                 settings[key] = bool(record[index])
 
@@ -4615,12 +4624,16 @@ class DreameMowerDevice:
         auto: bool | None,
         blade_offset: bool | None,
         safe: bool | None,
+        offset_disc: bool = True,
     ) -> dict[int, int]:
         """Return the record slots that switch the requested edge settings.
 
         Raises when the record does not reach a slot a request needs, which is
-        how a firmware without that setting reports it.
+        how a firmware without that setting reports it, and on the blade offset
+        for a mower whose blade disc cannot shift.
         """
+        if blade_offset is not None and not offset_disc:
+            raise ValueError("This mower does not support the edge blade offset")
         slots: dict[int, int] = {}
         for value, index, name in (
             (auto, MOWING_PREFERENCE_EDGE_MOWING_AUTO_INDEX, "automatic edge mowing"),
@@ -4645,12 +4658,13 @@ class DreameMowerDevice:
         return slots
 
     @staticmethod
-    def _record_mowing_settings(record: Sequence[int], camera: bool = True) -> dict[str, Any]:
+    def _record_mowing_settings(record: Sequence[int], camera: bool = True, offset_disc: bool = True) -> dict[str, Any]:
         """Return every setting a record carries, under the setting keys.
 
-        A setting the record is too short to carry is left out, and so is AI
-        obstacle recognition on a mower without a camera, which carries the
-        slot without acting on it.
+        A setting the record is too short to carry is left out, and so are AI
+        obstacle recognition on a mower without a camera and the edge blade
+        offset on a mower whose blade disc cannot shift, both of which carry
+        the slot without acting on it.
         """
 
         def slot(index: int) -> int | None:
@@ -4672,6 +4686,8 @@ class DreameMowerDevice:
             (LIDAR_OBSTACLE_KEY, MOWING_PREFERENCE_LIDAR_OBSTACLE_INDEX),
             (EDGE_MOWING_SAFE_KEY, MOWING_PREFERENCE_EDGE_MOWING_SAFE_INDEX),
         ):
+            if key == EDGE_BLADE_OFFSET_KEY and not offset_disc:
+                continue
             if (value := slot(index)) is not None:
                 settings[key] = bool(value)
         if (value := slot(MOWING_PREFERENCE_OBSTACLE_HEIGHT_INDEX)) is not None:
@@ -4686,14 +4702,15 @@ class DreameMowerDevice:
 
     @classmethod
     def _mowing_settings_slots(
-        cls, record: Sequence[int], settings: Mapping[str, Any], camera: bool = True
+        cls, record: Sequence[int], settings: Mapping[str, Any], camera: bool = True, offset_disc: bool = True
     ) -> dict[int, int]:
         """Return the record slots that carry the requested settings.
 
         Raises on a value a setting does not take, when the record does not
         reach a slot a request needs, which is how a firmware without that
-        setting reports it, and on AI obstacle recognition for a mower without
-        a camera.
+        setting reports it, on AI obstacle recognition for a mower without
+        a camera, and on the edge blade offset for a mower whose blade disc
+        cannot shift.
         """
         slots: dict[int, int] = {}
 
@@ -4732,6 +4749,7 @@ class DreameMowerDevice:
                     settings.get(EDGE_MOWING_AUTO_KEY),
                     settings.get(EDGE_BLADE_OFFSET_KEY),
                     settings.get(EDGE_MOWING_SAFE_KEY),
+                    offset_disc,
                 )
             )
         for key, index, name in (
@@ -4944,7 +4962,7 @@ class DreameMowerDevice:
         if height_cm is not None:
             self._update_cutting_height_cache(map_index, height_cm, zone_id=zone_id)
 
-        edge_settings = self._record_edge_mowing_settings(record)
+        edge_settings = self._record_edge_mowing_settings(record, supports_edge_blade_offset(self._model))
         if edge_settings is not None:
             self._update_edge_mowing_cache(map_index, edge_settings, zone_id=zone_id)
 
@@ -5010,7 +5028,7 @@ class DreameMowerDevice:
             if height_cm is not None:
                 zone_heights[zone_id] = height_cm
 
-            edge_settings = self._record_edge_mowing_settings(record)
+            edge_settings = self._record_edge_mowing_settings(record, supports_edge_blade_offset(self._model))
             if edge_settings is not None:
                 zone_edge_settings[zone_id] = edge_settings
 
@@ -5215,7 +5233,7 @@ class DreameMowerDevice:
             return True
 
         def build_slots(record: Sequence[int]) -> dict[int, int]:
-            return self._edge_mowing_slots(record, auto, blade_offset, safe)
+            return self._edge_mowing_slots(record, auto, blade_offset, safe, supports_edge_blade_offset(self._model))
 
         requested = {
             EDGE_MOWING_AUTO_KEY: auto,
@@ -5252,7 +5270,9 @@ class DreameMowerDevice:
             return True
 
         def build_slots(record: Sequence[int]) -> dict[int, int]:
-            return self._mowing_settings_slots(record, settings, has_camera(self._model))
+            return self._mowing_settings_slots(
+                record, settings, has_camera(self._model), supports_edge_blade_offset(self._model)
+            )
 
         description = "Mowing settings set to " + ", ".join(f"{key}={value}" for key, value in settings.items())
 
