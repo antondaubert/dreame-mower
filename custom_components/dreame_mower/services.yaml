@@ -206,7 +206,7 @@ set_mowing_settings:
       description: >-
         Whether the blade disc shifts to the side for the edge laps so the mower
         cuts closer to the boundary. Switching this on also raises a single edge
-        lap to two.
+        lap to two. Only mowers whose blade disc can shift offer it.
       required: false
       example: true
       selector:

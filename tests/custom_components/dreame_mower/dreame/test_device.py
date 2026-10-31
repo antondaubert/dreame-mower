@@ -4699,6 +4699,82 @@ async def test_set_mowing_settings_turns_edge_avoidance_off_with_the_lidar_witho
     assert writes[0][15] == 7  # the slot itself is left as it was
 
 
+def _learn_fixed_disc_model(device):
+    """Let the device learn, as it does from the cloud, that its blade disc cannot shift."""
+    device._update_device_state_from_info({"model": "dreame.mower.g2420"})
+    assert device.model == "dreame.mower.g2420"
+
+
+@pytest.mark.asyncio
+async def test_settings_leave_out_the_blade_offset_on_a_fixed_disc(device):
+    """A fixed blade disc carries the offset slot but does not act on it, so it is not reported."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_vector_map(device)
+    device._cloud_device.action_result, _ = _mowing_preference_responder()
+    _learn_fixed_disc_model(device)
+
+    assert await device.refresh_mowing_preferences() is True
+
+    settings = device.mowing_settings[0]
+    assert "edge_blade_offset" not in settings
+    assert settings["edge_mowing_auto"] is True
+    assert settings["ai_obstacle_recognition"] == ["humans", "animals", "objects"]
+    assert device.edge_mowing_settings == {"edge_mowing_auto": True, "edge_mowing_safe": True}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", [
+    lambda device: device.set_mowing_settings({"edge_blade_offset": True}),
+    lambda device: device.set_edge_mowing_settings(blade_offset=False),
+])
+async def test_setting_the_blade_offset_is_refused_on_a_fixed_disc(device, change):
+    """Asking a fixed blade disc to shift writes nothing."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_vector_map(device)
+    device._cloud_device.action_result, writes = _mowing_preference_responder()
+    _learn_fixed_disc_model(device)
+
+    with pytest.raises(ValueError, match="edge blade offset"):
+        await change(device)
+
+    assert writes == []
+
+
+@pytest.mark.asyncio
+async def test_other_edge_settings_still_change_on_a_fixed_disc(device):
+    """Only the blade offset is refused; the slot itself is left as it was."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_two_map_vector_map(device)
+    device._cloud_device.action_result, writes = _mowing_preference_responder()
+    _learn_fixed_disc_model(device)
+
+    assert await device.set_mowing_settings({"edge_mowing_auto": False}) is True
+
+    assert writes[0][7] == 0
+    assert writes[0][10] == 1
+
+
+@pytest.mark.asyncio
+async def test_zone_edge_settings_leave_out_the_blade_offset_on_a_fixed_disc(device):
+    """The per-zone records of a fixed blade disc do not report the offset either."""
+    device._cloud_device.set_connected_state(True)
+    await device.connect()
+    _load_zoned_vector_map(device)
+    device._cloud_device.action_result, _ = _preference_responder(
+        mode=1,
+        configured_area_ids=(0, 1),
+        records={1: list(_MOWING_PREFERENCE_RECORD)},
+    )
+    _learn_fixed_disc_model(device)
+
+    await device.refresh_zone_mowing_preferences()
+
+    assert device.zone_edge_mowing_settings[1] == {"edge_mowing_auto": True, "edge_mowing_safe": True}
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("settings", [
     {"turning_method": "lawn_care"},  # beyond the end of this record
