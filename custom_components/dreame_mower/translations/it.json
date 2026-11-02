@@ -82,6 +82,34 @@
           "maintenance_paused": "In pausa al punto di manutenzione"
         }
       },
+      "charging_status": {
+        "name": "Stato di ricarica",
+        "state": {
+          "not_docked": "Non ancorato",
+          "charging": "In carica",
+          "not_charging": "Non in carica",
+          "charging_completed": "Ricarica completata",
+          "return_to_charge": "Torna alla carica",
+          "charging_paused_high_temperature": "Ricarica in pausa: temperatura della batteria troppo alta",
+          "charging_paused_low_temperature": "Ricarica in pausa: temperatura della batteria troppo bassa"
+        }
+      },
+      "device_code": {
+        "name": "Codice del dispositivo"
+      },
+      "current_task": {
+        "name": "Attività attuale",
+        "state": {
+          "idle": "Nessuna attività",
+          "starting": "Avvio",
+          "mowing": "Falciatura",
+          "paused": "In pausa",
+          "finished": "Completata",
+          "failed": "Fallita",
+          "exit": "Arrestata",
+          "returning_to_dock": "Ritorno alla stazione"
+        }
+      },
       "mowing_progress": {
         "name": "Falciatura progresso"
       },

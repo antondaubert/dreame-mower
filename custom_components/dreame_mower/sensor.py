@@ -15,6 +15,7 @@ from homeassistant.const import PERCENTAGE, SIGNAL_STRENGTH_DECIBELS_MILLIWATT, 
 from .const import DATA_COORDINATOR, DOMAIN
 from .coordinator import DreameMowerCoordinator
 from .dreame.device import CONSUMABLE_COUNTER_TOTAL_MINUTES
+from .dreame.property.property_misc import TASK_STATUS_OPTIONS
 from .entity import DreameMowerEntity
 from .config_flow import DEVICE_TYPE_SWBOT
 
@@ -41,6 +42,9 @@ async def async_setup_entry(
             DreameMowerBatterySensor(coordinator),
             DreameMowerStatusSensor(coordinator),
             DreameMowerAccountSensor(coordinator),
+            DreameMowerChargingStatusSensor(coordinator),
+            DreameMowerDeviceCodeSensor(coordinator),
+            DreameMowerTaskSensor(coordinator),
             DreameMowerSignalSensor(coordinator, "wifi_signal", "mdi:wifi"),
             DreameMowerSignalSensor(coordinator, "cellular_signal", "mdi:signal-cellular-3"),
             DreameMowerProgressSensor(coordinator),
@@ -134,6 +138,114 @@ class DreameMowerAccountSensor(DreameMowerEntity, SensorEntity):
             "account_type": self.coordinator.account_type,
             "country": self.coordinator.account_country,
         }
+
+
+class DreameMowerChargingStatusSensor(DreameMowerEntity, SensorEntity):
+    """Charging status sensor for Dreame Mower (3:2)."""
+
+    def __init__(self, coordinator: DreameMowerCoordinator) -> None:
+        """Initialize the charging status sensor."""
+        super().__init__(coordinator, "charging_status")
+        self._attr_icon = "mdi:lightning-bolt"
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_translation_key = "charging_status"
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the charging status mapped text."""
+        return self.coordinator.device_charging_status
+
+
+class DreameMowerDeviceCodeSensor(DreameMowerEntity, SensorEntity):
+    """The code that matters most of those the mower reports now.
+
+    Read from the heartbeat, which says which codes are set for as long as
+    their condition holds: an error before a warning, and both before a
+    maintenance reminder or a notice. 0 while no code is set; as some models
+    use 0 for a code of their own, only the codes attribute tells the two
+    apart, and a 0 that stands for no code has no name, description or type.
+    """
+
+    def __init__(self, coordinator: DreameMowerCoordinator) -> None:
+        """Initialize the device code sensor."""
+        super().__init__(coordinator, "device_code")
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_translation_key = "device_code"
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the current device code."""
+        return self.coordinator.device_code
+
+    @property
+    def icon(self) -> str:
+        """Return icon based on device code type."""
+        details = self._details()
+        code_type = details.get("type")
+        if code_type == "error":
+            return "mdi:alert-circle"
+        if code_type == "warning":
+            return "mdi:alert"
+        return "mdi:information-outline"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the code's name, description and type, and every code set now."""
+        code = self.coordinator.device_code
+        if code is None:
+            return {}
+        return {"code": code, **self._details(), "codes": self.coordinator.device_active_codes}
+
+    def _details(self) -> dict[str, str]:
+        """Return the current code's name, description and type; none while no code is set."""
+        code = self.coordinator.device_code
+        if code is None or not self.coordinator.device_active_codes:
+            return {}
+        return self.coordinator.device_code_details(code)
+
+
+class DreameMowerTaskSensor(DreameMowerEntity, SensorEntity):
+    """Current mowing-task status for Dreame Mower.
+
+    The value is decoded from the device heartbeat (prop 1:1). It reflects
+    whether a task is in progress, paused, or interrupted by docking — and
+    therefore whether pressing start will resume an unfinished task or
+    begin a new one.
+    """
+
+    def __init__(self, coordinator: DreameMowerCoordinator) -> None:
+        """Initialize the task sensor."""
+        super().__init__(coordinator, "current_task")
+        self._attr_icon = "mdi:clipboard-play"
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_translation_key = "current_task"
+        self._attr_device_class = SensorDeviceClass.ENUM
+        self._attr_options = list(TASK_STATUS_OPTIONS)
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the current mowing task status."""
+        return self.coordinator.device_task_status
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return supplementary task details from the device task descriptor.
+
+        These come from the task descriptor (2:50) rather than the heartbeat;
+        the device omits the optional fields (area/region/elapsed) while a task
+        is paused or docked, so they may be ``None`` in those states.
+        """
+        attributes: dict[str, Any] = {}
+        task_data = self.coordinator.current_task_data
+        if task_data:
+            attributes.update({
+                "task_type": task_data.get("type"),
+                "coverage_target": task_data.get("coverage_target"),
+                "area_id": task_data.get("area_id"),
+                "region_id": task_data.get("region_id"),
+                "elapsed_time": task_data.get("elapsed_time"),
+            })
+        return attributes
 
 
 class DreameMowerSignalSensor(DreameMowerEntity, SensorEntity):

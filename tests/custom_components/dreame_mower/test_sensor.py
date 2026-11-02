@@ -14,6 +14,9 @@ from custom_components.dreame_mower.coordinator import DreameMowerCoordinator
 from custom_components.dreame_mower.sensor import (
     DreameMowerAccountSensor,
     DreameMowerBatterySensor,
+    DreameMowerChargingStatusSensor,
+    DreameMowerDeviceCodeSensor,
+    DreameMowerTaskSensor,
     DreameMowerStatusSensor,
     DreameMowerProgressSensor,
     DreameMowerRainProtectionEndSensor,
@@ -204,3 +207,88 @@ async def test_signal_sensors_report_each_link_in_dbm(mock_coordinator):
     assert cellular.native_value == -70
     assert wifi.unique_id == "aa:bb:cc:dd:ee:ff_wifi_signal"
     assert wifi.native_unit_of_measurement == "dBm"
+
+
+async def test_charging_status_sensor_reports_the_charging_status(mock_coordinator):
+    mock_coordinator.device_charging_status = "charging_completed"
+    sensor = DreameMowerChargingStatusSensor(mock_coordinator)
+
+    assert sensor.unique_id == "aa:bb:cc:dd:ee:ff_charging_status"
+    assert sensor.native_value == "charging_completed"
+
+
+async def test_task_sensor_reports_the_task_status_and_its_details(mock_coordinator):
+    mock_coordinator.device_task_status = "paused"
+    mock_coordinator.current_task_data = {"type": 1, "coverage_target": 100, "area_id": 2}
+    sensor = DreameMowerTaskSensor(mock_coordinator)
+
+    assert sensor.unique_id == "aa:bb:cc:dd:ee:ff_current_task"
+    assert sensor.native_value == "paused"
+    assert {"finished", "failed", "exit", "paused"} <= set(sensor.options)
+    assert sensor.extra_state_attributes == {
+        "task_type": 1,
+        "coverage_target": 100,
+        "area_id": 2,
+        "region_id": None,
+        "elapsed_time": None,
+    }
+
+
+async def test_task_sensor_has_no_details_without_a_task(mock_coordinator):
+    mock_coordinator.device_task_status = "idle"
+    mock_coordinator.current_task_data = None
+
+    assert DreameMowerTaskSensor(mock_coordinator).extra_state_attributes == {}
+
+
+async def test_device_code_sensor_reports_the_current_code_with_its_details(mock_coordinator):
+    mock_coordinator.device_code = 31
+    mock_coordinator.device_active_codes = [28, 31]
+    mock_coordinator.device_code_details = MagicMock(return_value={
+        "name": "BACK_CHARGE_FAILED",
+        "description": "Failed to return for charging",
+        "type": "warning",
+    })
+    sensor = DreameMowerDeviceCodeSensor(mock_coordinator)
+
+    assert sensor.unique_id == "aa:bb:cc:dd:ee:ff_device_code"
+    assert sensor.native_value == 31
+    assert sensor.icon == "mdi:alert"
+    assert sensor.extra_state_attributes == {
+        "code": 31,
+        "name": "BACK_CHARGE_FAILED",
+        "description": "Failed to return for charging",
+        "type": "warning",
+        "codes": [28, 31],
+    }
+    mock_coordinator.device_code_details.assert_called_with(31)
+
+
+async def test_device_code_sensor_is_unknown_before_the_first_heartbeat(mock_coordinator):
+    mock_coordinator.device_code = None
+    sensor = DreameMowerDeviceCodeSensor(mock_coordinator)
+
+    assert sensor.native_value is None
+    assert sensor.icon == "mdi:information-outline"
+    assert sensor.extra_state_attributes == {}
+
+
+async def test_device_code_sensor_names_no_code_while_none_is_set(mock_coordinator):
+    """0 for no code is no code of the model, even where the model gives 0 a meaning of its own."""
+    mock_coordinator.device_code = 0
+    mock_coordinator.device_active_codes = []
+    mock_coordinator.device_code_details = MagicMock(return_value={"name": "ROBOT_LIFTED", "description": "Robot lifted", "type": "error"})
+    sensor = DreameMowerDeviceCodeSensor(mock_coordinator)
+
+    assert sensor.native_value == 0
+    assert sensor.icon == "mdi:information-outline"
+    assert sensor.extra_state_attributes == {"code": 0, "codes": []}
+    mock_coordinator.device_code_details.assert_not_called()
+
+
+async def test_device_code_sensor_shows_an_error_as_one(mock_coordinator):
+    mock_coordinator.device_code = 9
+    mock_coordinator.device_active_codes = [9]
+    mock_coordinator.device_code_details = MagicMock(return_value={"name": "CRASH_PLATE", "description": "Bumper error", "type": "error"})
+
+    assert DreameMowerDeviceCodeSensor(mock_coordinator).icon == "mdi:alert-circle"

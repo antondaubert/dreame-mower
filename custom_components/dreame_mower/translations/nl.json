@@ -82,6 +82,34 @@
           "maintenance_paused": "Gepauzeerd bij onderhoudspunt"
         }
       },
+      "charging_status": {
+        "name": "Laadstatus",
+        "state": {
+          "not_docked": "Niet aangemeerd",
+          "charging": "Laad-",
+          "not_charging": "Niet opladen",
+          "charging_completed": "Opladen voltooid",
+          "return_to_charge": "Keer terug naar de kosten",
+          "charging_paused_high_temperature": "Opladen gepauzeerd: batterijtemperatuur te hoog",
+          "charging_paused_low_temperature": "Opladen gepauzeerd: batterijtemperatuur te laag"
+        }
+      },
+      "device_code": {
+        "name": "Apparaatcode"
+      },
+      "current_task": {
+        "name": "Huidige taak",
+        "state": {
+          "idle": "Geen taak",
+          "starting": "Starten",
+          "mowing": "Maaien",
+          "paused": "Gepauzeerd",
+          "finished": "Voltooid",
+          "failed": "Mislukt",
+          "exit": "Gestopt",
+          "returning_to_dock": "Terug naar het station"
+        }
+      },
       "mowing_progress": {
         "name": "Maaier vooruitgang"
       },

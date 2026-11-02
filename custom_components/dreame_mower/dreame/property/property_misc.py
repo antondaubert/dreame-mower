@@ -72,6 +72,8 @@ _TASK_STATUS_BY_INDEX: dict[int, str] = {
     6: "exit",
     7: "returning_to_dock",
 }
+# Ordered tuple of every possible task-status value, for sensor enum options.
+TASK_STATUS_OPTIONS: tuple[str, ...] = tuple(_TASK_STATUS_BY_INDEX.values())
 
 # Task statuses that mean no mowing session is in progress. Every other decoded
 # status (starting/mowing/paused/finished/failed/returning_to_dock) means a

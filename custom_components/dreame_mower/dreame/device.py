@@ -603,6 +603,11 @@ class DreameMowerDevice:
         return self._misc_handler.mowing_session_active
 
     @property
+    def task_status(self) -> str | None:
+        """Return the current mowing task status decoded from the heartbeat."""
+        return self._misc_handler.task_status
+
+    @property
     def robot_state(self) -> dict[str, Any] | None:
         """Return where the mower stands and what it does, from its heartbeat."""
         return self._misc_handler.robot_state
@@ -625,6 +630,34 @@ class DreameMowerDevice:
             return self._device_code_handler.describe(problems[0]) if problems else None
         handler = self._device_code_handler
         return handler.device_code_description if handler.device_code_is_error else None
+
+    @property
+    def current_code(self) -> int | None:
+        """Return the code that matters most of those the heartbeat reports as set.
+
+        An error comes before a warning, and both before a maintenance reminder
+        or a notice; 0 when no code is set, None until the first heartbeat.
+        Unlike the code the mower announces once as it happens, this clears
+        once the condition no longer holds.
+        """
+        codes = self._misc_handler.active_codes
+        if codes is None:
+            return None
+        problems = self._problem_codes(codes)
+        if problems:
+            return problems[0]
+        return min(codes, key=lambda code: (code not in MAINTENANCE_REMINDER_CODES, code), default=0)
+
+    def code_details(self, code: int) -> dict[str, str]:
+        """Return the name, description and type (error, warning or info) of a code."""
+        handler = self._device_code_handler
+        if handler.is_error(code):
+            code_type = "error"
+        elif handler.is_warning(code):
+            code_type = "warning"
+        else:
+            code_type = "info"
+        return {"name": handler.name(code), "description": handler.describe(code), "type": code_type}
 
     def _problem_codes(self, codes: Iterable[int]) -> list[int]:
         """The codes that hold the mower up, errors first."""

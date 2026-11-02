@@ -82,10 +82,7 @@ _RETIRED_ENTITY_KEYS = (
     "go_to_maintenance_point",
     "find_robot",
     "dock_without_stopping",
-    "charging_status",
     "bluetooth_connection",
-    "device_code",
-    "current_task",
 )
 
 

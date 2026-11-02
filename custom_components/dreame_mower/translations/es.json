@@ -82,6 +82,34 @@
           "maintenance_paused": "En pausa en el punto de mantenimiento"
         }
       },
+      "charging_status": {
+        "name": "Estado de carga",
+        "state": {
+          "not_docked": "No atracado",
+          "charging": "Carga",
+          "not_charging": "No cargando",
+          "charging_completed": "Carga completada",
+          "return_to_charge": "Volver al cargo",
+          "charging_paused_high_temperature": "Carga pausada: temperatura de batería demasiado alta",
+          "charging_paused_low_temperature": "Carga pausada: temperatura de batería demasiado baja"
+        }
+      },
+      "device_code": {
+        "name": "Código de dispositivo"
+      },
+      "current_task": {
+        "name": "Tarea actual",
+        "state": {
+          "idle": "Sin tarea",
+          "starting": "Iniciando",
+          "mowing": "Segando",
+          "paused": "En pausa",
+          "finished": "Finalizada",
+          "failed": "Fallida",
+          "exit": "Detenida",
+          "returning_to_dock": "Regresando a la estación"
+        }
+      },
       "mowing_progress": {
         "name": "Progreso de corte"
       },

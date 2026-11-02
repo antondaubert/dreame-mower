@@ -5466,6 +5466,51 @@ def test_before_the_first_heartbeat_the_announced_error_is_the_problem(device):
     assert device.current_problem == "Bumper error"
 
 
+def test_the_current_code_is_the_one_that_matters_most_of_those_set(device):
+    """An error before a warning, a warning before a reminder, a reminder before a notice."""
+    handler = device._misc_handler._property_1_1_handler
+    # 28 blades worn, 31 failed to return, 37 path impassable, 48 task finished.
+    handler._active_codes = frozenset({28, 31, 37, 48})
+    assert device.current_code == 37
+    handler._active_codes = frozenset({28, 31, 48})
+    assert device.current_code == 31
+    handler._active_codes = frozenset({28, 48})
+    assert device.current_code == 28
+    handler._active_codes = frozenset()
+    assert device.current_code == 0
+
+
+def test_a_reminder_comes_before_a_lower_notice(device):
+    # 0 is a notice on this model, 28 a reminder to replace the blades.
+    device._misc_handler._property_1_1_handler._active_codes = frozenset({0, 28})
+    assert device.current_code == 28
+
+
+def test_the_current_code_follows_the_heartbeat_not_the_announced_code(device):
+    """An announced code is no current code: it neither counts before the first heartbeat nor lingers after it."""
+    device._misc_handler._property_1_1_handler._active_codes = None
+    device._device_code_handler.parse_value(31)
+    assert device.current_code is None
+
+    device._misc_handler._property_1_1_handler._active_codes = frozenset()
+    assert device.current_code == 0
+
+
+def test_code_details_name_describe_and_type_a_code(device):
+    assert device.code_details(31) == {
+        "name": "BACK_CHARGE_FAILED",
+        "description": "Failed to return for charging",
+        "type": "warning",
+    }
+    assert device.code_details(9)["type"] == "error"
+    assert device.code_details(0)["type"] == "info"
+    assert device.code_details(250) == {
+        "name": "Unknown Code 250",
+        "description": "Unknown device code: 250",
+        "type": "info",
+    }
+
+
 
 def _ai_obstacle(obstacle_id):
     return {"id": obstacle_id, "type": 99, "x": 0, "y": 0, "confidence": 90, "image": None, "bounds": [0, 0, 1, 1], "ignorable": True}
