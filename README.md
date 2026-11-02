@@ -47,6 +47,30 @@ show_controls: true  # what to mow and the start button
 show_trail: true     # the lanes cut during a session
 ```
 
+### Theming
+
+The card follows your Home Assistant theme out of the box. Every colour can also be set per card, all optional and all taking any CSS colour (hex, `rgb()`, or a theme variable such as `var(--primary-color)`). The editor has a field and a colour picker for each; an empty field shows the colour the theme gives.
+
+```yaml
+# the map
+palette:
+  background: "#020212"
+  noGo: "#e0115f"
+  working: "#00ffcc"
+  trail: "#ffffff"
+trailOpacity: 0.8      # opacities, 0 to 1: stripeOpacity, trailOpacity,
+zoneFillOpacity: 0.22  # zoneFillOpacity, labelOpacity, lawnShade
+# the rest of the card (tabs, buttons, lists, status colours)
+colors:
+  accent: "#00e1ff"    # accent, on_accent, text, muted, background, divider,
+  success: "#00ffcc"   # success, warning, error, info, glow_color
+glow: 0.4              # 0 to 1, a soft halo around the active elements
+```
+
+`palette` keys are `background`, `surface`, `text`, `zoneName`, `muted`, `stripe`, `pathOuter`, `pathInner`, `noGo`, `ignoreObstacles`, `spot`, `trail`, `working`, `brand`, `obstacle`, `mowerBody`, `mowerTop`, `mowerEdge`, `station`, `stationBody` and `edge`.
+
+`style: neon` is a ready-made profile for dark dashboards: outlined buttons coloured by role, glowing outlines on the map zones and the mowing trail, a condensed font and a default `glow` of 0.75. Its accent follows your theme's primary colour, and every option above still overrides it.
+
 Its tabs are **Mow** (the map and what to mow), **History** (the work log), **Schedules** and **Settings** (the mower's settings, the map editor and the maps). It fits a phone screen, so it works well on its own in a **panel** view. Dashboards whose resources are managed in YAML need it added by hand, as a JavaScript module at `/dreame_mower/dreame-mower-card.js`. The map's rotation is set in the integration's options.
 
 ## Actions
