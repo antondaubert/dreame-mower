@@ -82,6 +82,34 @@
           "maintenance_paused": "En pause au point d'entretien"
         }
       },
+      "charging_status": {
+        "name": "Statut de charge",
+        "state": {
+          "not_docked": "Pas amarré",
+          "charging": "En charge",
+          "not_charging": "Pas en charge",
+          "charging_completed": "Charge terminée",
+          "return_to_charge": "Retour à la station de charge",
+          "charging_paused_high_temperature": "Charge pausée : température de la batterie trop élevée",
+          "charging_paused_low_temperature": "Charge pausée : température de la batterie trop basse"
+        }
+      },
+      "device_code": {
+        "name": "Code de périphérique"
+      },
+      "current_task": {
+        "name": "Tâche actuelle",
+        "state": {
+          "idle": "Aucune tâche",
+          "starting": "Démarrage",
+          "mowing": "En tonte",
+          "paused": "En pause",
+          "finished": "Terminée",
+          "failed": "Échouée",
+          "exit": "Arrêtée",
+          "returning_to_dock": "Retour à la station"
+        }
+      },
       "mowing_progress": {
         "name": "Progression de la tonte"
       },

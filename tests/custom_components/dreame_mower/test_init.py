@@ -188,7 +188,10 @@ async def test_setup_drops_the_entities_earlier_versions_created(hass):
         registry.async_get_or_create("camera", DOMAIN, f"{entry.entry_id}_map_camera", config_entry=entry),
         registry.async_get_or_create("camera", DOMAIN, "11:22:33:44:55:66_map_camera", config_entry=entry),
     ]
-    kept = registry.async_get_or_create("sensor", DOMAIN, "11:22:33:44:55:66_battery", config_entry=entry)
+    kept = [
+        registry.async_get_or_create("sensor", DOMAIN, f"11:22:33:44:55:66_{key}", config_entry=entry)
+        for key in ("battery", "charging_status", "device_code", "current_task")
+    ]
 
     with patch("custom_components.dreame_mower.DreameMowerCoordinator", return_value=coordinator), patch.object(
         hass.config_entries, "async_forward_entry_setups", AsyncMock(return_value=None)
@@ -196,7 +199,7 @@ async def test_setup_drops_the_entities_earlier_versions_created(hass):
         assert await async_setup_entry(hass, entry) is True
 
     assert all(registry.async_get(entity.entity_id) is None for entity in retired)
-    assert registry.async_get(kept.entity_id) is not None
+    assert all(registry.async_get(entity.entity_id) is not None for entity in kept)
     platforms = forward_entry_setups.await_args.args[1]
     assert not {Platform.CAMERA, Platform.BUTTON, Platform.NUMBER} & set(platforms)
 

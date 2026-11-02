@@ -82,6 +82,34 @@
           "maintenance_paused": "Szüneteltetve a karbantartási ponton"
         }
       },
+      "charging_status": {
+        "name": "Töltési állapot",
+        "state": {
+          "not_docked": "Nem dokkolt",
+          "charging": "Töltés",
+          "not_charging": "Nem töltés",
+          "charging_completed": "A töltés befejeződött",
+          "return_to_charge": "Visszatérés a töltéshez",
+          "charging_paused_high_temperature": "Töltés szüneteltetve: az akkumulátor hőmérséklete túl magas",
+          "charging_paused_low_temperature": "Töltés szüneteltetve: az akkumulátor hőmérséklete túl alacsony"
+        }
+      },
+      "device_code": {
+        "name": "Eszközkód"
+      },
+      "current_task": {
+        "name": "Aktuális feladat",
+        "state": {
+          "idle": "Nincs feladat",
+          "starting": "Indítás",
+          "mowing": "Kaszálás",
+          "paused": "Szüneteltetve",
+          "finished": "Befejezve",
+          "failed": "Sikertelen",
+          "exit": "Leállítva",
+          "returning_to_dock": "Visszatérés az állomásra"
+        }
+      },
       "mowing_progress": {
         "name": "Kaszálási haladás"
       },

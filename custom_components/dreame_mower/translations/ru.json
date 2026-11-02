@@ -82,6 +82,34 @@
           "maintenance_paused": "Приостановлено в точке обслуживания"
         }
       },
+      "charging_status": {
+        "name": "Статус зарядки",
+        "state": {
+          "not_docked": "Не пристыковано",
+          "charging": "Зарядка",
+          "not_charging": "Не заряжает",
+          "charging_completed": "Зарядка завершена",
+          "return_to_charge": "Возвращение к зарядке",
+          "charging_paused_high_temperature": "Зарядка приостановлена: температура аккумулятора слишком высокая",
+          "charging_paused_low_temperature": "Зарядка приостановлена: температура аккумулятора слишком низкая"
+        }
+      },
+      "device_code": {
+        "name": "Код устройства"
+      },
+      "current_task": {
+        "name": "Текущая задача",
+        "state": {
+          "idle": "Нет задачи",
+          "starting": "Запуск",
+          "mowing": "Кошение",
+          "paused": "Приостановлено",
+          "finished": "Завершено",
+          "failed": "Ошибка",
+          "exit": "Остановлено",
+          "returning_to_dock": "Возвращение на станцию"
+        }
+      },
       "mowing_progress": {
         "name": "Загрязнение прогресса"
       },

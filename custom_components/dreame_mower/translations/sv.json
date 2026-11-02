@@ -82,6 +82,34 @@
           "maintenance_paused": "Pausad vid underhållspunkten"
         }
       },
+      "charging_status": {
+        "name": "Laddningsstatus",
+        "state": {
+          "not_docked": "Inte dockad",
+          "charging": "Laddning",
+          "not_charging": "Laddar inte",
+          "charging_completed": "Laddning avslutad",
+          "return_to_charge": "Återgå till laddning",
+          "charging_paused_high_temperature": "Laddning pausad: batteritemperaturen är för hög",
+          "charging_paused_low_temperature": "Laddning pausad: batteritemperaturen är för låg"
+        }
+      },
+      "device_code": {
+        "name": "Enhetskod"
+      },
+      "current_task": {
+        "name": "Aktuell uppgift",
+        "state": {
+          "idle": "Ingen uppgift",
+          "starting": "Startar",
+          "mowing": "Klipper",
+          "paused": "Pausad",
+          "finished": "Slutförd",
+          "failed": "Misslyckades",
+          "exit": "Stoppad",
+          "returning_to_dock": "Återvänder till stationen"
+        }
+      },
       "mowing_progress": {
         "name": "Klippa framsteg"
       },

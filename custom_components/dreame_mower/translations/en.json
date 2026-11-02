@@ -82,6 +82,34 @@
           "maintenance_paused": "Paused at maintenance point"
         }
       },
+      "charging_status": {
+        "name": "Charging Status",
+        "state": {
+          "not_docked": "Not docked",
+          "charging": "Charging",
+          "not_charging": "Not charging",
+          "charging_completed": "Charging completed",
+          "return_to_charge": "Return to charge",
+          "charging_paused_high_temperature": "Charging paused: battery temperature too high",
+          "charging_paused_low_temperature": "Charging paused: battery temperature too low"
+        }
+      },
+      "device_code": {
+        "name": "Device code"
+      },
+      "current_task": {
+        "name": "Current task",
+        "state": {
+          "idle": "No task",
+          "starting": "Starting",
+          "mowing": "Mowing",
+          "paused": "Paused",
+          "finished": "Finished",
+          "failed": "Failed",
+          "exit": "Stopped",
+          "returning_to_dock": "Returning to dock"
+        }
+      },
       "mowing_progress": {
         "name": "Mowing Progress"
       },

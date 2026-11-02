@@ -74,7 +74,12 @@ class DeviceCodeRegistry:
     def get_code(self, code: int) -> DeviceCodeDefinition | None:
         """Get device code definition by code value."""
         return self._codes.get(code)
-    
+
+    def get_name(self, code: int) -> str:
+        """Get device code name by code value, with fallback."""
+        definition = self._codes.get(code)
+        return definition.name if definition else f"Unknown Code {code}"
+
     def get_description(self, code: int) -> str:
         """Get device code description by code value, with fallback."""
         definition = self._codes.get(code)
@@ -175,6 +180,14 @@ class DeviceCodeHandler:
     def is_error(self, code: int) -> bool:
         """Return whether a code of this mower's model is an error."""
         return self._registry.is_error(code)
+
+    def is_warning(self, code: int) -> bool:
+        """Return whether a code of this mower's model is a warning."""
+        return self._registry.is_warning(code)
+
+    def name(self, code: int) -> str:
+        """Return the name of any code of this mower's model."""
+        return self._registry.get_name(code)
 
     def describe(self, code: int) -> str:
         """Return the description of any code of this mower's model."""

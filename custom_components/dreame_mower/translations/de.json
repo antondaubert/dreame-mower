@@ -82,6 +82,34 @@
           "maintenance_paused": "Pausiert am Wartungspunkt"
         }
       },
+      "charging_status": {
+        "name": "Ladestatus",
+        "state": {
+          "not_docked": "Nicht angedockt",
+          "charging": "Wird geladen",
+          "not_charging": "Wird nicht aufgeladen",
+          "charging_completed": "Vollständig geladen",
+          "return_to_charge": "Rückkehr zum Laden",
+          "charging_paused_high_temperature": "Laden pausiert: Batterietemperatur zu hoch",
+          "charging_paused_low_temperature": "Laden pausiert: Batterietemperatur zu niedrig"
+        }
+      },
+      "device_code": {
+        "name": "Gerätecode"
+      },
+      "current_task": {
+        "name": "Aktuelle Aufgabe",
+        "state": {
+          "idle": "Keine Aufgabe",
+          "starting": "Startet",
+          "mowing": "Mähen",
+          "paused": "Pausiert",
+          "finished": "Abgeschlossen",
+          "failed": "Fehlgeschlagen",
+          "exit": "Gestoppt",
+          "returning_to_dock": "Rückkehr zur Station"
+        }
+      },
       "mowing_progress": {
         "name": "Mäh Fortschritt"
       },

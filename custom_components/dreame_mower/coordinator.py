@@ -307,6 +307,35 @@ class DreameMowerCoordinator(DataUpdateCoordinator[None]):
         return self.device.status_code
 
     @property
+    def device_charging_status(self) -> str | None:
+        """Return charging status (mapped text)."""
+        return self.device.charging_status
+
+    @property
+    def current_task_data(self) -> dict | None:
+        """Return current task data from TaskHandler."""
+        return self.device.current_task_data
+
+    @property
+    def device_task_status(self) -> str | None:
+        """Return the current mowing task status decoded from the heartbeat."""
+        return self.device.task_status
+
+    @property
+    def device_code(self) -> int | None:
+        """Return the code that matters most of those the mower reports now."""
+        return self.device.current_code
+
+    @property
+    def device_active_codes(self) -> list[int]:
+        """Return every code the mower reports now."""
+        return sorted(self.device.active_codes)
+
+    def device_code_details(self, code: int) -> dict[str, str]:
+        """Return the name, description and type of a code."""
+        return self.device.code_details(code)
+
+    @property
     def mowing_progress_percent(self) -> float | None:
         """Return current mowing progress percentage."""
         return self.device.mowing_progress_percent

@@ -82,6 +82,34 @@
           "maintenance_paused": "Призупинено в точці обслуговування"
         }
       },
+      "charging_status": {
+        "name": "Статус зарядки",
+        "state": {
+          "not_docked": "Не стикається",
+          "charging": "Зарядка",
+          "not_charging": "Не заряджається",
+          "charging_completed": "Зарядка завершена",
+          "return_to_charge": "Повернення до заряду",
+          "charging_paused_high_temperature": "Зарядка призупинена: температура акумулятора занадто висока",
+          "charging_paused_low_temperature": "Зарядка призупинена: температура акумулятора занадто низька"
+        }
+      },
+      "device_code": {
+        "name": "Код пристрою"
+      },
+      "current_task": {
+        "name": "Поточне завдання",
+        "state": {
+          "idle": "Немає завдання",
+          "starting": "Запуск",
+          "mowing": "Скошування",
+          "paused": "Призупинено",
+          "finished": "Завершено",
+          "failed": "Помилка",
+          "exit": "Зупинено",
+          "returning_to_dock": "Повернення на станцію"
+        }
+      },
       "mowing_progress": {
         "name": "Косіння прогресу"
       },
