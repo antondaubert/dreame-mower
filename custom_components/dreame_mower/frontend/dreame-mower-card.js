@@ -50,36 +50,6 @@ const ZONE_COLORS = [
   "#F0FFCA", "#C4FFE1", "#FCCAEA", "#C0CCFF", "#CAFCFC", "#EBCAFC", "#DEFCCA", "#FCCAD5",
 ];
 
-// `style: "neon"`: lawns tinted towards a dark ground, outlines in the full colour.
-const NEON_ZONE_COLORS = [
-  "#00e5ff", "#ff2bd6", "#00ffcc", "#ffe25c", "#8440ff", "#ff7a3d", "#5cff6a", "#4d8bff",
-  "#ff4d6d", "#b6ff3d", "#ff8ad8", "#3dffe0", "#c78bff", "#ffc23d", "#3dd1ff", "#ff5c8a",
-];
-
-const NEON_PALETTE = {
-  neon: true,
-  background: "#080814",
-  surface: "#14122a",
-  text: "#e8e0ff",
-  zoneName: "#e8e0ff",
-  muted: "#a89cc8",
-  stripe: "#ffffff",
-  stripeOpacity: 0.05,
-  lawnShade: 0.82,
-  pathOuter: "#2a2450",
-  pathInner: "#15122e",
-  noGo: "#e0115f",
-  ignoreObstacles: "#8440ff",
-  spot: "#00ffcc",
-  trail: "#ffffff",
-  trailOpacity: 0.8,
-  zoneFillOpacity: 0.22,
-  labelOpacity: 0.92,
-  working: "#00ffcc",
-  brand: "#00e5ff",
-  edge: "#8440ff",
-};
-
 const PALETTES = {
   light: {
     background: "#f4f4f4",
@@ -151,11 +121,10 @@ const UI_COLORS = {
   success: "--mower-success",
   warning: "--mower-warning",
   info: "--mower-info",
-  glow_color: "--mower-glow-color",
 };
 
-// What each `colors` key falls back to, as in the CSS base block (the neon
-// style swaps some of them); the editor resolves these for the colour pickers.
+// What each `colors` key falls back to, as in the CSS base block; the editor
+// resolves these for the colour pickers.
 const UI_DEFAULTS = {
   accent: "var(--primary-color, #03a9f4)",
   on_accent: "var(--text-primary-color, #fff)",
@@ -168,7 +137,6 @@ const UI_DEFAULTS = {
   warning: "#f9a825",
   info: "#4a7fd6",
 };
-const UI_DEFAULTS_NEON = { on_accent: "#06060f", success: "#00ffcc", warning: "#ffe25c", error: "#e0115f", info: "#8440ff" };
 
 // === CSS ===
 
@@ -180,8 +148,8 @@ ha-card {
   --mower-text: var(--primary-text-color, #212121);
   --mower-muted: var(--secondary-text-color, #727272);
   --mower-background: var(--ha-card-background, var(--card-background-color, #fff));
-  /* Opaque colour under what covers the card (settings page, sheets), so a
-     translucent theme background does not show the card through. */
+  /* Opaque colour under the settings page and the sheets, seen only where
+     the card background is translucent. */
   --mower-cover: var(--primary-background-color, #fff);
   --mower-divider: var(--divider-color, rgba(0,0,0,.12));
   --mower-surface: color-mix(in srgb, var(--mower-text) 6%, var(--mower-background));
@@ -191,8 +159,6 @@ ha-card {
   --mower-warning: #f9a825;
   --mower-info: #4a7fd6;
   --mower-on-brand: var(--text-primary-color, #fff);
-  --mower-glow-size: 0px;
-  --mower-glow-color: var(--mower-brand);
   position: relative;
   overflow: hidden;
   color: var(--mower-text);
@@ -217,7 +183,7 @@ button { font: inherit; color: inherit; }
   cursor: pointer;
   --mdc-icon-size: 22px;
 }
-.tabs button.on { color: var(--mower-brand); border-bottom-color: var(--mower-brand); text-shadow: 0 0 var(--mower-glow-size) var(--mower-glow-color); box-shadow: 0 calc(var(--mower-glow-size) / 3) calc(var(--mower-glow-size) / 1.5) calc(var(--mower-glow-size) / -3) var(--mower-glow-color); }
+.tabs button.on { color: var(--mower-brand); border-bottom-color: var(--mower-brand); }
 .status { display: flex; align-items: center; gap: 4px; padding: 10px 6px 8px 16px; }
 .status .txt { flex: 1 1 auto; min-width: 0; }
 .status .caption { font-size: 12px; line-height: 16px; color: var(--mower-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -366,7 +332,7 @@ button { font: inherit; color: inherit; }
   cursor: pointer;
   --mdc-icon-size: 17px;
 }
-.strip button.on { background: var(--mower-brand); color: var(--mower-on-brand); box-shadow: 0 0 var(--mower-glow-size) var(--mower-glow-color); }
+.strip button.on { background: var(--mower-brand); color: var(--mower-on-brand); }
 .strip button:disabled { color: var(--mower-muted); cursor: default; }
 .strip button.on:disabled { color: var(--mower-on-brand); opacity: .6; }
 .glyph { width: 17px; height: 17px; flex: 0 0 auto; }
@@ -414,11 +380,10 @@ button { font: inherit; color: inherit; }
   cursor: pointer;
   --mdc-icon-size: 20px;
 }
-.primary { box-shadow: 0 0 var(--mower-glow-size) var(--mower-glow-color); }
 .primary small { font-size: 12px; font-weight: 400; opacity: .9; }
 .primary:disabled { opacity: .45; cursor: default; }
 .progress { height: 4px; border-radius: 2px; background: var(--mower-divider); overflow: hidden; }
-.progress > div { height: 100%; background: var(--mower-working); box-shadow: 0 0 var(--mower-glow-size) var(--mower-working); }
+.progress > div { height: 100%; background: var(--mower-working); }
 .figs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 13px; color: var(--mower-muted); }
 .figs b { color: var(--mower-text); font-weight: 500; }
 .figs .zone { margin-left: auto; }
@@ -442,7 +407,6 @@ button { font: inherit; color: inherit; }
   --mdc-icon-size: 22px;
 }
 .big ha-icon { color: var(--mower-brand); }
-.big:not(:disabled) { box-shadow: 0 0 calc(var(--mower-glow-size) / 2) color-mix(in srgb, var(--mower-glow-color) 60%, transparent); }
 .big.stop ha-icon { color: var(--mower-error); }
 .big.pause ha-icon { color: var(--mower-warning); }
 .big:disabled { color: var(--mower-muted); cursor: default; }
@@ -479,10 +443,14 @@ button { font: inherit; color: inherit; }
   z-index: 3;
   display: flex;
   flex-direction: column;
-  background: var(--mower-background);
-  background-color: var(--mower-cover);
+  isolation: isolate;
+  background: var(--mower-cover);
 }
-.settings.inline { position: static; z-index: auto; }
+/* The card's own background over the opaque base: the base shows only where
+   that background is translucent. */
+.settings::before, .sheet::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--mower-background); pointer-events: none; }
+.settings.inline { position: relative; z-index: auto; background: var(--mower-background); }
+.settings.inline::before { content: none; }
 .view { display: flex; flex-direction: column; }
 .view .sbody { padding: 0 0 12px; }
 .view .shead:empty { display: none; }
@@ -616,7 +584,7 @@ button.row:disabled { opacity: .45; cursor: default; }
   --mdc-icon-size: 16px;
 }
 .chip .glyph { width: 16px; height: 16px; }
-.chip.on { background: var(--mower-brand); border-color: var(--mower-brand); color: var(--mower-on-brand); box-shadow: 0 0 var(--mower-glow-size) var(--mower-glow-color); }
+.chip.on { background: var(--mower-brand); border-color: var(--mower-brand); color: var(--mower-on-brand); }
 .chip.danger { color: var(--mower-error); }
 .chip:disabled { opacity: .45; cursor: default; }
 .callout {
@@ -661,7 +629,7 @@ button.row:disabled { opacity: .45; cursor: default; }
   cursor: pointer;
 }
 .seg button + button { border-left: 1px solid var(--mower-divider); }
-.seg button.on { background: var(--mower-brand); color: var(--mower-on-brand); box-shadow: 0 0 var(--mower-glow-size) var(--mower-glow-color); }
+.seg button.on { background: var(--mower-brand); color: var(--mower-on-brand); }
 .seg button:disabled { opacity: .5; cursor: default; }
 .row .seg { flex: 0 0 auto; width: 176px; }
 .sfield { display: flex; flex-direction: column; gap: 6px; }
@@ -700,7 +668,7 @@ button.row:disabled { opacity: .45; cursor: default; }
   box-shadow: 0 1px 2px rgba(0,0,0,.3);
   transition: transform .15s;
 }
-.switch.on { background: var(--mower-brand); box-shadow: 0 0 var(--mower-glow-size) var(--mower-glow-color); }
+.switch.on { background: var(--mower-brand); }
 .switch:disabled { opacity: .45; cursor: default; }
 .switch.on::after { transform: translateX(18px); }
 .totals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 10px 12px 0; padding: 10px 6px; border-radius: 10px; background: var(--mower-surface); text-align: center; }
@@ -773,7 +741,6 @@ button.row:disabled { opacity: .45; cursor: default; }
 /* The bottom sheets: an obstacle's photo, the questions before a start and
    the map picker. */
 .scrim { position: absolute; inset: 0; z-index: 4; background: rgba(0,0,0,.28); }
-.neon .scrim { background: rgba(0,0,0,.5); }
 /* Pinned to the window over the card's width; left and width come from the card. */
 .scrim.pinned { position: fixed; right: auto; }
 .sheet.pinned { position: fixed; right: auto; max-height: 85vh; }
@@ -785,15 +752,23 @@ button.row:disabled { opacity: .45; cursor: default; }
   z-index: 5;
   box-sizing: border-box;
   max-height: 85%;
+  display: flex;
+  flex-direction: column;
+  isolation: isolate;
+  border-radius: 16px 16px 0 0;
+  background: var(--mower-cover);
+  box-shadow: 0 -4px 16px rgba(0,0,0,.18);
+}
+/* The sheet itself does not scroll, so that the card's background can sit
+   under all of its content. */
+.sheet .sheetbody {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 12px;
   padding: 8px 16px 16px;
-  border-radius: 16px 16px 0 0;
-  background: var(--mower-background);
-  background-color: var(--mower-cover);
-  box-shadow: 0 -4px 16px rgba(0,0,0,.18);
 }
 .sheet .grip { flex: 0 0 auto; width: 36px; height: 4px; margin: 0 auto -4px; border-radius: 2px; background: var(--mower-divider); }
 .sheet .phead { display: flex; align-items: center; gap: 8px; }
@@ -825,61 +800,6 @@ button.row:disabled { opacity: .45; cursor: default; }
 .picker .maprow span { flex: 1 1 auto; min-width: 0; font-size: 14px; font-weight: 500; }
 .picker .maprow small { display: block; font-size: 12px; font-weight: 400; color: var(--mower-muted); }
 .picker .maprow > ha-icon { color: var(--mower-brand); padding: 0 10px; }
-
-/* style: "neon" - edge, halos with a white core and role-coloured controls.
-   Colours stay overridable through the colors option. */
-ha-card.neon {
-  --mower-cover: #070612;
-  --mower-brand: var(--primary-color, #00e5ff);
-  --mower-on-brand: #06060f;
-  --mower-edge: var(--accent-color, #8440ff);
-  --mower-success: #00ffcc;
-  --mower-warning: #ffe25c;
-  --mower-error: #e0115f;
-  --mower-info: #8440ff;
-  --mower-divider: color-mix(in srgb, var(--mower-edge) 35%, transparent);
-  --mower-halo: 0 0 1px #fff, 0 0 calc(var(--mower-glow-size) * .4) var(--mower-glow-color), 0 0 calc(var(--mower-glow-size) * .8) var(--mower-glow-color), 0 0 calc(var(--mower-glow-size) * 1.4) var(--mower-glow-color);
-  --mower-font: Rajdhani, Orbitron, var(--primary-font-family, sans-serif);
-  font-family: var(--mower-font);
-}
-.neon .tabs button, .neon .strip button, .neon .seg button, .neon .chip, .neon .primary, .neon .big, .neon .group, .neon .status .caption {
-  font-family: var(--mower-font); text-transform: uppercase; letter-spacing: 1px; font-weight: 700;
-}
-.neon .status .state { font-weight: 700; letter-spacing: .8px; text-shadow: 0 0 1px #fff, 0 0 calc(var(--mower-glow-size) * .5) var(--mower-glow-color), 0 0 var(--mower-glow-size) var(--mower-glow-color); }
-.neon .tabs button.on { color: #fff; text-shadow: var(--mower-halo); }
-.neon .tabs button.on ha-icon, .neon .big ha-icon, .neon .status ha-icon {
-  filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 calc(var(--mower-glow-size) * .4) currentColor) drop-shadow(0 0 calc(var(--mower-glow-size) * .8) currentColor);
-}
-.neon .strip button.on, .neon .seg button.on, .neon .chip.on, .neon .switch.on { box-shadow: var(--mower-halo); }
-.neon .strip, .neon .seg { border-color: color-mix(in srgb, var(--mower-edge) 45%, transparent); }
-.neon .big {
-  border-radius: 8px;
-  background: linear-gradient(145deg, rgba(20,24,40,.78), rgba(8,10,22,.72));
-  color: var(--mower-brand);
-  border-color: color-mix(in srgb, currentColor 45%, transparent);
-}
-.neon .primary {
-  border: 1px solid color-mix(in srgb, currentColor 45%, transparent);
-  border-radius: 8px;
-  background: linear-gradient(145deg, rgba(20,24,40,.78), rgba(8,10,22,.72));
-  color: var(--mower-brand);
-  box-shadow: var(--mower-halo);
-}
-.neon .primary:disabled { color: var(--mower-muted); border-color: var(--mower-divider); box-shadow: none; }
-.neon .big.stop { color: var(--mower-error); }
-.neon .big.pause { color: var(--mower-warning); }
-.neon .big.start { color: var(--mower-success); }
-.neon .big ha-icon, .neon .big.stop ha-icon, .neon .big.pause ha-icon { color: inherit; }
-.neon .big:not(:disabled) { box-shadow: 0 0 1px #fff, 0 0 calc(var(--mower-glow-size) * .4) currentColor, 0 0 calc(var(--mower-glow-size) * .8) currentColor, 0 0 calc(var(--mower-glow-size) * 1.4) currentColor; }
-.neon .big:disabled { color: var(--mower-muted); border-color: var(--mower-divider); box-shadow: none; }
-.neon .progress { height: 10px; border-radius: 3px; background: rgba(0,0,0,.55); box-shadow: inset 0 2px 4px #000b, 0 0 0 1px color-mix(in srgb, var(--mower-edge) 25%, transparent); }
-.neon .progress > div { border-radius: 5px; background: linear-gradient(90deg, var(--mower-working), #fff 48%, var(--mower-working) 62%, var(--mower-edge)); box-shadow: 0 0 1px #fff, 0 0 calc(var(--mower-glow-size) * .4) #fff, 0 0 calc(var(--mower-glow-size) * .7) var(--mower-working), 0 0 calc(var(--mower-glow-size) * 1.2) var(--mower-edge); }
-.neon .row + .row { border-top-color: color-mix(in srgb, var(--mower-edge) 14%, transparent); }
-.neon .row .rt .t { font-weight: 600; letter-spacing: .5px; }
-.neon .row .ricon { box-shadow: 0 0 calc(var(--mower-glow-size) * .6) color-mix(in srgb, currentColor 55%, transparent); }
-.neon .map { background: var(--mower-background); }
-.neon .mapbtn, .neon .mapchip { background: rgba(8,10,22,.78); border-color: color-mix(in srgb, var(--mower-brand) 50%, transparent); color: var(--mower-brand); box-shadow: 0 0 calc(var(--mower-glow-size) * .5) color-mix(in srgb, var(--mower-brand) 55%, transparent); }
-.neon .callout, .neon .meter { border-color: color-mix(in srgb, var(--mower-edge) 28%, transparent); }
 [hidden] { display: none !important; }
 `;
 
@@ -1299,13 +1219,37 @@ function boxOf(points) {
 
 // === Helpers: colours ===
 
-function hexRgb(color) {
-  if (color[0] !== "#") return (color.match(/[\d.]+/g) || [0, 0, 0]).slice(0, 3).map(Number);
-  const n = parseInt(color.slice(1), 16);
+function hexRgb(hex) {
+  const n = parseInt(hex.slice(1), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
-const NEON_BASE = { ...PALETTES.dark, ...NEON_PALETTE };
+// A computed CSS colour as [r, g, b], or null. getComputedStyle hands
+// oklch(), lab() and color() back as written, so those go through a canvas,
+// which converts any CSS colour to sRGB; rgb() is read directly.
+function cssRgb(color) {
+  const direct = /^rgba?\(([^)]*)\)/.exec(color);
+  const numbers = (direct ? direct[1] : "").match(/-?\d*\.?\d+/g);
+  if (numbers && numbers.length >= 3) return numbers.slice(0, 3).map(Number);
+  try {
+    const canvas = cssRgb.canvas || (cssRgb.canvas = document.createElement("canvas"));
+    const ctx = canvas.getContext && canvas.getContext("2d", { willReadFrequently: true });
+    if (ctx) {
+      canvas.width = canvas.height = 1;
+      ctx.clearRect(0, 0, 1, 1);
+      ctx.fillStyle = "#000";
+      ctx.fillStyle = color;
+      ctx.fillRect(0, 0, 1, 1);
+      const px = ctx.getImageData(0, 0, 1, 1).data;
+      if (px[3] > 0) return [px[0], px[1], px[2]];
+    }
+  } catch (err) {
+    // No canvas to convert with: read color(srgb ...) below.
+  }
+  const srgb = /^color\(\s*srgb\s+([^)]*)\)/.exec(color);
+  const channels = srgb && srgb[1].split("/")[0].match(/-?\d*\.?\d+/g);
+  return channels && channels.length >= 3 ? channels.slice(0, 3).map((c) => Number(c) * 255) : null;
+}
 
 function rgbHex(rgb) {
   return `#${rgb.map((c) => Math.max(0, Math.min(255, Math.round(c))).toString(16).padStart(2, "0")).join("")}`;
@@ -1314,20 +1258,10 @@ function rgbHex(rgb) {
 // The lawn colour of a zone and its outline, mixed towards the background
 // by `shade` (0 keeps the colour).
 function zoneColors(id, pal) {
-  const list = pal.neon ? NEON_ZONE_COLORS : ZONE_COLORS;
-  const base = hexRgb(list[(((id - 1) % list.length) + list.length) % list.length]);
+  const base = hexRgb(ZONE_COLORS[(((id - 1) % ZONE_COLORS.length) + ZONE_COLORS.length) % ZONE_COLORS.length]);
   const bg = hexRgb(pal.background);
   const fill = base.map((c, i) => c + (bg[i] - c) * pal.lawnShade);
-  return { fill: rgbHex(fill), outline: pal.neon ? rgbHex(base) : rgbHex(fill.map((c) => c - 10)) };
-}
-
-// Soft halo of an outline, drawn as wide translucent strokes under it: no
-// filter, so panning the map stays cheap. `draw` gets the stroke attributes.
-function neonHalo(glow, color, draw) {
-  if (!(glow > 0)) return "";
-  return [[4.5, 0.1], [2.8, 0.18], [1.6, 0.3]]
-    .map(([k, a]) => draw(`stroke="${color}" stroke-opacity="${num(a * (0.4 + glow))}" stroke-width="${num(OUTLINE_WIDTH * k * (0.4 + glow))}" stroke-linejoin="round" stroke-linecap="round" pointer-events="none"`))
-    .join("");
+  return { fill: rgbHex(fill), outline: rgbHex(fill.map((c) => c - 10)) };
 }
 
 function batteryChargingIcon(level) {
@@ -2558,9 +2492,8 @@ class DreameMowerCard extends HTMLElement {
   // overrides on top. Colours may be any CSS colour, including var(--x): they
   // are resolved once here because the map mixes and draws with real values.
   _palette() {
-    const neon = !!(this._config && this._config.style === "neon");
-    const theme = neon ? "neon" : this._theme();
-    const builtIn = neon ? NEON_BASE : PALETTES[theme];
+    const theme = this._theme();
+    const builtIn = PALETTES[theme];
     const custom = (this._config && this._config.palette) || null;
     if (!custom || typeof custom !== "object") return builtIn;
     const key = `${theme}|${this._hass && this._hass.themes ? this._hass.themes.theme : ""}|${JSON.stringify(custom)}`;
@@ -2580,12 +2513,6 @@ class DreameMowerCard extends HTMLElement {
     return pal;
   }
 
-  // 0 unless the neon style is on; the same default as the interface glow.
-  _mapGlow() {
-    if (!this._config || this._config.style !== "neon") return 0;
-    return Math.max(0, Math.min(1, this._config.glow === undefined ? 0.75 : Number(this._config.glow) || 0));
-  }
-
   _resolveColor(value, fallback) {
     const probe = this._colorProbe || (this._colorProbe = document.createElement("span"));
     probe.style.color = "";
@@ -2595,8 +2522,8 @@ class DreameMowerCard extends HTMLElement {
       probe.style.display = "none";
       (this.shadowRoot || this).appendChild(probe);
     }
-    const resolved = getComputedStyle(probe).color;
-    return resolved || fallback;
+    const rgb = cssRgb(getComputedStyle(probe).color);
+    return rgb ? rgbHex(rgb) : fallback;
   }
 
   // The mower's state: the entity's activity plus what the feed reports.
@@ -2913,10 +2840,6 @@ class DreameMowerCard extends HTMLElement {
       if (typeof value === "string" && value.trim() && this._validColor(value)) style.setProperty(prop, value.trim());
       else style.removeProperty(prop);
     }
-    const neon = this._config.style === "neon";
-    this._el.card.classList.toggle("neon", neon);
-    const glow = Math.max(0, Math.min(1, this._config.glow === undefined && neon ? 0.75 : Number(this._config.glow) || 0));
-    style.setProperty("--mower-glow-size", `${Math.round(glow * 16)}px`);
   }
 
   _validColor(value) {
@@ -3177,12 +3100,8 @@ class DreameMowerCard extends HTMLElement {
         svgPolyline(tf, points, `stroke="${stroke}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round" ${extra}`);
       parts.push(line(pal.pathOuter, 590), line(pal.pathInner, 550), line(pal.pathOuter, 25, 'stroke-dasharray="200 200"'));
     }
-    const glow = pal.neon ? this._mapGlow() : 0;
-    const zonesAt = parts.length;
-    const halo = [];
     for (const zone of this._shapes.zones) {
       const colors = zoneColors(zone.id, pal);
-      if (!faded && this._modeKind() !== "edges") halo.push(neonHalo(glow, colors.outline, (a) => svgPolygon(tf, zone.points, `fill="none" ${a}`)));
       const setting = this._zoneSetting(zone.id);
       const angle = setting ? setting.stripe_angle : null;
       let fill = faded ? pal.background : colors.fill;
@@ -3202,15 +3121,12 @@ class DreameMowerCard extends HTMLElement {
       const outline = this._modeKind() === "edges" ? 'stroke="none"' : `stroke="${colors.outline}" stroke-width="${OUTLINE_WIDTH}" stroke-linejoin="round"`;
       parts.push(svgPolygon(tf, zone.points, `fill="${fill}" ${outline}`));
     }
-    parts.splice(zonesAt, 0, ...halo);
     // While the map is edited, its items are drawn from the working copy.
     for (const area of this._edit ? [] : g.no_go || []) {
       const points = pairs(area.polygon || []);
       if (area.shape === "line" && area.line) {
-        parts.push(neonHalo(glow, pal.noGo, (a) => svgPolyline(tf, [area.line.slice(0, 2), area.line.slice(2)], a)));
         parts.push(svgPolyline(tf, [area.line.slice(0, 2), area.line.slice(2)], `stroke="${pal.noGo}" stroke-width="${2 * OUTLINE_WIDTH}" stroke-linecap="round"`));
       } else if (points.length >= 3) {
-        parts.push(neonHalo(glow, pal.noGo, (a) => svgPolygon(tf, points, `fill="none" ${a}`)));
         parts.push(
           svgPolygon(tf, points, `fill="${pal.noGo}" fill-opacity="${pal.zoneFillOpacity}" stroke="${pal.noGo}" stroke-width="${OUTLINE_WIDTH}"`),
         );
@@ -3219,7 +3135,6 @@ class DreameMowerCard extends HTMLElement {
     for (const area of this._edit ? [] : g.ignore_obstacles || []) {
       const points = pairs(area.polygon || []);
       if (points.length >= 3) {
-        parts.push(neonHalo(glow, pal.ignoreObstacles, (a) => svgPolygon(tf, points, `fill="none" ${a}`)));
         parts.push(
           svgPolygon(
             tf,
@@ -3231,7 +3146,6 @@ class DreameMowerCard extends HTMLElement {
     }
     if (this._modeKind() === "spots" && !this._edit) {
       for (const spot of this._shapes.spots) {
-        parts.push(neonHalo(glow, pal.spot, (a) => svgPolygon(tf, spot.points, `fill="none" ${a}`)));
         parts.push(
           svgPolygon(tf, spot.points, `fill="${pal.spot}" fill-opacity="${pal.zoneFillOpacity}" stroke="${pal.spot}" stroke-width="${OUTLINE_WIDTH}"`),
         );
@@ -3241,7 +3155,6 @@ class DreameMowerCard extends HTMLElement {
     const current = working && this._status ? this._status.current_zone : null;
     const zone = current === null || current === undefined ? null : this._shapes.zones.find((z) => z.id === current);
     if (zone) {
-      parts.push(neonHalo(glow, pal.working, (a) => svgPolygon(tf, zone.points, `fill="none" ${a}`)));
       parts.push(
         svgPolygon(tf, zone.points, `fill="none" stroke="${pal.working}" stroke-width="${OUTLINE_WIDTH}" stroke-dasharray="300 130" pointer-events="none"`),
       );
@@ -3262,16 +3175,11 @@ class DreameMowerCard extends HTMLElement {
     }
     const d = trailPath(this._tf, this._trail);
     const pal = this._palette();
-    const glow = pal.neon ? this._mapGlow() : 0;
-    const under = (k, a) =>
-      `<path d="${d}" fill="none" stroke="${pal.working}" stroke-opacity="${num(a * (0.4 + glow))}" stroke-width="${TRAIL_WIDTH * k}" ` +
-      `stroke-linejoin="round" stroke-linecap="round" clip-path="url(#lawn-${this._uid})" pointer-events="none"/>`;
     this._setHtml(
       "trail",
       this._el.trail,
       d
-        ? (glow > 0 ? under(2.6, 0.12) + under(1.6, 0.25) : "") +
-          `<path d="${d}" fill="none" stroke="${this._palette().trail}" stroke-opacity="${this._palette().trailOpacity}" stroke-width="${TRAIL_WIDTH}" ` +
+        ? `<path d="${d}" fill="none" stroke="${pal.trail}" stroke-opacity="${pal.trailOpacity}" stroke-width="${TRAIL_WIDTH}" ` +
             `stroke-linejoin="round" stroke-linecap="round" clip-path="url(#lawn-${this._uid})" pointer-events="none"/>`
         : "",
     );
@@ -3438,10 +3346,10 @@ class DreameMowerCard extends HTMLElement {
     this._setHtml(
       "picker",
       el,
-      `<div class="grip"></div>` +
+      `<div class="sheetbody"><div class="grip"></div>` +
         `<div class="phead"><span>Maps</span><button type="button" class="iconbtn" data-close title="Close" aria-label="Close"><ha-icon icon="mdi:close"></ha-icon></button></div>` +
         `<div>${rows || `<div class="note">No maps yet</div>`}</div>` +
-        `<p>Switching takes a moment and only works while no task runs. Renaming, backups and deleting are in Settings › Maps.</p>`,
+        `<p>Switching takes a moment and only works while no task runs. Renaming, backups and deleting are in Settings › Maps.</p></div>`,
     );
   }
 
@@ -6072,7 +5980,7 @@ class DreameMowerCard extends HTMLElement {
     this._setHtml(
       "photo",
       el,
-      `<div class="grip"></div>` +
+      `<div class="sheetbody"><div class="grip"></div>` +
         `<div class="phead"><span>${esc(kind.label)} <small>${obstacle.confidence ? `· ${esc(obstacle.confidence)} % sure` : ""}</small></span>` +
         (photo.others.length > 1
           ? `<span class="pnav"><button type="button" class="iconbtn" data-step="-1" title="Previous photo" aria-label="Previous photo"><ha-icon icon="mdi:chevron-left"></ha-icon></button>` +
@@ -6084,7 +5992,8 @@ class DreameMowerCard extends HTMLElement {
         `<p>${
           ai ? "The mower recognised this obstacle with its camera and steers around it." : "The mower ran into this obstacle or saw it, and steers around it."
         }</p>` +
-        this._obstacleActions(photo),
+        this._obstacleActions(photo) +
+        `</div>`,
     );
   }
 
@@ -6475,14 +6384,14 @@ class DreameMowerCard extends HTMLElement {
       };
       this._chosen = done;
       el.innerHTML =
-        `<div class="grip"></div>` +
+        `<div class="sheetbody"><div class="grip"></div>` +
         `<div class="phead"><span>${esc(title)}</span>` +
         `<button type="button" class="iconbtn" data-choice="" title="Close" aria-label="Close"><ha-icon icon="mdi:close"></ha-icon></button></div>` +
         `<p>${esc(text)}</p>` +
         extra +
         `<div class="pactions">${options
           .map((option) => `<button type="button" class="${option.plain ? "big" : "primary"}" data-choice="${esc(option.id)}">${esc(option.label)}</button>`)
-          .join("")}</div>`;
+          .join("")}</div></div>`;
       el.onclick = (e) => {
         const button = e.target.closest("[data-choice]");
         if (button) done(button.dataset.choice || null);
@@ -6510,42 +6419,6 @@ async function loadEntityPicker() {
   }
 }
 
-// The colours and opacities of the `palette` option, as the editor lists them.
-const PALETTE_FIELDS = [
-  ["Map", [
-    ["background", "Background", "color"],
-    ["surface", "Label background", "color"],
-    ["text", "Label text", "color"],
-    ["zoneName", "Zone name", "color"],
-    ["muted", "Muted text", "color"],
-    ["lawnShade", "Lawn shade (0 = bright, 1 = background)", "number"],
-    ["stripe", "Stripes", "color"],
-    ["stripeOpacity", "Stripes opacity", "number"],
-    ["pathOuter", "Path edge", "color"],
-    ["pathInner", "Path", "color"],
-    ["edge", "Zone edge", "color"],
-  ]],
-  ["Areas", [
-    ["noGo", "No-go zone", "color"],
-    ["ignoreObstacles", "Ignore-obstacles zone", "color"],
-    ["spot", "Spot", "color"],
-    ["zoneFillOpacity", "Area fill opacity", "number"],
-    ["working", "Zone being mowed", "color"],
-    ["brand", "Selection", "color"],
-    ["obstacle", "Obstacle", "color"],
-    ["labelOpacity", "Label opacity", "number"],
-  ]],
-  ["Mower", [
-    ["trail", "Trail", "color"],
-    ["trailOpacity", "Trail opacity", "number"],
-    ["mowerBody", "Mower body", "color"],
-    ["mowerTop", "Mower top", "color"],
-    ["mowerEdge", "Mower outline", "color"],
-    ["station", "Station plate", "color"],
-    ["stationBody", "Station body", "color"],
-  ]],
-];
-
 // The `colors` option as the editor lists it; every colour is the theme's
 // until set.
 const UI_FIELDS = [
@@ -6559,7 +6432,6 @@ const UI_FIELDS = [
   ["warning", "Warning"],
   ["error", "Error"],
   ["info", "Info"],
-  ["glow_color", "Glow (accent by default)"],
 ];
 
 class DreameMowerCardEditor extends HTMLElement {
@@ -6588,42 +6460,19 @@ class DreameMowerCardEditor extends HTMLElement {
     const rgb = getComputedStyle(probe).color;
     probe.remove();
     if (rgb.includes("var(")) return null;
-    const n = (rgb.match(/-?\d*\.?\d+/g) || []).slice(0, 3).map(Number);
-    if (n.length < 3) return null;
-    const k = rgb.startsWith("color(") ? 255 : 1;
-    return "#" + n.map((c) => Math.max(0, Math.min(255, Math.round(c * k))).toString(16).padStart(2, "0")).join("");
+    const channels = cssRgb(rgb);
+    return channels ? rgbHex(channels) : null;
   }
 
   // The colour a `colors` key shows when it is left to the theme.
   _uiDefault(key) {
-    const colors = (this._config && this._config.colors) || {};
-    if (key === "glow_color") return colors.accent || this._uiDefault("accent");
-    const neon = this._config && this._config.style === "neon";
-    return (neon && UI_DEFAULTS_NEON[key]) || UI_DEFAULTS[key];
-  }
-
-  // The built-in palette of the mode the card is drawn in.
-  _builtIn() {
-    if (this._config.style === "neon") return NEON_BASE;
-    const forced = this._config.theme;
-    const dark = forced === "dark" || (forced !== "light" && !!this._hass && !!this._hass.themes && this._hass.themes.darkMode === true);
-    return PALETTES[dark ? "dark" : "light"];
+    return UI_DEFAULTS[key];
   }
 
   _render() {
     if (!this._config || !this._hass || this._built) return;
     this._built = true;
     this.attachShadow({ mode: "open" });
-    const fields = PALETTE_FIELDS.map(
-      ([group, items]) =>
-        `<details><summary>${esc(group)}</summary>${items
-          .map(([key, label, kind]) =>
-            kind === "color"
-              ? `<label class="row">${esc(label)}<span class="pair"><input type="text" data-palette="${key}" spellcheck="false"><input type="color" data-picker="${key}"></span></label>`
-              : `<label class="row">${esc(label)}<span class="pair"><input type="range" min="0" max="1" step="0.01" data-palette="${key}"><output data-out="${key}"></output><button type="button" data-reset="${key}" title="Default">↺</button></span></label>`,
-          )
-          .join("")}</details>`,
-    ).join("");
     const ui = UI_FIELDS.map(
       ([key, label]) =>
         `<label class="row">${esc(label)}<span class="pair"><input type="text" data-colors="${key}" spellcheck="false" placeholder="theme"><input type="color" data-cpicker="${key}"></span></label>`,
@@ -6634,37 +6483,21 @@ class DreameMowerCardEditor extends HTMLElement {
       .row { margin: 8px 0; }
       .pair { display: flex; align-items: center; gap: 8px; }
       .pair input[type="text"] { flex: 1; min-width: 0; }
-      .pair input[type="range"] { flex: 1; min-width: 0; }
       .pair input[type="color"] { width: 40px; height: 32px; padding: 0; border: 1px solid var(--divider-color); border-radius: 6px; background: none; }
       input[type="text"], select { font: inherit; padding: 6px; color: var(--primary-text-color); background: var(--card-background-color); border: 1px solid var(--divider-color); border-radius: 6px; }
-      .pair button { font: inherit; cursor: pointer; color: var(--primary-text-color); background: none; border: 1px solid var(--divider-color); border-radius: 6px; padding: 4px 8px; }
-      output { min-width: 4ch; text-align: right; color: var(--primary-text-color); }
-      .check { flex-direction: row; align-items: center; gap: 8px; margin: 8px 0; }
       details { margin-top: 12px; border-top: 1px solid var(--divider-color); padding-top: 8px; }
       summary { cursor: pointer; color: var(--primary-text-color); font-weight: 500; }
       .hint { margin: 12px 0 0; font-size: .85em; color: var(--secondary-text-color); }
     </style><div class="root">
       <div class="entity"></div>
-      <label class="check"><input type="checkbox" data-flag="show_header"> Show the status header</label>
-      <label class="check"><input type="checkbox" data-flag="show_controls"> Show the controls</label>
-      <label class="check"><input type="checkbox" data-flag="show_trail"> Show the mowing trail</label>
-      <label class="row">Theme<select data-select="theme"><option value="auto">Follow Home Assistant</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
       <details><summary>Interface</summary>
         <p class="hint">Colours of the tabs, buttons and lists. Empty follows the Home Assistant theme.</p>
         ${ui}
-        <label class="row">Glow<span class="pair"><input type="range" min="0" max="1" step="0.01" data-glow="glow"><output data-out="glow"></output><button type="button" data-reset-glow title="Default">↺</button></span></label>
       </details>
-      <p class="hint">Map colours: any CSS colour, var(--x) included. Empty keeps the built-in colour.</p>
-      ${fields}
     </div>`;
     this._entityBox = this.shadowRoot.querySelector(".entity");
     this.shadowRoot.addEventListener("input", (e) => this._onInput(e));
     this.shadowRoot.addEventListener("change", (e) => this._onInput(e));
-    this.shadowRoot.addEventListener("click", (e) => {
-      const reset = e.target.closest && e.target.closest("[data-reset]");
-      if (reset) this._setPalette(reset.dataset.reset, "");
-      if (e.target.closest && e.target.closest("[data-reset-glow]")) this._setRoot("glow", "");
-    });
     this._buildEntity();
   }
 
@@ -6706,12 +6539,6 @@ class DreameMowerCardEditor extends HTMLElement {
       }
       this._fallback.value = entity || "";
     }
-    const flags = { show_header: true, show_controls: true, show_trail: true };
-    for (const box of root.querySelectorAll("[data-flag]")) {
-      box.checked = this._config[box.dataset.flag] ?? flags[box.dataset.flag];
-    }
-    const theme = root.querySelector('[data-select="theme"]');
-    if (theme !== active) theme.value = this._config.theme || "auto";
     const colors = this._config.colors || {};
     for (const input of root.querySelectorAll("[data-colors]")) {
       const key = input.dataset.colors;
@@ -6721,48 +6548,13 @@ class DreameMowerCardEditor extends HTMLElement {
       input.placeholder = shown || "theme";
       if (shown) picker.value = shown;
     }
-    const glow = root.querySelector("[data-glow]");
-    const glowValue = Number(this._config.glow) || 0;
-    if (glow !== active) glow.value = glowValue;
-    root.querySelector('[data-out="glow"]').textContent = glowValue.toFixed(2);
-    const custom = this._config.palette || {};
-    const base = this._builtIn();
-    for (const input of root.querySelectorAll("[data-palette]")) {
-      const key = input.dataset.palette;
-      const value = custom[key];
-      if (input.type === "range") {
-        const shown = value === undefined || value === "" ? base[key] : Number(value);
-        if (input !== active) input.value = shown;
-        root.querySelector(`[data-out="${key}"]`).textContent = Number(shown).toFixed(2);
-      } else {
-        if (input !== active) input.value = value || "";
-        input.placeholder = base[key];
-        const picker = root.querySelector(`[data-picker="${key}"]`);
-        const shown = this._hex(value || base[key]);
-        if (shown) picker.value = shown;
-      }
-    }
   }
 
   _onInput(e) {
     const t = e.target;
-    if (t.dataset.flag) return this._fire({ ...this._config, [t.dataset.flag]: t.checked });
-    if (t.dataset.select === "theme") return this._fire({ ...this._config, theme: t.value });
     if (t.dataset.select === "entity") return this._setEntity(t.value);
-    if (t.dataset.picker) return this._setPalette(t.dataset.picker, t.value);
     if (t.dataset.cpicker) return this._setColor(t.dataset.cpicker, t.value);
     if (t.dataset.colors) return this._setColor(t.dataset.colors, t.value.trim());
-    if (t.dataset.glow) return this._setRoot("glow", Number(t.value));
-    if (t.dataset.palette) this._setPalette(t.dataset.palette, t.type === "range" ? Number(t.value) : t.value.trim());
-  }
-
-  _setPalette(key, value) {
-    const palette = { ...(this._config.palette || {}) };
-    if (value === "" || value === null) delete palette[key];
-    else palette[key] = value;
-    const config = { ...this._config, palette };
-    if (!Object.keys(palette).length) delete config.palette;
-    this._fire(config);
   }
 
   _setColor(key, value) {
@@ -6771,12 +6563,6 @@ class DreameMowerCardEditor extends HTMLElement {
     else colors[key] = value;
     const config = { ...this._config, colors };
     if (!Object.keys(colors).length) delete config.colors;
-    this._fire(config);
-  }
-
-  _setRoot(key, value) {
-    const config = { ...this._config, [key]: value };
-    if (value === "" || value === 0) delete config[key];
     this._fire(config);
   }
 
