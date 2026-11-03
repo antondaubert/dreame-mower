@@ -58,15 +58,15 @@ palette:
   noGo: "#e0115f"
   working: "#00ffcc"
   trail: "#ffffff"
-trailOpacity: 0.8      # opacities, 0 to 1: stripeOpacity, trailOpacity,
-zoneFillOpacity: 0.22  # zoneFillOpacity, labelOpacity, lawnShade
+  trailOpacity: 0.8      # opacities, 0 to 1: stripeOpacity, trailOpacity,
+  zoneFillOpacity: 0.22  # zoneFillOpacity, labelOpacity, lawnShade
 # the rest of the card (tabs, buttons, lists, status colours)
 colors:
   accent: "#00e1ff"    # accent, on_accent, text, muted, background, divider,
   success: "#00ffcc"   # success, warning, error, info
 ```
 
-`palette` keys are `background`, `surface`, `text`, `zoneName`, `muted`, `stripe`, `pathOuter`, `pathInner`, `noGo`, `ignoreObstacles`, `spot`, `trail`, `working`, `brand`, `obstacle`, `mowerBody`, `mowerTop`, `mowerEdge`, `station`, `stationBody` and `edge`.
+`palette` colour keys are `background`, `surface`, `text`, `zoneName`, `muted`, `stripe`, `pathOuter`, `pathInner`, `noGo`, `ignoreObstacles`, `spot`, `trail`, `working`, `brand`, `obstacle`, `mowerBody`, `mowerTop`, `mowerEdge`, `station`, `stationBody` and `edge`.
 
 Palette colours are opaque: set the transparency of the stripes, the trail, the zone fills and the labels with their opacity keys. The settings page and the sheets paint your card background over an opaque base, so a translucent background does not let the map show through them.
 

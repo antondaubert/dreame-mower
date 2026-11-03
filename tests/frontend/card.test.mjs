@@ -1112,3 +1112,76 @@ test("the editor's colour pickers show the theme's colour while a field is left 
   assert.equal(picker("success"), "#43a047");
   assert.equal(editor.shadowRoot.querySelector('[data-colors="success"]').placeholder, "#43a047");
 });
+
+test("a palette colour given as a card variable resolves inside the card, after the colors option", async () => {
+  const window = load("dreame-mower-card.js");
+  const computed = window.getComputedStyle;
+  // Stands in for the cascade: the probe sees the accent only inside the card.
+  window.getComputedStyle = (el) =>
+    el.closest && el.closest("ha-card") ? { color: el.closest("ha-card").style.getPropertyValue("--mower-brand") === "#00e8ff" ? "rgb(0, 232, 255)" : "rgb(1, 1, 1)" } : computed(el);
+  try {
+    const card = await mount(window, fakeHass(), { theme: "dark", colors: { accent: "#00e8ff" }, palette: { noGo: "var(--mower-brand)" } });
+    card._render();
+    assert.equal(card._palette().noGo, "#00e8ff");
+    // A new accent alone resolves the palette again.
+    card.setConfig({ entity: MOWER, theme: "dark", colors: { accent: "#ff0000" }, palette: { noGo: "var(--mower-brand)" } });
+    card._render();
+    assert.equal(card._palette().noGo, "#010101");
+  } finally {
+    window.getComputedStyle = computed;
+  }
+});
+
+test("the dark success text follows the colors option and keeps its own shade otherwise", async () => {
+  const window = load("dreame-mower-card.js");
+  const plain = await mount(window, fakeHass(), {});
+  const css = plain.shadowRoot.querySelector("style").textContent;
+  assert.match(css, /--mower-success-ink: #2e7d32;/);
+  assert.equal(plain._el.card.style.getPropertyValue("--mower-success-ink"), "");
+  const custom = await mount(window, fakeHass(), { colors: { success: "#00ffcc" } });
+  assert.equal(custom._el.card.style.getPropertyValue("--mower-success-ink"), "color-mix(in srgb, var(--mower-success) 70%, #000)");
+});
+
+test("the editor takes the card background from --ha-card-background when that is a colour", async () => {
+  const window = load("dreame-mower-card.js");
+  const editor = window.document.createElement("dreame-mower-card-editor");
+  const computed = window.getComputedStyle;
+  const supports = window.CSS.supports;
+  let card = "";
+  window.getComputedStyle = () => ({ getPropertyValue: (name) => (name === "--ha-card-background" ? card : "") });
+  window.CSS.supports = (property, value) => property === "color" && !value.includes("gradient");
+  try {
+    card = " #102030";
+    assert.equal(editor._uiDefault("background"), "#102030");
+    card = "linear-gradient(#000, #fff)";
+    assert.equal(editor._uiDefault("background"), "var(--card-background-color, #fff)");
+    card = "";
+    assert.equal(editor._uiDefault("background"), "var(--card-background-color, #fff)");
+  } finally {
+    window.getComputedStyle = computed;
+    window.CSS.supports = supports;
+  }
+});
+
+test("the editor refreshes its colour fields when the theme changes, not on every state", async () => {
+  const window = load("dreame-mower-card.js");
+  const editor = window.document.createElement("dreame-mower-card-editor");
+  editor.setConfig({ entity: MOWER });
+  const hass = fakeHass();
+  editor.hass = hass;
+  window.document.body.appendChild(editor);
+  let syncs = 0;
+  const sync = editor._syncValues.bind(editor);
+  editor._syncValues = () => {
+    syncs += 1;
+    sync();
+  };
+  editor.hass = { ...hass };
+  assert.equal(syncs, 0);
+  editor.hass = { ...hass, themes: { darkMode: true, theme: "other" } };
+  assert.equal(syncs, 1);
+  // Attached again, it shows the colours of the page it is in.
+  editor.remove();
+  window.document.body.appendChild(editor);
+  assert.equal(syncs, 2);
+});

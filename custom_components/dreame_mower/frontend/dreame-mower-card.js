@@ -156,6 +156,8 @@ ha-card {
   --mower-brand: var(--primary-color, #03a9f4);
   --mower-error: var(--error-color, #db4437);
   --mower-success: #43a047;
+  /* A darker success for text on a light tint; follows colors.success. */
+  --mower-success-ink: #2e7d32;
   --mower-warning: #f9a825;
   --mower-info: #4a7fd6;
   --mower-on-brand: var(--text-primary-color, #fff);
@@ -519,7 +521,7 @@ button.row:disabled { opacity: .45; cursor: default; }
   color: var(--mower-brand);
 }
 .row .ricon .glyph { width: 20px; height: 20px; }
-.row .ricon.g { background: color-mix(in srgb, var(--mower-success) 14%, transparent); color: color-mix(in srgb, var(--mower-success) 70%, #000); }
+.row .ricon.g { background: color-mix(in srgb, var(--mower-success) 14%, transparent); color: var(--mower-success-ink); }
 .row .ricon.o { background: color-mix(in srgb, #ef6c00 13%, transparent); color: #ef6c00; }
 .row .ricon.p { background: color-mix(in srgb, #8e24aa 12%, transparent); color: #8e24aa; }
 .row .ricon.n { background: color-mix(in srgb, var(--mower-text) 7%, transparent); color: var(--mower-muted); }
@@ -733,7 +735,7 @@ button.row:disabled { opacity: .45; cursor: default; }
 .maplist .mapcard.empty .name { color: var(--mower-muted); }
 .maplist .mapcard .info { flex: 1 1 auto; min-width: 0; }
 .maplist .mapcard .info .hint { padding: 0; }
-.maplist .inuse { padding: 1px 6px; border-radius: 5px; font-size: 11.5px; font-weight: 500; color: color-mix(in srgb, var(--mower-success) 70%, #000); background: color-mix(in srgb, var(--mower-success) 15%, transparent); }
+.maplist .inuse { padding: 1px 6px; border-radius: 5px; font-size: 11.5px; font-weight: 500; color: var(--mower-success-ink); background: color-mix(in srgb, var(--mower-success) 15%, transparent); }
 .maplist .ops { margin-top: 10px; }
 .maplist .ops input { flex: 1 1 140px; min-width: 0; padding: 5px 8px; border: 1px solid var(--mower-divider); border-radius: 6px; background: var(--mower-background); color: inherit; font: inherit; }
 .maplist .hint { padding: 0; }
@@ -2496,7 +2498,7 @@ class DreameMowerCard extends HTMLElement {
     const builtIn = PALETTES[theme];
     const custom = (this._config && this._config.palette) || null;
     if (!custom || typeof custom !== "object") return builtIn;
-    const key = `${theme}|${this._hass && this._hass.themes ? this._hass.themes.theme : ""}|${JSON.stringify(custom)}`;
+    const key = `${theme}|${this._hass && this._hass.themes ? this._hass.themes.theme : ""}|${JSON.stringify(custom)}|${JSON.stringify(this._config.colors || null)}`;
     if (this._paletteKey === key) return this._paletteCache;
     const pal = { ...builtIn };
     for (const [name, value] of Object.entries(custom)) {
@@ -2518,9 +2520,11 @@ class DreameMowerCard extends HTMLElement {
     probe.style.color = "";
     probe.style.color = value;
     if (!probe.style.color) return fallback;
-    if (!probe.isConnected) {
+    // Inside the card, where its own --mower-* variables apply too.
+    const host = (this._el && this._el.card) || this.shadowRoot || this;
+    if (probe.parentNode !== host) {
       probe.style.display = "none";
-      (this.shadowRoot || this).appendChild(probe);
+      host.appendChild(probe);
     }
     const rgb = cssRgb(getComputedStyle(probe).color);
     return rgb ? rgbHex(rgb) : fallback;
@@ -2830,16 +2834,20 @@ class DreameMowerCard extends HTMLElement {
   // The map keeps its own palette; the rest of the card follows Home
   // Assistant's theme through its CSS variables.
   _renderTheme() {
-    const pal = this._palette();
     const style = this._el.card.style;
-    style.setProperty("--mower-map-background", pal.background);
-    style.setProperty("--mower-working", pal.working);
+    // The interface colours first, so that a palette colour given as one of
+    // the card's variables resolves to them.
     const colors = this._config.colors && typeof this._config.colors === "object" ? this._config.colors : {};
     for (const [name, prop] of Object.entries(UI_COLORS)) {
       const value = colors[name];
       if (typeof value === "string" && value.trim() && this._validColor(value)) style.setProperty(prop, value.trim());
       else style.removeProperty(prop);
     }
+    if (style.getPropertyValue("--mower-success")) style.setProperty("--mower-success-ink", "color-mix(in srgb, var(--mower-success) 70%, #000)");
+    else style.removeProperty("--mower-success-ink");
+    const pal = this._palette();
+    style.setProperty("--mower-map-background", pal.background);
+    style.setProperty("--mower-working", pal.working);
   }
 
   _validColor(value) {
@@ -6445,6 +6453,16 @@ class DreameMowerCardEditor extends HTMLElement {
     this._hass = hass;
     this._render();
     if (this._picker) this._picker.hass = hass;
+    // The fields only show the config and the theme's colours: states coming
+    // in leave them as they are.
+    if (this._synced && hass.themes === this._themes) return;
+    this._synced = !!this._built;
+    this._themes = hass.themes;
+    this._syncValues();
+  }
+
+  // The theme's colours resolve only once the editor is in the page.
+  connectedCallback() {
     this._syncValues();
   }
 
@@ -6466,6 +6484,12 @@ class DreameMowerCardEditor extends HTMLElement {
 
   // The colour a `colors` key shows when it is left to the theme.
   _uiDefault(key) {
+    // The card prefers --ha-card-background, unless a theme sets it to
+    // something other than a colour (a gradient, say).
+    if (key === "background") {
+      const card = getComputedStyle(this).getPropertyValue("--ha-card-background").trim();
+      if (card && window.CSS && window.CSS.supports && window.CSS.supports("color", card)) return card;
+    }
     return UI_DEFAULTS[key];
   }
 
