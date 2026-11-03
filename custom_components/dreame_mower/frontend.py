@@ -4,8 +4,10 @@ The card is one JavaScript module shipped with the integration. It is
 served from a fixed path, added to the dashboard resources (where those
 are managed in storage) and fed through the map websocket command. Its 3D
 view is a section in a module of its own, loaded on every page, with the
-three.js build it imports and the point clouds it shows. All of that
-happens once per Home Assistant instance, when the first entry is set up.
+three.js build it imports and the point clouds it shows. The card's styles
+are modules too, one per file in `frontend/styles/`, each loaded on every
+page. All of that happens once per Home Assistant instance, when the first
+entry is set up.
 """
 
 from __future__ import annotations
@@ -38,6 +40,9 @@ SECTION_3D_PATH = Path(__file__).parent / "frontend" / SECTION_3D_FILE
 THREE_FILE = "three-0.160.0.module.min.js"
 THREE_URL = f"/{DOMAIN}/{THREE_FILE}"
 THREE_PATH = Path(__file__).parent / "frontend" / THREE_FILE
+# The card's styles: every module in the folder registers one.
+STYLES_URL = f"/{DOMAIN}/styles"
+STYLES_PATH = Path(__file__).parent / "frontend" / "styles"
 _DATA_READY = f"{DOMAIN}_frontend_ready"
 
 
@@ -45,13 +50,15 @@ async def async_setup_frontend(hass: HomeAssistant) -> None:
     """Serve the card, register the dashboard resource and the map feed."""
     if hass.data.get(_DATA_READY):
         return
-    await hass.http.async_register_static_paths(
-        [
-            StaticPathConfig(CARD_URL, str(CARD_PATH), cache_headers=True),
-            StaticPathConfig(SECTION_3D_URL, str(SECTION_3D_PATH), cache_headers=True),
-            StaticPathConfig(THREE_URL, str(THREE_PATH), cache_headers=True),
-        ]
-    )
+    styles = await hass.async_add_executor_job(_style_files)
+    paths = [
+        StaticPathConfig(CARD_URL, str(CARD_PATH), cache_headers=True),
+        StaticPathConfig(SECTION_3D_URL, str(SECTION_3D_PATH), cache_headers=True),
+        StaticPathConfig(THREE_URL, str(THREE_PATH), cache_headers=True),
+    ]
+    if styles:
+        paths.append(StaticPathConfig(STYLES_URL, str(STYLES_PATH), cache_headers=True))
+    await hass.http.async_register_static_paths(paths)
     async_register_command(hass, ws_subscribe_map)
     async_register_command(hass, ws_work_log)
     async_register_command(hass, ws_work_log_subscribe)
@@ -65,6 +72,8 @@ async def async_setup_frontend(hass: HomeAssistant) -> None:
     if "frontend" in hass.config.components:
         checksum = await hass.async_add_executor_job(_card_checksum, SECTION_3D_PATH)
         add_extra_js_url(hass, f"{SECTION_3D_URL}?v={checksum}")
+        for name, style_checksum in styles:
+            add_extra_js_url(hass, f"{STYLES_URL}/{name}?v={style_checksum}")
     # The card is served and fed either way; without the resource it only has
     # to be added to the dashboards by hand.
     try:
@@ -77,6 +86,13 @@ async def async_setup_frontend(hass: HomeAssistant) -> None:
 
 def _card_checksum(path: Path = CARD_PATH) -> str:
     return f"{zlib.crc32(path.read_bytes()):08x}"
+
+
+def _style_files() -> list[tuple[str, str]]:
+    """The style modules shipped with the card, by name, with their checksums."""
+    if not STYLES_PATH.is_dir():
+        return []
+    return [(path.name, _card_checksum(path)) for path in sorted(STYLES_PATH.glob("*.js")) if path.is_file()]
 
 
 async def _async_register_resource(hass: HomeAssistant, url: str) -> None:

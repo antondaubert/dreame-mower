@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -18,6 +19,7 @@ from custom_components.dreame_mower.frontend import (
     CARD_URL,
     SECTION_3D_PATH,
     SECTION_3D_URL,
+    STYLES_URL,
     THREE_PATH,
     THREE_URL,
     async_setup_frontend,
@@ -89,6 +91,39 @@ async def test_the_3d_view_is_loaded_on_every_page(hass: HomeAssistant) -> None:
     ):
         await async_setup_frontend(hass)
     extra.assert_called_once_with(hass, f"{SECTION_3D_URL}?v={frontend._card_checksum(SECTION_3D_PATH)}")
+
+
+async def test_every_style_module_is_served_and_loaded(hass: HomeAssistant, tmp_path: Path) -> None:
+    assert await async_setup_component(hass, "http", {})
+    hass.config.components.add("frontend")
+    (tmp_path / "neon.js").write_text("// neon")
+    (tmp_path / "calm.js").write_text("// calm")
+    (tmp_path / "notes.md").write_text("not a module")
+    with (
+        patch.object(frontend, "STYLES_PATH", tmp_path),
+        patch.object(hass.http, "async_register_static_paths", AsyncMock()) as serve,
+        patch.object(frontend, "async_register_command"),
+        patch.object(frontend, "add_extra_js_url") as extra,
+        patch.object(frontend, "_async_register_resource", AsyncMock()),
+    ):
+        await async_setup_frontend(hass)
+    assert (STYLES_URL, str(tmp_path), True) in [(c.url_path, c.path, c.cache_headers) for c in serve.await_args.args[0]]
+    assert [call.args[1] for call in extra.call_args_list[1:]] == [
+        f"{STYLES_URL}/calm.js?v={frontend._card_checksum(tmp_path / 'calm.js')}",
+        f"{STYLES_URL}/neon.js?v={frontend._card_checksum(tmp_path / 'neon.js')}",
+    ]
+
+
+async def test_without_styles_no_folder_is_served(hass: HomeAssistant, tmp_path: Path) -> None:
+    assert await async_setup_component(hass, "http", {})
+    with (
+        patch.object(frontend, "STYLES_PATH", tmp_path / "missing"),
+        patch.object(hass.http, "async_register_static_paths", AsyncMock()) as serve,
+        patch.object(frontend, "async_register_command"),
+        patch.object(frontend, "_async_register_resource", AsyncMock()),
+    ):
+        await async_setup_frontend(hass)
+    assert STYLES_URL not in [config.url_path for config in serve.await_args.args[0]]
 
 
 async def test_a_failing_resource_leaves_the_card_served(hass: HomeAssistant, caplog: pytest.LogCaptureFixture) -> None:

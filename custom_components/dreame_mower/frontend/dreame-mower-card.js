@@ -802,6 +802,16 @@ button.row:disabled { opacity: .45; cursor: default; }
 .picker .maprow span { flex: 1 1 auto; min-width: 0; font-size: 14px; font-weight: 500; }
 .picker .maprow small { display: block; font-size: 12px; font-weight: 400; color: var(--mower-muted); }
 .picker .maprow > ha-icon { color: var(--mower-brand); padding: 0 10px; }
+/* A style's glow (its size in --mower-glow-size) and outlined controls. */
+ha-card.glow { --mower-glow-color: var(--mower-brand); }
+.glow .tabs button.on { text-shadow: 0 0 var(--mower-glow-size) var(--mower-glow-color); }
+.glow .strip button.on, .glow .seg button.on, .glow .chip.on, .glow .switch.on, .glow .primary:not(:disabled) { box-shadow: 0 0 var(--mower-glow-size) var(--mower-glow-color); }
+.glow .big:not(:disabled) { box-shadow: 0 0 calc(var(--mower-glow-size) / 2) color-mix(in srgb, var(--mower-glow-color) 60%, transparent); }
+.glow .progress > div { box-shadow: 0 0 var(--mower-glow-size) var(--mower-working); }
+.outlined .strip button.on, .outlined .seg button.on, .outlined .primary { background: transparent; color: var(--mower-brand); box-shadow: inset 0 0 0 1px currentColor; }
+.glow.outlined .strip button.on, .glow.outlined .seg button.on, .glow.outlined .primary:not(:disabled) { box-shadow: inset 0 0 0 1px currentColor, 0 0 var(--mower-glow-size) var(--mower-glow-color); }
+.outlined .strip button.on:disabled { color: var(--mower-brand); }
+.outlined .chip.on { background: transparent; color: var(--mower-brand); }
 [hidden] { display: none !important; }
 `;
 
@@ -1258,12 +1268,24 @@ function rgbHex(rgb) {
 }
 
 // The lawn colour of a zone and its outline, mixed towards the background
-// by `shade` (0 keeps the colour).
+// by `shade` (0 keeps the colour). A style may bring its own zone colours;
+// with a glow the outline keeps the full colour, as the halo around it does.
 function zoneColors(id, pal) {
-  const base = hexRgb(ZONE_COLORS[(((id - 1) % ZONE_COLORS.length) + ZONE_COLORS.length) % ZONE_COLORS.length]);
+  const list = pal.zones || ZONE_COLORS;
+  const base = hexRgb(list[(((id - 1) % list.length) + list.length) % list.length]);
   const bg = hexRgb(pal.background);
   const fill = base.map((c, i) => c + (bg[i] - c) * pal.lawnShade);
-  return { fill: rgbHex(fill), outline: rgbHex(fill.map((c) => c - 10)) };
+  return { fill: rgbHex(fill), outline: pal.glow > 0 ? rgbHex(base) : rgbHex(fill.map((c) => c - 10)) };
+}
+
+// The halo of an outline for a style's glow: wide translucent strokes under
+// it, no filter, so panning the map stays cheap. `draw` gets the stroke
+// attributes; nothing without a glow.
+function glowStrokes(glow, color, draw) {
+  if (!(glow > 0)) return "";
+  return [[4.5, 0.1], [2.8, 0.18], [1.6, 0.3]]
+    .map(([k, a]) => draw(`stroke="${color}" stroke-opacity="${num(a * (0.4 + glow))}" stroke-width="${num(OUTLINE_WIDTH * k * (0.4 + glow))}" stroke-linejoin="round" stroke-linecap="round" pointer-events="none"`))
+    .join("");
 }
 
 function batteryChargingIcon(level) {
@@ -1973,6 +1995,43 @@ const SECTION_TYPES = [];
 // Cards on the page, to set up sections registered after them.
 const LIVE_CARDS = new Set();
 
+/*
+ * Styles other modules add with DreameMowerCard.registerStyle({...}) and a
+ * card picks with `style: <id>`. A style is data, every part optional:
+ *   id, label    the name in the config and in the editor
+ *   base         "light" | "dark": the built-in map palette it starts from
+ *   colors       defaults for the card's `colors` option
+ *   palette      defaults for the card's `palette` option
+ *   zoneColors   the zones' colours, in their order
+ *   glow         0 to 1: a halo around active controls, the map's outlines
+ *                and the trail
+ *   buttons      "filled" (the default) | "outlined": the selected and
+ *                primary controls
+ *   font         a font stack for the card
+ * The card's own `colors` and `palette` go over the style's.
+ */
+const STYLE_TYPES = [];
+// Open editors, to list styles registered after them.
+const LIVE_EDITORS = new Set();
+
+// A style as the card uses it, or null when it is not one.
+function styleType(style) {
+  if (!style || typeof style.id !== "string" || !/^[a-z0-9_-]+$/.test(style.id)) return null;
+  const object = (value) => (value && typeof value === "object" && !Array.isArray(value) ? { ...value } : null);
+  const glow = Number(style.glow);
+  return {
+    id: style.id,
+    label: typeof style.label === "string" && style.label.trim() ? style.label.trim() : style.id,
+    base: style.base === "light" || style.base === "dark" ? style.base : null,
+    colors: object(style.colors),
+    palette: object(style.palette),
+    zoneColors: Array.isArray(style.zoneColors) ? style.zoneColors.filter((c) => typeof c === "string" && c.trim()) : null,
+    glow: Number.isFinite(glow) ? Math.max(0, Math.min(1, glow)) : 0,
+    buttons: style.buttons === "outlined" ? "outlined" : "filled",
+    font: typeof style.font === "string" && style.font.trim() ? style.font.trim() : null,
+  };
+}
+
 // How far one tap on the map's + or − button zooms.
 const ZOOM_STEP = 1.5;
 
@@ -2055,6 +2114,28 @@ class DreameMowerCard extends HTMLElement {
       card._ensureSubscribed();
       card._invalidate("schedules");
     }
+  }
+
+  // Adds a style; cards set to it, those already on the page included, take
+  // it up, and the editors list it.
+  static registerStyle(style) {
+    const type = styleType(style);
+    const name = style && typeof style.id === "string" ? style.id : String(style && style.id);
+    if (!type || type.id === "standard") {
+      console.warn(`Dreame Mower Card: style "${name}" left out; an id is lowercase letters, digits, _ and -, and not "standard"`);
+      return;
+    }
+    if (STYLE_TYPES.some((t) => t.id === type.id)) {
+      console.warn(`Dreame Mower Card: style "${name}" is already registered`);
+      return;
+    }
+    STYLE_TYPES.push(type);
+    for (const card of LIVE_CARDS) {
+      if (!card._config || card._config.style !== type.id) continue;
+      card._renderedTheme = card._theme();
+      card._invalidate("all");
+    }
+    for (const editor of LIVE_EDITORS) editor._syncValues();
   }
 
   constructor() {
@@ -2479,36 +2560,55 @@ class DreameMowerCard extends HTMLElement {
     this._invalidate("base", "trail", "dyn", "view", "aspect");
   }
 
-  // "light" or "dark": forced by the config, or following Home Assistant's
-  // dark mode (the browser's preference when the frontend does not say).
+  // The style the card is set to, once it is registered; null for the
+  // standard look.
+  _style() {
+    const id = this._config && this._config.style;
+    return (typeof id === "string" && STYLE_TYPES.find((t) => t.id === id)) || null;
+  }
+
+  // "light" or "dark": forced by the config, the style's base, or following
+  // Home Assistant's dark mode (the browser's preference when the frontend
+  // does not say).
   _theme() {
     const wanted = this._config && this._config.theme;
     if (wanted === "light" || wanted === "dark") return wanted;
+    const style = this._style();
+    if (style && style.base) return style.base;
     const darkMode = this._hass && this._hass.themes ? this._hass.themes.darkMode : undefined;
     if (typeof darkMode === "boolean") return darkMode ? "dark" : "light";
     const media = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
     return media && media.matches ? "dark" : "light";
   }
 
-  // The built-in palette of the active mode with the user's `palette`
-  // overrides on top. Colours may be any CSS colour, including var(--x): they
-  // are resolved once here because the map mixes and draws with real values.
+  // The built-in palette of the active mode, the style's on top and the
+  // user's `palette` overrides on top of that. Colours may be any CSS colour,
+  // including var(--x): they are resolved once here because the map mixes
+  // and draws with real values.
   _palette() {
     const theme = this._theme();
     const builtIn = PALETTES[theme];
-    const custom = (this._config && this._config.palette) || null;
-    if (!custom || typeof custom !== "object") return builtIn;
-    const key = `${theme}|${this._hass && this._hass.themes ? this._hass.themes.theme : ""}|${JSON.stringify(custom)}|${JSON.stringify(this._config.colors || null)}`;
+    const style = this._style();
+    const custom = this._config && this._config.palette && typeof this._config.palette === "object" ? this._config.palette : null;
+    if (!custom && !style) return builtIn;
+    const key = `${theme}|${style ? style.id : ""}|${this._hass && this._hass.themes ? this._hass.themes.theme : ""}|${JSON.stringify(custom)}|${JSON.stringify(this._config.colors || null)}`;
     if (this._paletteKey === key) return this._paletteCache;
     const pal = { ...builtIn };
-    for (const [name, value] of Object.entries(custom)) {
-      if (!(name in pal) || typeof pal[name] === "boolean" || value === "" || value === null || value === undefined) continue;
-      if (typeof pal[name] === "number") {
-        const n = Number(value);
-        if (Number.isFinite(n)) pal[name] = Math.max(0, Math.min(1, n));
-      } else {
-        pal[name] = this._resolveColor(String(value), pal[name]);
+    for (const layer of [style && style.palette, custom]) {
+      for (const [name, value] of Object.entries(layer || {})) {
+        if (!(name in builtIn) || value === "" || value === null || value === undefined) continue;
+        if (typeof builtIn[name] === "number") {
+          const n = Number(value);
+          if (Number.isFinite(n)) pal[name] = Math.max(0, Math.min(1, n));
+        } else {
+          pal[name] = this._resolveColor(String(value), pal[name]);
+        }
       }
+    }
+    if (style) {
+      const zones = (style.zoneColors || []).map((c) => this._resolveColor(c, null)).filter(Boolean);
+      if (zones.length) pal.zones = zones;
+      pal.glow = style.glow;
     }
     this._paletteKey = key;
     this._paletteCache = pal;
@@ -2832,17 +2932,28 @@ class DreameMowerCard extends HTMLElement {
   }
 
   // The map keeps its own palette; the rest of the card follows Home
-  // Assistant's theme through its CSS variables.
+  // Assistant's theme through its CSS variables, set from the `colors`
+  // option over the style's.
   _renderTheme() {
-    const style = this._el.card.style;
+    const card = this._el.card;
+    const style = card.style;
+    const look = this._style();
     // The interface colours first, so that a palette colour given as one of
     // the card's variables resolves to them.
     const colors = this._config.colors && typeof this._config.colors === "object" ? this._config.colors : {};
+    const valid = (value) => typeof value === "string" && value.trim() && this._validColor(value);
     for (const [name, prop] of Object.entries(UI_COLORS)) {
-      const value = colors[name];
-      if (typeof value === "string" && value.trim() && this._validColor(value)) style.setProperty(prop, value.trim());
+      const value = [colors[name], look && look.colors && look.colors[name]].find(valid);
+      if (value) style.setProperty(prop, value.trim());
       else style.removeProperty(prop);
     }
+    const glow = look ? look.glow : 0;
+    card.classList.toggle("glow", glow > 0);
+    if (glow > 0) style.setProperty("--mower-glow-size", `${Math.round(glow * 16)}px`);
+    else style.removeProperty("--mower-glow-size");
+    card.classList.toggle("outlined", !!look && look.buttons === "outlined");
+    if (look && look.font) style.setProperty("font-family", look.font);
+    else style.removeProperty("font-family");
     if (style.getPropertyValue("--mower-success")) style.setProperty("--mower-success-ink", "color-mix(in srgb, var(--mower-success) 70%, #000)");
     else style.removeProperty("--mower-success-ink");
     const pal = this._palette();
@@ -3108,6 +3219,13 @@ class DreameMowerCard extends HTMLElement {
         svgPolyline(tf, points, `stroke="${stroke}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round" ${extra}`);
       parts.push(line(pal.pathOuter, 590), line(pal.pathInner, 550), line(pal.pathOuter, 25, 'stroke-dasharray="200 200"'));
     }
+    // A style's glow lies under the lawns, so it shows around them only.
+    const glow = this._edit ? 0 : pal.glow || 0;
+    if (!faded && this._modeKind() !== "edges") {
+      for (const zone of this._shapes.zones) {
+        parts.push(glowStrokes(glow, zoneColors(zone.id, pal).outline, (a) => svgPolygon(tf, zone.points, `fill="none" ${a}`)));
+      }
+    }
     for (const zone of this._shapes.zones) {
       const colors = zoneColors(zone.id, pal);
       const setting = this._zoneSetting(zone.id);
@@ -3133,8 +3251,11 @@ class DreameMowerCard extends HTMLElement {
     for (const area of this._edit ? [] : g.no_go || []) {
       const points = pairs(area.polygon || []);
       if (area.shape === "line" && area.line) {
-        parts.push(svgPolyline(tf, [area.line.slice(0, 2), area.line.slice(2)], `stroke="${pal.noGo}" stroke-width="${2 * OUTLINE_WIDTH}" stroke-linecap="round"`));
+        const line = [area.line.slice(0, 2), area.line.slice(2)];
+        parts.push(glowStrokes(glow, pal.noGo, (a) => svgPolyline(tf, line, a)));
+        parts.push(svgPolyline(tf, line, `stroke="${pal.noGo}" stroke-width="${2 * OUTLINE_WIDTH}" stroke-linecap="round"`));
       } else if (points.length >= 3) {
+        parts.push(glowStrokes(glow, pal.noGo, (a) => svgPolygon(tf, points, `fill="none" ${a}`)));
         parts.push(
           svgPolygon(tf, points, `fill="${pal.noGo}" fill-opacity="${pal.zoneFillOpacity}" stroke="${pal.noGo}" stroke-width="${OUTLINE_WIDTH}"`),
         );
@@ -3143,6 +3264,7 @@ class DreameMowerCard extends HTMLElement {
     for (const area of this._edit ? [] : g.ignore_obstacles || []) {
       const points = pairs(area.polygon || []);
       if (points.length >= 3) {
+        parts.push(glowStrokes(glow, pal.ignoreObstacles, (a) => svgPolygon(tf, points, `fill="none" ${a}`)));
         parts.push(
           svgPolygon(
             tf,
@@ -3154,6 +3276,7 @@ class DreameMowerCard extends HTMLElement {
     }
     if (this._modeKind() === "spots" && !this._edit) {
       for (const spot of this._shapes.spots) {
+        parts.push(glowStrokes(glow, pal.spot, (a) => svgPolygon(tf, spot.points, `fill="none" ${a}`)));
         parts.push(
           svgPolygon(tf, spot.points, `fill="${pal.spot}" fill-opacity="${pal.zoneFillOpacity}" stroke="${pal.spot}" stroke-width="${OUTLINE_WIDTH}"`),
         );
@@ -3163,6 +3286,7 @@ class DreameMowerCard extends HTMLElement {
     const current = working && this._status ? this._status.current_zone : null;
     const zone = current === null || current === undefined ? null : this._shapes.zones.find((z) => z.id === current);
     if (zone) {
+      parts.push(glowStrokes(glow, pal.working, (a) => svgPolygon(tf, zone.points, `fill="none" ${a}`)));
       parts.push(
         svgPolygon(tf, zone.points, `fill="none" stroke="${pal.working}" stroke-width="${OUTLINE_WIDTH}" stroke-dasharray="300 130" pointer-events="none"`),
       );
@@ -3183,11 +3307,17 @@ class DreameMowerCard extends HTMLElement {
     }
     const d = trailPath(this._tf, this._trail);
     const pal = this._palette();
+    // A style's glow: wider strokes in the working colour under the trail.
+    const glow = pal.glow || 0;
+    const under = (k, a) =>
+      `<path d="${d}" fill="none" stroke="${pal.working}" stroke-opacity="${num(a * (0.4 + glow))}" stroke-width="${TRAIL_WIDTH * k}" ` +
+      `stroke-linejoin="round" stroke-linecap="round" clip-path="url(#lawn-${this._uid})" pointer-events="none"/>`;
     this._setHtml(
       "trail",
       this._el.trail,
       d
-        ? `<path d="${d}" fill="none" stroke="${pal.trail}" stroke-opacity="${pal.trailOpacity}" stroke-width="${TRAIL_WIDTH}" ` +
+        ? (glow > 0 ? under(2.6, 0.12) + under(1.6, 0.25) : "") +
+          `<path d="${d}" fill="none" stroke="${pal.trail}" stroke-opacity="${pal.trailOpacity}" stroke-width="${TRAIL_WIDTH}" ` +
             `stroke-linejoin="round" stroke-linecap="round" clip-path="url(#lawn-${this._uid})" pointer-events="none"/>`
         : "",
     );
@@ -6463,7 +6593,12 @@ class DreameMowerCardEditor extends HTMLElement {
 
   // The theme's colours resolve only once the editor is in the page.
   connectedCallback() {
+    LIVE_EDITORS.add(this);
     this._syncValues();
+  }
+
+  disconnectedCallback() {
+    LIVE_EDITORS.delete(this);
   }
 
   // A CSS colour (variables included) as the #rrggbb a colour picker takes,
@@ -6482,8 +6617,10 @@ class DreameMowerCardEditor extends HTMLElement {
     return channels ? rgbHex(channels) : null;
   }
 
-  // The colour a `colors` key shows when it is left to the theme.
+  // The colour a `colors` key shows when it is left to the style or the theme.
   _uiDefault(key) {
+    const style = STYLE_TYPES.find((t) => t.id === this._config.style);
+    if (style && style.colors && typeof style.colors[key] === "string" && style.colors[key].trim()) return style.colors[key];
     // The card prefers --ha-card-background, unless a theme sets it to
     // something other than a colour (a gradient, say).
     if (key === "background") {
@@ -6514,6 +6651,7 @@ class DreameMowerCardEditor extends HTMLElement {
       .hint { margin: 12px 0 0; font-size: .85em; color: var(--secondary-text-color); }
     </style><div class="root">
       <div class="entity"></div>
+      <label class="row">Style<select data-select="style"></select></label>
       <details><summary>Interface</summary>
         <p class="hint">Colours of the tabs, buttons and lists. Empty follows the Home Assistant theme.</p>
         ${ui}
@@ -6563,6 +6701,15 @@ class DreameMowerCardEditor extends HTMLElement {
       }
       this._fallback.value = entity || "";
     }
+    // The registered styles; one set but not (yet) loaded keeps its place.
+    const select = root.querySelector('[data-select="style"]');
+    if (select !== active) {
+      const wanted = typeof this._config.style === "string" && this._config.style !== "standard" ? this._config.style : "";
+      const styles = STYLE_TYPES.map((t) => [t.id, t.label]);
+      if (wanted && !styles.some(([id]) => id === wanted)) styles.push([wanted, `${wanted} (not loaded)`]);
+      select.innerHTML = [["", "Standard"], ...styles].map(([id, label]) => `<option value="${esc(id)}">${esc(label)}</option>`).join("");
+      select.value = wanted;
+    }
     const colors = this._config.colors || {};
     for (const input of root.querySelectorAll("[data-colors]")) {
       const key = input.dataset.colors;
@@ -6577,6 +6724,7 @@ class DreameMowerCardEditor extends HTMLElement {
   _onInput(e) {
     const t = e.target;
     if (t.dataset.select === "entity") return this._setEntity(t.value);
+    if (t.dataset.select === "style") return this._setStyle(t.value);
     if (t.dataset.cpicker) return this._setColor(t.dataset.cpicker, t.value);
     if (t.dataset.colors) return this._setColor(t.dataset.colors, t.value.trim());
   }
@@ -6587,6 +6735,12 @@ class DreameMowerCardEditor extends HTMLElement {
     else colors[key] = value;
     const config = { ...this._config, colors };
     if (!Object.keys(colors).length) delete config.colors;
+    this._fire(config);
+  }
+
+  _setStyle(id) {
+    const config = { ...this._config, style: id };
+    if (!id) delete config.style;
     this._fire(config);
   }
 

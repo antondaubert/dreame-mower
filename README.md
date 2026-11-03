@@ -41,7 +41,8 @@ type: custom:dreame-mower-card
 entity: lawn_mower.your_mower
 # optional
 title: Garden        # a small caption above the state
-theme: auto          # the map's colours: auto, light or dark
+theme: auto          # the map's colours: auto (a style's base, else Home Assistant), light or dark
+style: <id>          # a style, see Styles below
 show_header: true    # the status row with the state and the battery
 show_controls: true  # what to mow and the start button
 show_trail: true     # the lanes cut during a session
@@ -69,6 +70,26 @@ colors:
 `palette` colour keys are `background`, `surface`, `text`, `zoneName`, `muted`, `stripe`, `pathOuter`, `pathInner`, `noGo`, `ignoreObstacles`, `spot`, `trail`, `working`, `brand`, `obstacle`, `mowerBody`, `mowerTop`, `mowerEdge`, `station`, `stationBody` and `edge`.
 
 Palette colours are opaque: set the transparency of the stripes, the trail, the zone fills and the labels with their opacity keys. The settings page and the sheets paint your card background over an opaque base, so a translucent background does not let the map show through them.
+
+### Styles
+
+A style is a ready-made look: preset `colors` and `palette`, plus a few things colours alone can't do. Pick one with `style:` or in the editor; the card's own `colors` and `palette` still go over it, and `theme: light` or `dark` over its `base`. A style is a small JavaScript module. Those shipped with the integration live in `frontend/styles/`, one file each, and load by themselves. Your own goes in `/config/www/` and is added as a dashboard resource (JavaScript module):
+
+```js
+customElements.whenDefined("dreame-mower-card").then(() => {
+  customElements.get("dreame-mower-card").registerStyle({
+    id: "night",                 // what `style:` names: lowercase letters, digits, _ and -
+    label: "Night",              // what the editor shows
+    base: "dark",                // the built-in map palette it starts from
+    colors: { accent: "#00e5ff" },
+    palette: { background: "#080814", trailOpacity: 0.8 },
+    zoneColors: ["#00e5ff", "#ff2bd6", "#00ffcc"],
+    glow: 0.6,                   // 0 to 1: halos on active controls, the map's outlines and the trail
+    buttons: "outlined",         // or "filled"
+    font: "Rajdhani, sans-serif",
+  });
+});
+```
 
 The card's tabs are **Mow** (the map and what to mow), **History** (the work log), **Schedules** and **Settings** (the mower's settings, the map editor and the maps). It fits a phone screen, so it works well on its own in a **panel** view. Dashboards whose resources are managed in YAML need it added by hand, as a JavaScript module at `/dreame_mower/dreame-mower-card.js`. The map's rotation is set in the integration's options.
 

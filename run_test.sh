@@ -173,7 +173,8 @@ fi
 # 3. Syntax check of the map card
 print_header "Checking the map card"
 if command -v node >/dev/null 2>&1; then
-    for CARD_JS in "$CARD_DIR"/*.js; do
+    for CARD_JS in "$CARD_DIR"/*.js "$CARD_DIR"/styles/*.js; do
+        [ -f "$CARD_JS" ] || continue
         if node --check "$CARD_JS"; then
             print_success "node --check $(basename "$CARD_JS")"
         else
