@@ -47,7 +47,30 @@ show_controls: true  # what to mow and the start button
 show_trail: true     # the lanes cut during a session
 ```
 
-Its tabs are **Mow** (the map and what to mow), **History** (the work log), **Schedules** and **Settings** (the mower's settings, the map editor and the maps). It fits a phone screen, so it works well on its own in a **panel** view. Dashboards whose resources are managed in YAML need it added by hand, as a JavaScript module at `/dreame_mower/dreame-mower-card.js`. The map's rotation is set in the integration's options.
+### Theming
+
+The card follows your Home Assistant theme out of the box. Every colour can also be set per card, all optional and all taking any CSS colour (hex, `rgb()`, or a theme variable such as `var(--primary-color)`). The editor has a field and a colour picker for each of the `colors` below; an empty field shows the colour the theme gives.
+
+```yaml
+# the map
+palette:
+  background: "#020212"
+  noGo: "#e0115f"
+  working: "#00ffcc"
+  trail: "#ffffff"
+trailOpacity: 0.8      # opacities, 0 to 1: stripeOpacity, trailOpacity,
+zoneFillOpacity: 0.22  # zoneFillOpacity, labelOpacity, lawnShade
+# the rest of the card (tabs, buttons, lists, status colours)
+colors:
+  accent: "#00e1ff"    # accent, on_accent, text, muted, background, divider,
+  success: "#00ffcc"   # success, warning, error, info
+```
+
+`palette` keys are `background`, `surface`, `text`, `zoneName`, `muted`, `stripe`, `pathOuter`, `pathInner`, `noGo`, `ignoreObstacles`, `spot`, `trail`, `working`, `brand`, `obstacle`, `mowerBody`, `mowerTop`, `mowerEdge`, `station`, `stationBody` and `edge`.
+
+Palette colours are opaque: set the transparency of the stripes, the trail, the zone fills and the labels with their opacity keys. The settings page and the sheets paint your card background over an opaque base, so a translucent background does not let the map show through them.
+
+The card's tabs are **Mow** (the map and what to mow), **History** (the work log), **Schedules** and **Settings** (the mower's settings, the map editor and the maps). It fits a phone screen, so it works well on its own in a **panel** view. Dashboards whose resources are managed in YAML need it added by hand, as a JavaScript module at `/dreame_mower/dreame-mower-card.js`. The map's rotation is set in the integration's options.
 
 ## Actions
 

@@ -979,3 +979,136 @@ test("a task shows its battery over its time, below its obstacles", async () => 
 
   assert.equal(await open(null), null);
 });
+
+test("the palette option recolours the map and clamps the opacities", async () => {
+  const window = load("dreame-mower-card.js");
+  const hass = fakeHass();
+  const card = await mount(window, hass, {
+    theme: "dark",
+    palette: { background: "#102030", noGo: "#ff00ff", zoneFillOpacity: 0.4, stripeOpacity: 7, nonsense: "red", brand: "" },
+  });
+  const pal = card._palette();
+  assert.equal(pal.noGo, "#ff00ff");
+  assert.equal(pal.background, "#102030");
+  assert.equal(pal.zoneFillOpacity, 0.4);
+  assert.equal(pal.stripeOpacity, 1);
+  assert.equal(pal.brand, "#c9a877");
+  assert.equal("nonsense" in pal, false);
+  await sendFeed(window, hass, { ...GEOMETRY, zones: [{ id: 1, points: [0, 0, 5000, 0, 5000, 5000] }] }, DOCKED);
+  assert.equal(card._el.card.style.getPropertyValue("--mower-map-background"), "#102030");
+});
+
+test("without a palette option the map keeps the built-in colours", async () => {
+  const window = load("dreame-mower-card.js");
+  const card = await mount(window, fakeHass(), { theme: "light" });
+  const pal = card._palette();
+  assert.equal(pal.noGo, "#EE3C2F");
+  assert.equal(pal.zoneFillOpacity, 0.15);
+  assert.equal(pal.trailOpacity, 0.6);
+  assert.equal(pal.stripeOpacity, 1);
+});
+
+test("the colors option sets the interface variables and drops them again", async () => {
+  const window = load("dreame-mower-card.js");
+  const card = await mount(window, fakeHass(), {
+    theme: "dark",
+    colors: { accent: "#00e8ff", success: "var(--x, #00ff88)", text: "not a colour", nonsense: "red" },
+  });
+  const style = card._el.card.style;
+  assert.equal(style.getPropertyValue("--mower-brand"), "#00e8ff");
+  assert.equal(style.getPropertyValue("--mower-success"), "var(--x, #00ff88)");
+  assert.equal(style.getPropertyValue("--mower-text"), "");
+  card.setConfig({ entity: MOWER, theme: "dark" });
+  card._render();
+  assert.equal(style.getPropertyValue("--mower-brand"), "");
+});
+
+test("the editor sets interface colours and drops them again", async () => {
+  const window = load("dreame-mower-card.js");
+  const editor = window.document.createElement("dreame-mower-card-editor");
+  const changes = [];
+  editor.addEventListener("config-changed", (e) => changes.push(plain(e.detail.config)));
+  editor.setConfig({ entity: MOWER });
+  editor.hass = fakeHass();
+  window.document.body.appendChild(editor);
+  const field = (selector) => editor.shadowRoot.querySelector(selector);
+
+  const accent = field('[data-colors="accent"]');
+  accent.value = "#00e8ff";
+  accent.dispatchEvent(new window.Event("input", { bubbles: true, composed: true }));
+  assert.deepEqual(changes.at(-1), { entity: MOWER, colors: { accent: "#00e8ff" } });
+  assert.equal(field('[data-cpicker="accent"]').value, "#00e8ff");
+
+  accent.value = "";
+  accent.dispatchEvent(new window.Event("input", { bubbles: true, composed: true }));
+  assert.deepEqual(changes.at(-1), { entity: MOWER });
+});
+
+test("the settings page and the bottom sheets paint the card background over an opaque base", async () => {
+  const window = load("dreame-mower-card.js");
+  const card = await mount(window, fakeHass(), {});
+  const css = card.shadowRoot.querySelector("style").textContent;
+  const block = (rule) => css.slice(css.indexOf(rule), css.indexOf("}", css.indexOf(rule)));
+  // The element itself is the opaque base; the card background is a layer
+  // under its content, so a plain background and `colors.background` both show.
+  for (const rule of [".settings {", ".sheet {"]) {
+    assert.match(block(rule), /background: var\(--mower-cover\);/, rule);
+    assert.doesNotMatch(block(rule), /background-color/, rule);
+  }
+  assert.match(block(".settings::before, .sheet::before {"), /z-index: -1;[^}]*background: var\(--mower-background\)/);
+  assert.match(block(".settings.inline {"), /background: var\(--mower-background\)/);
+  const sheet = block(".sheet {");
+  assert.doesNotMatch(sheet, /overflow/);
+  assert.match(block(".sheet .sheetbody {"), /overflow-y: auto/);
+});
+
+test("every bottom sheet wraps its content in the scrolling body", async () => {
+  const window = load("dreame-mower-card.js");
+  const card = await mount(window, fakeHass(), {});
+  const done = card._choose("Title", "Text", [{ id: "a", label: "A" }]);
+  const sheet = card._el.choice;
+  assert.equal(sheet.children.length, 1);
+  assert.equal(sheet.firstElementChild.classList.contains("sheetbody"), true);
+  sheet.querySelector("[data-choice='a']").click();
+  assert.equal(await done, "a");
+});
+
+test("computed colours in other spaces are converted to sRGB hex", async () => {
+  const window = load("dreame-mower-card.js");
+  const card = await mount(window, fakeHass(), {});
+  const computed = window.getComputedStyle;
+  const set = (color) => (window.getComputedStyle = () => ({ color }));
+  try {
+    set("rgb(1, 2, 3)");
+    assert.equal(card._resolveColor("#123456", "#000000"), "#010203");
+    // color(srgb ...) is read directly when no canvas can convert it.
+    set("color(srgb 1 0.5 0)");
+    assert.equal(card._resolveColor("#123456", "#000000"), "#ff8000");
+    // oklch() goes through the canvas.
+    set("oklch(0.7 0.1 200)");
+    const proto = window.HTMLCanvasElement.prototype;
+    const getContext = proto.getContext;
+    proto.getContext = () => ({ clearRect() {}, fillRect() {}, getImageData: () => ({ data: [12, 34, 56, 255] }) });
+    try {
+      assert.equal(card._resolveColor("#123456", "#000000"), "#0c2238");
+    } finally {
+      proto.getContext = getContext;
+    }
+    // Neither readable: the fallback.
+    set("lab(50 20 20)");
+    assert.equal(card._resolveColor("#123456", "#abcdef"), "#abcdef");
+  } finally {
+    window.getComputedStyle = computed;
+  }
+});
+
+test("the editor's colour pickers show the theme's colour while a field is left empty", async () => {
+  const window = load("dreame-mower-card.js");
+  const editor = window.document.createElement("dreame-mower-card-editor");
+  editor.setConfig({ entity: MOWER });
+  editor.hass = fakeHass();
+  window.document.body.appendChild(editor);
+  const picker = (key) => editor.shadowRoot.querySelector(`[data-cpicker="${key}"]`).value;
+  assert.equal(picker("success"), "#43a047");
+  assert.equal(editor.shadowRoot.querySelector('[data-colors="success"]').placeholder, "#43a047");
+});
