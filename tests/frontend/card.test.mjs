@@ -1185,3 +1185,170 @@ test("the editor refreshes its colour fields when the theme changes, not on ever
   window.document.body.appendChild(editor);
   assert.equal(syncs, 2);
 });
+
+// A style as a module would register it.
+const NIGHT = {
+  id: "night",
+  label: "Night",
+  base: "dark",
+  colors: { accent: "#00e5ff", success: "#00ffcc" },
+  palette: { background: "#080814", noGo: "#e0115f", trailOpacity: 0.8 },
+  zoneColors: ["#ff2bd6", "#00ffcc"],
+  glow: 0.5,
+  buttons: "outlined",
+  font: "Rajdhani, sans-serif",
+};
+const registerStyle = (window, style) => window.customElements.get("dreame-mower-card").registerStyle(style);
+const ZONE = { ...GEOMETRY, zones: [{ id: 1, polygon: [0, 0, 5000, 0, 5000, 5000] }] };
+
+test("a style sets the map palette under the card's own palette", async () => {
+  const window = load("dreame-mower-card.js");
+  registerStyle(window, NIGHT);
+  const card = await mount(window, fakeHass(), { style: "night", palette: { noGo: "#ff0000" } });
+  const pal = card._palette();
+  // The dark palette is the base, the style goes over it, the card over the style.
+  assert.equal(pal.background, "#080814");
+  assert.equal(pal.trailOpacity, 0.8);
+  assert.equal(pal.noGo, "#ff0000");
+  assert.equal(pal.pathOuter, "#5a5a5a");
+  assert.deepEqual(plain(pal.zones), ["#ff2bd6", "#00ffcc"]);
+  assert.equal(pal.glow, 0.5);
+  // A theme set on the card wins over the style's base.
+  card.setConfig({ entity: MOWER, style: "night", theme: "light" });
+  assert.equal(card._palette().pathOuter, "#A6A6A6");
+});
+
+test("a style sets the interface colours, glow, buttons and font, under the card's colors", async () => {
+  const window = load("dreame-mower-card.js");
+  registerStyle(window, NIGHT);
+  const card = await mount(window, fakeHass(), { style: "night", colors: { success: "#11aa11" } });
+  const el = card._el.card;
+  assert.equal(el.style.getPropertyValue("--mower-brand"), "#00e5ff");
+  assert.equal(el.style.getPropertyValue("--mower-success"), "#11aa11");
+  assert.equal(el.style.getPropertyValue("--mower-glow-size"), "8px");
+  assert.equal(el.style.getPropertyValue("font-family"), "Rajdhani, sans-serif");
+  assert.equal(el.classList.contains("glow"), true);
+  assert.equal(el.classList.contains("outlined"), true);
+  // Back to the standard look: nothing of the style stays.
+  card.setConfig({ entity: MOWER });
+  card._render();
+  assert.equal(el.style.getPropertyValue("--mower-brand"), "");
+  assert.equal(el.style.getPropertyValue("--mower-glow-size"), "");
+  assert.equal(el.style.getPropertyValue("font-family"), "");
+  assert.equal(el.classList.contains("glow"), false);
+  assert.equal(el.classList.contains("outlined"), false);
+});
+
+test("a glow draws halos under the map's outlines, and none without one", async () => {
+  const window = load("dreame-mower-card.js");
+  registerStyle(window, NIGHT);
+  registerStyle(window, { ...NIGHT, id: "flat", glow: 0 });
+  const halos = async (style) => {
+    const hass = fakeHass();
+    const card = await mount(window, hass, { style });
+    await sendFeed(window, hass, { ...ZONE, no_go: [{ polygon: [100, 100, 900, 100, 900, 900] }] }, DOCKED);
+    return card._el.base.querySelectorAll("[stroke-opacity]").length;
+  };
+  // Three strokes under the zone and three under the no-go area.
+  assert.equal(await halos("night"), 6);
+  // The zone's halo lies under its lawn.
+  {
+    const hass = fakeHass();
+    const card = await mount(window, hass, { style: "night" });
+    await sendFeed(window, hass, ZONE, DOCKED);
+    const shapes = [...card._el.base.children];
+    const lawn = shapes.findIndex((el) => el.getAttribute("fill") !== "none");
+    assert.ok(lawn > 0 && shapes.slice(0, lawn).every((el) => el.hasAttribute("stroke-opacity")));
+  }
+  // The zone takes the style's first colour, its outline in full.
+  const hass = fakeHass();
+  const card = await mount(window, hass, { style: "night" });
+  await sendFeed(window, hass, ZONE, DOCKED);
+  assert.equal(card._el.base.querySelector('polygon:not([stroke-opacity])[stroke-width="40"]').getAttribute("stroke"), "#ff2bd6");
+  assert.equal(await halos("flat"), 0);
+  assert.equal(await halos(undefined), 0);
+});
+
+test("a glow lays wider strokes under the mowing trail", async () => {
+  const window = load("dreame-mower-card.js");
+  registerStyle(window, NIGHT);
+  const trail = async (style) => {
+    const hass = fakeHass();
+    const card = await mount(window, hass, { style });
+    const mowing = { ...DOCKED, docked: false, state: { ...DOCKED.state, session_active: true } };
+    await sendFeed(window, hass, ZONE, mowing, { type: "path", keep: 0, points: [[1000, 1000], [3000, 1000], [3000, 3000]] });
+    return card._el.trail.querySelectorAll("path").length;
+  };
+  assert.equal(await trail("night"), 3);
+  assert.equal(await trail(undefined), 1);
+});
+
+test("only valid styles register, with a warning for the others", async () => {
+  const window = load("dreame-mower-card.js");
+  const warned = [];
+  window.console.warn = (message) => warned.push(message);
+  registerStyle(window, { id: "Night" });
+  registerStyle(window, NIGHT);
+  registerStyle(window, NIGHT);
+  assert.equal(warned.length, 2);
+  assert.match(warned[0], /"Night" left out/);
+  assert.match(warned[1], /"night" is already registered/);
+});
+
+test("a card set to a style takes it up once the style registers", async () => {
+  const window = load("dreame-mower-card.js");
+  const card = await mount(window, fakeHass(), { style: "night" });
+  assert.equal(card._style(), null);
+  assert.equal(card._el.card.classList.contains("glow"), false);
+  registerStyle(window, NIGHT);
+  await settle(window);
+  assert.equal(card._style().id, "night");
+  assert.equal(card._palette().background, "#080814");
+  assert.equal(card._el.card.classList.contains("glow"), true);
+});
+
+test("only valid styles register, each id once", async () => {
+  const window = load("dreame-mower-card.js");
+  registerStyle(window, { id: "Bad id" });
+  registerStyle(window, { id: "standard" });
+  registerStyle(window, { label: "No id" });
+  registerStyle(window, { id: "plain", glow: 7, buttons: "round", zoneColors: ["#ff0000", 3, ""] });
+  registerStyle(window, { id: "plain", label: "Again" });
+  const card = await mount(window, fakeHass(), { style: "plain" });
+  const style = plain(card._style());
+  assert.equal(style.label, "plain");
+  assert.equal(style.glow, 1);
+  assert.equal(style.buttons, "filled");
+  assert.deepEqual(style.zoneColors, ["#ff0000"]);
+  card.setConfig({ entity: MOWER, style: "standard" });
+  assert.equal(card._style(), null);
+});
+
+test("the editor lists the styles and sets or drops the card's style", async () => {
+  const window = load("dreame-mower-card.js");
+  registerStyle(window, NIGHT);
+  const editor = window.document.createElement("dreame-mower-card-editor");
+  const changes = [];
+  editor.addEventListener("config-changed", (e) => changes.push(plain(e.detail.config)));
+  editor.setConfig({ entity: MOWER, style: "dusk" });
+  editor.hass = fakeHass();
+  window.document.body.appendChild(editor);
+  const select = editor.shadowRoot.querySelector('[data-select="style"]');
+  const options = () => [...select.options].map((o) => [o.value, o.textContent]);
+  // A style set but not loaded keeps its place.
+  assert.deepEqual(options(), [["", "Standard"], ["night", "Night"], ["dusk", "dusk (not loaded)"]]);
+  assert.equal(select.value, "dusk");
+  // A style registered later shows up.
+  registerStyle(window, { id: "dusk", label: "Dusk" });
+  assert.deepEqual(options(), [["", "Standard"], ["night", "Night"], ["dusk", "Dusk"]]);
+
+  select.value = "night";
+  select.dispatchEvent(new window.Event("change", { bubbles: true, composed: true }));
+  assert.deepEqual(changes.at(-1), { entity: MOWER, style: "night" });
+  // The colour fields show the style's colours while left empty.
+  assert.equal(editor.shadowRoot.querySelector('[data-cpicker="accent"]').value, "#00e5ff");
+
+  select.value = "";
+  select.dispatchEvent(new window.Event("change", { bubbles: true, composed: true }));
+  assert.deepEqual(changes.at(-1), { entity: MOWER });
+});
