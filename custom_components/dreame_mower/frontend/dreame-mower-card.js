@@ -2008,6 +2008,9 @@ const LIVE_CARDS = new Set();
  *   buttons      "filled" (the default) | "outlined": the selected and
  *                primary controls
  *   font         a font stack for the card
+ *   css          a stylesheet added inside the card while the style is on,
+ *                for what the parts above cannot do; its ha-card then
+ *                carries the class style-<id>
  * The card's own `colors` and `palette` go over the style's.
  */
 const STYLE_TYPES = [];
@@ -2029,6 +2032,7 @@ function styleType(style) {
     glow: Number.isFinite(glow) ? Math.max(0, Math.min(1, glow)) : 0,
     buttons: style.buttons === "outlined" ? "outlined" : "filled",
     font: typeof style.font === "string" && style.font.trim() ? style.font.trim() : null,
+    css: typeof style.css === "string" && style.css.trim() ? style.css : null,
   };
 }
 
@@ -2665,6 +2669,7 @@ class DreameMowerCard extends HTMLElement {
     this._root = this.attachShadow({ mode: "open" });
     this._root.innerHTML = `
       <style>${CSS}</style>
+      <style class="stylecss"></style>
       <ha-card>
         <nav class="tabs" aria-label="Card tabs"></nav>
         <div class="status">
@@ -2712,6 +2717,7 @@ class DreameMowerCard extends HTMLElement {
     const $ = (sel) => this._root.querySelector(sel);
     this._el = {
       card: $("ha-card"),
+      styleCss: $("style.stylecss"),
       tabs: $(".tabs"),
       status: $(".status"),
       caption: $(".status .caption"),
@@ -2954,6 +2960,10 @@ class DreameMowerCard extends HTMLElement {
     card.classList.toggle("outlined", !!look && look.buttons === "outlined");
     if (look && look.font) style.setProperty("font-family", look.font);
     else style.removeProperty("font-family");
+    for (const name of [...card.classList]) if (name.startsWith("style-")) card.classList.remove(name);
+    if (look) card.classList.add(`style-${look.id}`);
+    const css = (look && look.css) || "";
+    if (this._el.styleCss.textContent !== css) this._el.styleCss.textContent = css;
     if (style.getPropertyValue("--mower-success")) style.setProperty("--mower-success-ink", "color-mix(in srgb, var(--mower-success) 70%, #000)");
     else style.removeProperty("--mower-success-ink");
     const pal = this._palette();

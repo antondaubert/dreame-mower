@@ -1239,6 +1239,27 @@ test("a style sets the interface colours, glow, buttons and font, under the card
   assert.equal(el.classList.contains("outlined"), false);
 });
 
+test("a style's stylesheet and class are on the card only while the style is", async () => {
+  const window = load("dreame-mower-card.js");
+  registerStyle(window, { ...NIGHT, css: ".style-night .primary { text-transform: uppercase; }" });
+  registerStyle(window, { id: "plain", css: 42 });
+  const card = await mount(window, fakeHass(), { style: "night" });
+  const el = card._el.card;
+  const sheet = () => card.shadowRoot.querySelector("style.stylecss").textContent;
+  assert.equal(sheet(), ".style-night .primary { text-transform: uppercase; }");
+  assert.equal(el.classList.contains("style-night"), true);
+  // Another style swaps the class; one without a stylesheet leaves none behind.
+  card.setConfig({ entity: MOWER, style: "plain" });
+  card._render();
+  assert.equal(sheet(), "");
+  assert.equal(el.classList.contains("style-night"), false);
+  assert.equal(el.classList.contains("style-plain"), true);
+  // Back to the standard look: no style class at all.
+  card.setConfig({ entity: MOWER });
+  card._render();
+  assert.equal([...el.classList].some((name) => name.startsWith("style-")), false);
+});
+
 test("a glow draws halos under the map's outlines, and none without one", async () => {
   const window = load("dreame-mower-card.js");
   registerStyle(window, NIGHT);
@@ -1300,11 +1321,14 @@ test("a card set to a style takes it up once the style registers", async () => {
   const card = await mount(window, fakeHass(), { style: "night" });
   assert.equal(card._style(), null);
   assert.equal(card._el.card.classList.contains("glow"), false);
-  registerStyle(window, NIGHT);
+  assert.equal(card._el.card.classList.contains("style-night"), false);
+  registerStyle(window, { ...NIGHT, css: ".style-night .primary { font-weight: 700; }" });
   await settle(window);
   assert.equal(card._style().id, "night");
   assert.equal(card._palette().background, "#080814");
   assert.equal(card._el.card.classList.contains("glow"), true);
+  assert.equal(card._el.card.classList.contains("style-night"), true);
+  assert.equal(card._el.styleCss.textContent, ".style-night .primary { font-weight: 700; }");
 });
 
 test("only valid styles register, each id once", async () => {
