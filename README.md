@@ -87,9 +87,12 @@ customElements.whenDefined("dreame-mower-card").then(() => {
     glow: 0.6,                   // 0 to 1: halos on active controls, the map's outlines and the trail
     buttons: "outlined",         // or "filled"
     font: "Rajdhani, sans-serif",
+    css: ".style-night .primary { text-transform: uppercase; }",  // a stylesheet for the rest
   });
 });
 ```
+
+While a style is on, its `css` is added inside the card, and the card's `ha-card` carries the class `style-<id>`; starting each rule with that class keeps it ahead of the card's own. The stylesheet reaches into the card's own markup, which can change from one release to the next; whatever the other options cover is better set through them.
 
 The card's tabs are **Mow** (the map and what to mow), **History** (the work log), **Schedules** and **Settings** (the mower's settings, the map editor and the maps). It fits a phone screen, so it works well on its own in a **panel** view. Dashboards whose resources are managed in YAML need it added by hand, as a JavaScript module at `/dreame_mower/dreame-mower-card.js`. The map's rotation is set in the integration's options.
 
