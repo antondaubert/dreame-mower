@@ -44,11 +44,13 @@ def _lovelace(hass: HomeAssistant, resources: Any, mode: str = MODE_STORAGE) -> 
     hass.data["lovelace"] = SimpleNamespace(resources=resources, resource_mode=mode)
 
 
-async def test_the_card_is_served_fed_and_added_once(hass: HomeAssistant) -> None:
+async def test_the_card_is_served_fed_and_added_once(hass: HomeAssistant, tmp_path: Path) -> None:
     assert await async_setup_component(hass, "http", {})
     resources = _resources([])
     _lovelace(hass, resources)
     with (
+        # Whatever styles ship have a test of their own.
+        patch.object(frontend, "STYLES_PATH", tmp_path / "missing"),
         patch.object(hass.http, "async_register_static_paths", AsyncMock()) as serve,
         patch.object(hass.http, "register_view") as view,
         patch.object(frontend, "async_register_command") as register,
@@ -80,10 +82,11 @@ async def test_the_card_is_served_fed_and_added_once(hass: HomeAssistant) -> Non
     assert resources.async_create_item.await_args.args[0]["res_type"] == "module"
 
 
-async def test_the_3d_view_is_loaded_on_every_page(hass: HomeAssistant) -> None:
+async def test_the_3d_view_is_loaded_on_every_page(hass: HomeAssistant, tmp_path: Path) -> None:
     assert await async_setup_component(hass, "http", {})
     hass.config.components.add("frontend")
     with (
+        patch.object(frontend, "STYLES_PATH", tmp_path / "missing"),
         patch.object(hass.http, "async_register_static_paths", AsyncMock()),
         patch.object(frontend, "async_register_command"),
         patch.object(frontend, "add_extra_js_url") as extra,
