@@ -45,6 +45,8 @@ def mock_coordinator():
     coordinator.mowing_progress_percent = None
     coordinator.current_area_sqm = None
     coordinator.total_area_sqm = None
+    coordinator.mower_coordinates = None
+    coordinator.mower_heading = None
     return coordinator
 
 
@@ -135,7 +137,30 @@ async def test_progress_sensor_value(mock_coordinator):
         "current_area_sqm": 120.5,
         "total_area_sqm": 220.0,
         "progress_percent": 55.7,
+        "x": None,
+        "y": None,
+        "heading": None,
     }
+
+
+async def test_progress_sensor_reports_the_mower_position_and_heading(mock_coordinator):
+    """The mower's position and heading are attributes, for cards other than the map card."""
+    mock_coordinator.mower_coordinates = (12340, -5670)
+    mock_coordinator.mower_heading = 87.5
+
+    attributes = DreameMowerProgressSensor(mock_coordinator).extra_state_attributes
+
+    assert (attributes["x"], attributes["y"], attributes["heading"]) == (12340, -5670, 87.5)
+
+
+async def test_progress_sensor_reports_a_position_at_the_origin(mock_coordinator):
+    """A mower at (0, 0) is somewhere, not at an unknown position."""
+    mock_coordinator.mower_coordinates = (0, 0)
+    mock_coordinator.mower_heading = 0.0
+
+    attributes = DreameMowerProgressSensor(mock_coordinator).extra_state_attributes
+
+    assert (attributes["x"], attributes["y"], attributes["heading"]) == (0, 0, 0.0)
 
 
 async def test_progress_sensor_none(mock_coordinator):
