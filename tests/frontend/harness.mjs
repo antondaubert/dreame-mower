@@ -2,9 +2,11 @@
 // what the card asks of it.
 
 import { readFileSync } from "node:fs";
+import { IntlMessageFormat } from "intl-messageformat";
 import { JSDOM } from "jsdom";
 
 const FRONTEND = new URL("../../custom_components/dreame_mower/frontend/", import.meta.url);
+const TRANSLATIONS = new URL("../../custom_components/dreame_mower/translations/", import.meta.url);
 
 export const MOWER = "lawn_mower.a2";
 export const DEVICE = "device-a2";
@@ -20,6 +22,24 @@ export function load(...files) {
   return window;
 }
 
+export function translations(language) {
+  return JSON.parse(readFileSync(new URL(`${language}.json`, TRANSLATIONS), "utf8"));
+}
+
+function flatten(value, prefix, into) {
+  for (const [key, inner] of Object.entries(value)) {
+    if (inner && typeof inner === "object") flatten(inner, `${prefix}.${key}`, into);
+    else into[`${prefix}.${key}`] = inner;
+  }
+  return into;
+}
+
+export function localizer(language) {
+  const resources = {};
+  for (const source of new Set(["en", language])) flatten(translations(source), "component.dreame_mower", resources);
+  return (key, values) => (key in resources ? String(new IntlMessageFormat(resources[key], language).format(values)) : "");
+}
+
 // An entity of the mower's device, as the entity registry lists it.
 export function entry(entityId, translationKey) {
   return { entity_id: entityId, device_id: DEVICE, platform: "dreame_mower", translation_key: translationKey };
@@ -28,9 +48,17 @@ export function entry(entityId, translationKey) {
 // A Home Assistant with the mower and `states`; the websocket subscriptions,
 // calls and service calls the card makes are recorded. fire("ready") and
 // fire("disconnected") play the socket coming back and going away.
-export function fakeHass({ states = {}, entities = {}, ws = () => ({}) } = {}) {
+export function fakeHass({ states = {}, entities = {}, ws = () => ({}), language = "en" } = {}) {
   const listeners = new Map();
   const hass = {
+    language,
+    locale: { language },
+    localize: localizer(language),
+    translationRequests: [],
+    async loadBackendTranslation(category, integration) {
+      hass.translationRequests.push([category, integration]);
+      return hass.localize;
+    },
     fire(name) {
       // Subscriptions die with the socket.
       if (name === "disconnected") for (const subscription of hass.subscriptions) subscription.active = false;

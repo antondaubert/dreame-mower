@@ -817,6 +817,43 @@ ha-card.glow { --mower-glow-color: var(--mower-brand); }
 
 // === Helpers: text and formatting ===
 
+const TRANSLATION_PREFIX = `component.${DOMAIN}.common.`;
+let localize = null;
+let translationsLanguage = null;
+let pluralRules = new Intl.PluralRules("en");
+
+function tr(key, values) {
+  return (localize && localize(TRANSLATION_PREFIX + key, values)) || "";
+}
+
+function trCount(key, count, values = {}) {
+  return tr(`${key}_${pluralRules.select(count) === "one" ? "one" : "other"}`, { count, ...values });
+}
+
+function trOf(keys, value) {
+  return keys[value] ? tr(keys[value]) : "";
+}
+
+function followTranslations(hass) {
+  if (!hass || translationsLanguage === hass.language) return;
+  translationsLanguage = hass.language;
+  try {
+    pluralRules = new Intl.PluralRules(hass.language || "en");
+  } catch {
+    pluralRules = new Intl.PluralRules("en");
+  }
+  if (typeof hass.loadBackendTranslation !== "function") return;
+  Promise.resolve(hass.loadBackendTranslation("common", DOMAIN)).catch(() => {
+    translationsLanguage = null;
+  });
+}
+
+function applyLabels(root) {
+  for (const el of root.querySelectorAll("[data-tr]")) el.textContent = tr(el.dataset.tr);
+  for (const el of root.querySelectorAll("[data-tr-title]")) el.title = tr(el.dataset.trTitle);
+  for (const el of root.querySelectorAll("[data-tr-aria]")) el.setAttribute("aria-label", tr(el.dataset.trAria));
+}
+
 const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 
 function esc(value) {
@@ -835,12 +872,12 @@ function num(value) {
 }
 
 function errorMessage(err) {
-  if (!err) return "Unknown error";
+  if (!err) return tr("unknown_error");
   if (typeof err === "string") return err;
   if (err.message) return err.message;
   if (err.error && err.error.message) return err.error.message;
   if (err.code) return String(err.code);
-  return "Unknown error";
+  return tr("unknown_error");
 }
 
 function safeUnsubscribe(unsub) {
@@ -859,47 +896,47 @@ const RAIN_CODE = 56;
 
 // What a code says as it comes up.
 const CODE_ALERTS = {
-  48: "Mowing task complete",
-  49: "Unable to reach some zones",
-  53: "Scheduled mowing task started",
-  54: "Low battery. Returning to the station",
-  55: "Low battery. The scheduled task is cancelled",
-  56: "Water is detected on the LiDAR. Rain protection is activated; returning to the station",
-  57: "Rain protection is activated. The scheduled task is cancelled",
-  58: "Rain protection is activated. The scheduled task is cancelled",
-  60: "Temperature is too low. Frost protection is activated; the scheduled task is cancelled",
-  61: "Do Not Disturb is on. Returning to the station",
-  62: "Do Not Disturb is on. The scheduled task is cancelled",
-  70: "The mower resumes the unfinished task",
-  71: "Idle for too long. Returning to the station",
-  72: "Paused for too long. Returning to the station",
-  74: "Patrol complete",
+  48: "alert_task_complete",
+  49: "alert_zones_unreachable",
+  53: "alert_scheduled_started",
+  54: "alert_low_battery_returning",
+  55: "alert_low_battery_cancelled",
+  56: "alert_rain_returning",
+  57: "alert_rain_cancelled",
+  58: "alert_rain_cancelled",
+  60: "alert_frost_cancelled",
+  61: "alert_dnd_returning",
+  62: "alert_dnd_cancelled",
+  70: "alert_resumes",
+  71: "alert_idle_returning",
+  72: "alert_paused_returning",
+  74: "alert_patrol_complete",
 };
 
 // What the mower is busy with that keeps it from moving on, or null.
 function mowerWait(mower) {
   if (!mower.available) return null;
   if (mower.location === "relocating") {
-    return mower.docking === "in_station" ? "Leaving the station and finding its position…" : "Repositioning…";
+    return mower.docking === "in_station" ? tr("wait_leaving_and_locating") : tr("wait_repositioning");
   }
-  if (mower.leaving_station) return "Leaving the station…";
-  if (mower.docking === "docking_in_base") return "Driving into the station…";
+  if (mower.leaving_station) return tr("wait_leaving");
+  if (mower.docking === "docking_in_base") return tr("wait_docking");
   return null;
 }
 
 // === Helpers: work log ===
 
-const MODE_LABELS = { all_area: "All-area", edge: "Edge", zone: "Zone", spot: "Spot", other: "Task" };
+const MODE_LABELS = { all_area: "all_area", edge: "edge", zone: "zone", spot: "spot", other: "task" };
 // The kind of a running task, as the status line names it.
-const TASK_KINDS = { all_area: "all-area", edge: "edge", zone: "zone", spot: "spot", patrol: "patrol" };
-const RESULT_LABELS = { complete: "Task complete", stopped: "Task stopped", incomplete: "Task incomplete" };
+const TASK_KINDS = { all_area: "task_all_area", edge: "task_edge", zone: "task_zone", spot: "task_spot", patrol: "task_patrol" };
+const RESULT_LABELS = { complete: "result_task_complete", stopped: "result_task_stopped", incomplete: "result_task_incomplete" };
 const RESULT_ICONS = { complete: "mdi:check-circle-outline", stopped: "mdi:stop-circle-outline", incomplete: "mdi:alert-circle-outline" };
-const START_LABELS = { app: "In the app", schedule: "By a schedule", control_panel: "On the mower" };
-const EFFICIENCY_LABELS = { standard: "Standard", efficient: "Efficient", rush: "Rush" };
+const START_LABELS = { app: "started_in_app", schedule: "started_by_schedule", control_panel: "started_on_mower" };
+const EFFICIENCY_LABELS = { standard: "efficiency_standard", efficient: "efficiency_efficient", rush: "efficiency_rush" };
 
 function logTitle(entry) {
-  const label = MODE_LABELS[entry.mode] || "Task";
-  return entry.scheduled ? `Scheduled ${label.toLowerCase()}` : label;
+  const mode = MODE_LABELS[entry.mode] || "task";
+  return tr(entry.scheduled ? `log_scheduled_${mode}` : `log_${mode}`);
 }
 
 function pad2(value) {
@@ -922,7 +959,9 @@ const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Se
 // A day as "Thu 16 Oct", with its year when it is not this one.
 function formatDayOf(d) {
   const year = d.getFullYear() === new Date().getFullYear() ? "" : ` ${d.getFullYear()}`;
-  return `${WEEKDAY_NAMES[d.getDay()]} ${d.getDate()} ${MONTH_NAMES[d.getMonth()]}${year}`;
+  const weekday = tr(`weekday_${WEEKDAY_NAMES[d.getDay()].toLowerCase()}`);
+  const month = tr(`month_${MONTH_NAMES[d.getMonth()].toLowerCase()}`);
+  return `${weekday} ${d.getDate()} ${month}${year}`;
 }
 
 // A unix time as "Thu 16 Oct, 09:12", in the viewer's time zone.
@@ -988,7 +1027,7 @@ function batteryLegs(samples, recharges) {
   let at = 0;
   for (const [first, last] of recharges) {
     leg(at, first);
-    parts.push("recharged");
+    parts.push(tr("battery_recharged"));
     at = last;
   }
   leg(at, samples.length - 1);
@@ -1003,10 +1042,10 @@ function batteryBlock(battery, summary) {
   const facts = [];
   const legs = samples ? batteryLegs(samples, recharges) : "";
   if (legs) facts.push(legs);
-  facts.push(`${approx}${num(battery.used)} % used`);
+  facts.push(tr("battery_used", { value: `${approx}${num(battery.used)}` }));
   if (battery.per_sqm !== null && battery.per_sqm !== undefined) facts.push(`${approx}${battery.per_sqm.toFixed(2)} %/m²`);
-  if (summary && summary.usual) facts.push(`usual ${summary.usual.toFixed(2)} %/m²`);
-  const head = `<div class="bhead"><b>Battery</b><span>${esc(facts.join(" · "))}</span></div>`;
+  if (summary && summary.usual) facts.push(tr("battery_usual", { value: summary.usual.toFixed(2) }));
+  const head = `<div class="bhead"><b>${esc(tr("battery"))}</b><span>${esc(facts.join(" · "))}</span></div>`;
   return `<div class="battery-course">${head}${samples ? batteryChart(samples, recharges) : ""}</div>`;
 }
 
@@ -1036,17 +1075,17 @@ function batteryChart(samples, recharges) {
 // with like tasks before it; "~" marks a value read from hourly statistics.
 // Nothing for a task too small to tell.
 const BATTERY_MIN_AREA = 10;
-const BATTERY_RATINGS = { normal: "as usual", high: "more than usual", very_high: "much more than usual" };
+const BATTERY_RATINGS = { normal: "battery_rating_normal", high: "battery_rating_high", very_high: "battery_rating_very_high" };
 
 function batteryPill(entry) {
   const battery = entry.battery;
   if (!battery || battery.per_sqm === null || battery.per_sqm === undefined || !(entry.area >= BATTERY_MIN_AREA)) return "";
   const rating = BATTERY_RATINGS[battery.rating] ? battery.rating : "";
   const approx = battery.source === "statistics" ? "~" : "";
-  const title = [`Battery ${approx}${num(battery.used)} %`];
+  const title = [tr("battery_pill", { value: `${approx}${num(battery.used)}` })];
   if (rating && battery.usual) {
     const more = Math.round((battery.per_sqm / battery.usual - 1) * 100);
-    title.push(`${BATTERY_RATINGS[rating]} (${battery.usual.toFixed(2)} %/m², ${more >= 0 ? "+" : ""}${more} %)`);
+    title.push(`${tr(BATTERY_RATINGS[rating])} (${battery.usual.toFixed(2)} %/m², ${more >= 0 ? "+" : ""}${more} %)`);
   }
   return `<span class="bat ${rating}" title="${esc(title.join(" · "))}">${approx}${battery.per_sqm.toFixed(2)} %/m²</span>`;
 }
@@ -1056,9 +1095,9 @@ function batteryPill(entry) {
 // each zone the task worked (or every zone) has its own record or follows
 // the map's: the setting they share, or "per zone" where they differ.
 // Nothing for a task recorded without them.
-const TURNING_LABELS = { efficient: "Efficient", lawn_care: "Lawn care" };
+const TURNING_LABELS = { efficient: "turning_efficient", lawn_care: "turning_lawn_care" };
 // How the mowing direction turns from one session to the next.
-const DIRECTION_EACH_SESSION = { crisscross: "+45° each session", chequerboard: "+90° each session" };
+const DIRECTION_EACH_SESSION = { crisscross: "direction_crisscross", chequerboard: "direction_chequerboard" };
 
 function taskSetting(data, label) {
   const settings = data.settings;
@@ -1074,12 +1113,12 @@ function taskSetting(data, label) {
   }
   const values = [...new Set(records.filter(Boolean).map(label).filter(Boolean))];
   if (values.length === 1) return values[0];
-  return values.length ? "per zone" : "";
+  return values.length ? tr("per_zone_lower") : "";
 }
 
 function directionLabel(record) {
   if (record.mowing_direction === undefined || record.mowing_direction === null) return "";
-  const each = DIRECTION_EACH_SESSION[record.mowing_direction_mode];
+  const each = trOf(DIRECTION_EACH_SESSION, record.mowing_direction_mode);
   return [`${record.mowing_direction}°`, each].filter(Boolean).join(" · ");
 }
 
@@ -1091,12 +1130,12 @@ function formatMinutes(minutes) {
 // === Helpers: schedules ===
 
 const WEEK_DAYS = { monday: "Mon", tuesday: "Tue", wednesday: "Wed", thursday: "Thu", friday: "Fri", saturday: "Sat", sunday: "Sun" };
-const TASK_TYPES = { all_area: "all-area", zone: "zones", edge: "edges", patrol: "patrol" };
+const TASK_TYPES = { all_area: "schedule_all_area", zone: "schedule_zones", edge: "schedule_edges", patrol: "schedule_patrol" };
 
 // A schedule's tasks in a line: "Mon, Thu 10:00 all-area · Sat 09:30 zones".
 // Tasks starting at the same time with the same kind share their days.
 function scheduleSummary(tasks) {
-  if (!Array.isArray(tasks) || !tasks.length) return "No tasks";
+  if (!Array.isArray(tasks) || !tasks.length) return tr("no_tasks");
   const order = Object.keys(WEEK_DAYS);
   const groups = new Map();
   for (const task of tasks) {
@@ -1109,8 +1148,9 @@ function scheduleSummary(tasks) {
     .sort((a, b) => a.minutes - b.minutes)
     .map((group) => {
       const days = [...new Set(group.days)].sort((a, b) => order.indexOf(a) - order.indexOf(b));
-      const named = days.length === 7 ? "Daily" : days.map((day) => WEEK_DAYS[day] || day).join(", ");
-      return `${named} ${formatClock(group.minutes)} ${TASK_TYPES[group.type] || group.type || ""}`.trim();
+      const dayName = (day) => (WEEK_DAYS[day] ? tr(`weekday_${WEEK_DAYS[day].toLowerCase()}`) : day);
+      const named = days.length === 7 ? tr("daily") : days.map(dayName).join(", ");
+      return `${named} ${formatClock(group.minutes)} ${trOf(TASK_TYPES, group.type) || group.type || ""}`.trim();
     })
     .join(" · ");
 }
@@ -1540,14 +1580,14 @@ function svgMower(X, Y, scale, angle, pal, look = "rwd") {
 // What the camera recognised an obstacle as, by its type: the name, and the
 // pictogram on its pin, drawn in white within -1..1.
 const AI_OBSTACLE_KINDS = {
-  0: { label: "Person", glyph: '<circle cx=".2" cy="-.7" r=".22" fill="#fff" stroke="none"/><path d="M.1-.4L-.1.2L-.45.75M-.1.2L.25.4L.35.8M-.4-.05L-.05-.3L.35.05"/>' },
-  1: { label: "Cat", glyph: "paw" },
-  2: { label: "Dog", glyph: "paw" },
-  3: { label: "Hedgehog", glyph: '<path d="M-.8.45Q-.7-.45.2-.4Q.6-.35.8.3L.85.45Z M-.5-.1L-.65-.4M-.15-.35L-.2-.7M.25-.38L.35-.72M.55-.15L.8-.4"/>' },
-  4: { label: "Hose", glyph: '<path d="M-.8.5C-.4-.6.1.9.45-.2C.6-.6.8-.5.8-.5"/>' },
-  5: { label: "Sprinkler", glyph: '<path d="M0-.75C.45-.15.4.4 0 .4C-.4.4-.45-.15 0-.75Z M-.35.8H.35"/>' },
-  6: { label: "Dog waste", glyph: '<path d="M-.7.65H.7Q.75.2.35.15Q.5-.25.1-.3Q.25-.75-.1-.75Q0-.4-.35-.3Q-.6-.2-.4.15Q-.8.25-.7.65Z"/>' },
-  7: { label: "Ball", glyph: '<circle r=".72"/><path d="M-.55-.45C-.1-.2-.1.2-.55.45M.55-.45C.1-.2.1.2.55.45"/>' },
+  0: { label: "person", glyph: '<circle cx=".2" cy="-.7" r=".22" fill="#fff" stroke="none"/><path d="M.1-.4L-.1.2L-.45.75M-.1.2L.25.4L.35.8M-.4-.05L-.05-.3L.35.05"/>' },
+  1: { label: "cat", glyph: "paw" },
+  2: { label: "dog", glyph: "paw" },
+  3: { label: "hedgehog", glyph: '<path d="M-.8.45Q-.7-.45.2-.4Q.6-.35.8.3L.85.45Z M-.5-.1L-.65-.4M-.15-.35L-.2-.7M.25-.38L.35-.72M.55-.15L.8-.4"/>' },
+  4: { label: "hose", glyph: '<path d="M-.8.5C-.4-.6.1.9.45-.2C.6-.6.8-.5.8-.5"/>' },
+  5: { label: "sprinkler", glyph: '<path d="M0-.75C.45-.15.4.4 0 .4C-.4.4-.45-.15 0-.75Z M-.35.8H.35"/>' },
+  6: { label: "dog_waste", glyph: '<path d="M-.7.65H.7Q.75.2.35.15Q.5-.25.1-.3Q.25-.75-.1-.75Q0-.4-.35-.3Q-.6-.2-.4.15Q-.8.25-.7.65Z"/>' },
+  7: { label: "ball", glyph: '<circle r=".72"/><path d="M-.55-.45C-.1-.2-.1.2-.55.45M.55-.45C.1-.2.1.2.55.45"/>' },
 };
 const PAW_GLYPH =
   '<g fill="#fff" stroke="none"><ellipse cy=".35" rx=".42" ry=".34"/><circle cx="-.55" cy="-.1" r=".17"/>' +
@@ -1592,7 +1632,8 @@ function obstacleNoGoRect(obstacle) {
 }
 
 function aiObstacleKind(type) {
-  return AI_OBSTACLE_KINDS[type] || { label: "Obstacle", glyph: OTHER_GLYPH };
+  const kind = AI_OBSTACLE_KINDS[type] || { label: "obstacle", glyph: OTHER_GLYPH };
+  return { glyph: kind.glyph, label: tr(`obstacle_${kind.label}`) };
 }
 
 // A map pin over (X, Y) marking an obstacle: a cone for one the mower ran
@@ -1948,18 +1989,18 @@ let instanceCounter = 0;
 // What the main button mows: the whole map, or the edges, zones or spots
 // picked on it.
 const MODES = [
-  { id: "all", label: "All", icon: "mdi:select-all" },
-  { id: "edges", label: "Edges", glyph: "edges", kind: "edges", noun: "edges", one: "edge" },
-  { id: "zones", label: "Zones", icon: "mdi:floor-plan", kind: "zones", noun: "zones", one: "zone" },
-  { id: "spots", label: "Spots", icon: "mdi:crosshairs-gps", kind: "spots", noun: "spot areas", one: "spot" },
+  { id: "all", icon: "mdi:select-all" },
+  { id: "edges", glyph: "edges", kind: "edges" },
+  { id: "zones", icon: "mdi:floor-plan", kind: "zones" },
+  { id: "spots", icon: "mdi:crosshairs-gps", kind: "spots" },
 ];
 
 // The card's tabs.
 const TABS = [
-  { id: "mow", label: "Mow", icon: "mdi:robot-mower-outline" },
-  { id: "history", label: "History", icon: "mdi:history" },
-  { id: "schedules", label: "Schedules", icon: "mdi:calendar-month-outline" },
-  { id: "settings", label: "Settings", icon: "mdi:cog-outline" },
+  { id: "mow", icon: "mdi:robot-mower-outline" },
+  { id: "history", icon: "mdi:history" },
+  { id: "schedules", icon: "mdi:calendar-month-outline" },
+  { id: "settings", icon: "mdi:cog-outline" },
 ];
 
 /*
@@ -2055,9 +2096,9 @@ const EDGE_HIT_PX = 18;
 
 // The consumables, what their reset button says and what it asks.
 const CONSUMABLES = {
-  blade: { label: "Blades", icon: "mdi:saw-blade", done: "Replaced", confirm: "Have the blades been replaced?" },
-  brush: { label: "Station cleaning brush", icon: "mdi:brush", done: "Replaced", confirm: "Has the station's cleaning brush been replaced?" },
-  robot: { label: "Mower maintenance", icon: "mdi:wrench-outline", done: "Done", confirm: "Has the mower been serviced?" },
+  blade: { icon: "mdi:saw-blade", done: "consumable_replaced" },
+  brush: { icon: "mdi:brush", done: "consumable_replaced" },
+  robot: { icon: "mdi:wrench-outline", done: "consumable_done" },
 };
 
 // The map editor's button: a pin over a folded map.
@@ -2069,17 +2110,16 @@ const EDIT_MAP_ICON =
 // The tools of the map editor: what a drag on the map draws. All of them
 // change the map only; the mower stays where it is.
 const EDIT_TOOLS = [
-  { id: "no_go", label: "No-go", icon: "mdi:cancel", kind: "no_go", shape: "rectangle", hint: "Drag on the map to draw a no-go zone." },
-  { id: "no_go_line", label: "Line", icon: "mdi:vector-line", kind: "no_go", shape: "line", hint: "Drag on the map to draw a line the mower does not cross." },
-  { id: "no_go_circle", label: "Circle", icon: "mdi:circle-outline", kind: "no_go", shape: "circle", hint: "Drag from the centre to draw a round no-go zone." },
-  { id: "ignore", label: "Ignore", icon: "mdi:shield-off-outline", kind: "ignore", shape: "rectangle", hint: "Drag to draw an area where the mower drives over low obstacles, relying on its bumper." },
-  { id: "spot", label: "Spot", icon: "mdi:selection", kind: "spot", shape: "rectangle", hint: "Drag to draw a spot area; it has to lie within one zone." },
-  { id: "maintenance", label: "Point", icon: "mdi:wrench-outline", kind: "maintenance", shape: "point", hint: "Tap the map to place a maintenance point." },
-  { id: "zones", label: "Zones", icon: "mdi:vector-polygon", hint: "Tap a zone to rename or split it, or two neighbouring zones to merge them." },
+  { id: "no_go", icon: "mdi:cancel", kind: "no_go", shape: "rectangle" },
+  { id: "no_go_line", icon: "mdi:vector-line", kind: "no_go", shape: "line" },
+  { id: "no_go_circle", icon: "mdi:circle-outline", kind: "no_go", shape: "circle" },
+  { id: "ignore", icon: "mdi:shield-off-outline", kind: "ignore", shape: "rectangle" },
+  { id: "spot", icon: "mdi:selection", kind: "spot", shape: "rectangle" },
+  { id: "maintenance", icon: "mdi:wrench-outline", kind: "maintenance", shape: "point" },
+  { id: "zones", icon: "mdi:vector-polygon" },
 ];
 // Map item kinds as the map actions name them.
 const EDIT_KIND_NAMES = { no_go: "no_go_zone", ignore: "ignore_obstacle_area", spot: "spot_area", maintenance: "maintenance_point" };
-const EDIT_KIND_LABELS = { no_go: "No-go zone", ignore: "Ignore-obstacles area", spot: "Spot area", maintenance: "Maintenance point" };
 // A drag shorter than this (mm) is a slip, not a shape.
 const EDIT_MIN_MM = 200;
 // The sizes the mower takes, in mm: each side of a rectangle, the length of
@@ -2253,6 +2293,13 @@ class DreameMowerCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    followTranslations(hass);
+    if (hass.localize !== this._localize) {
+      this._localize = hass.localize;
+      localize = hass.localize || null;
+      this._buildShapes();
+      this._invalidate("all");
+    }
     const theme = this._config ? this._theme() : null;
     if (theme !== this._renderedTheme) {
       this._renderedTheme = theme;
@@ -2485,7 +2532,7 @@ class DreameMowerCard extends HTMLElement {
       return { id: item.id, name: item.name, points, center: points.length ? polygonCentroid(points) : null };
     };
     const zones = (g.zones || []).map(shape).filter((s) => s.points.length >= 3);
-    const zoneName = (id) => (zones.find((zone) => zone.id === id) || {}).name || `Zone ${id}`;
+    const zoneName = (id) => (zones.find((zone) => zone.id === id) || {}).name || tr("zone_default_name", { id: id });
     // An edge is a zone's outline (index 0) or the outline of a shape cut
     // into the lawn (index 128 and up); it is picked by its [zone, index] pair.
     // A zone's outline is drawn along the zone itself: the edge the mower
@@ -2495,7 +2542,7 @@ class DreameMowerCard extends HTMLElement {
         const [zoneId, index] = contour.id;
         const zone = index === 0 ? zones.find((z) => z.id === zoneId) : null;
         const points = zone ? zone.points : pairs(contour.points || []);
-        const name = index === 0 ? `${zoneName(zoneId)} edge` : `${zoneName(zoneId)} shape ${index - 127}`;
+        const name = index === 0 ? tr("edge_name", { zone: zoneName(zoneId) }) : tr("shape_name", { zone: zoneName(zoneId), number: index - 127 });
         return { id: `${zoneId},${index}`, contour: contour.id, name, points };
       })
       .filter((edge) => edge.points.length >= 2);
@@ -2671,16 +2718,16 @@ class DreameMowerCard extends HTMLElement {
       <style>${CSS}</style>
       <style class="stylecss"></style>
       <ha-card>
-        <nav class="tabs" aria-label="Card tabs"></nav>
+        <nav class="tabs" data-tr-aria="aria_card_tabs"></nav>
         <div class="status">
           <div class="txt"><div class="caption" hidden></div><div class="state"></div><div class="sub"></div><div class="sub err" hidden></div></div>
           <button type="button" class="iconbtn" data-action="recharge"></button>
-          <button type="button" class="iconbtn" data-action="find" title="Find my robot: the mower calls out" aria-label="Find my robot"><ha-icon icon="mdi:map-marker-radius"></ha-icon></button>
+          <button type="button" class="iconbtn" data-action="find" data-tr-title="find_robot_title" data-tr-aria="find_robot"><ha-icon icon="mdi:map-marker-radius"></ha-icon></button>
         </div>
         <div class="edithead subhead" hidden>
-          <button type="button" class="iconbtn" data-edithead="back" title="Back to the settings" aria-label="Back to the settings"><ha-icon icon="mdi:chevron-left"></ha-icon></button>
-          <span class="title">Map editor</span><span class="muted left"></span>
-          <button type="button" class="flat maps" data-edithead="maps"><ha-icon icon="mdi:layers-outline"></ha-icon>Maps<ha-icon icon="mdi:chevron-right"></ha-icon></button>
+          <button type="button" class="iconbtn" data-edithead="back" data-tr-title="back_to_settings" data-tr-aria="back_to_settings"><ha-icon icon="mdi:chevron-left"></ha-icon></button>
+          <span class="title" data-tr="map_editor"></span><span class="muted left"></span>
+          <button type="button" class="flat maps" data-edithead="maps"><ha-icon icon="mdi:layers-outline"></ha-icon><span data-tr="maps"></span><ha-icon icon="mdi:chevron-right"></ha-icon></button>
         </div>
         <div class="map" tabindex="0">
           <svg class="main" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
@@ -2692,16 +2739,16 @@ class DreameMowerCard extends HTMLElement {
           <div class="msg" hidden></div>
           <button type="button" class="mapchip" hidden></button>
           <div class="mapbtns" hidden>
-            <button type="button" class="mapbtn" data-zoom="in" title="Zoom in" aria-label="Zoom in"><ha-icon icon="mdi:plus"></ha-icon></button>
-            <button type="button" class="mapbtn" data-zoom="out" title="Zoom out" aria-label="Zoom out"><ha-icon icon="mdi:minus"></ha-icon></button>
-            <button type="button" class="mapbtn" data-zoom="fit" title="Fit the map" aria-label="Fit the map"><ha-icon icon="mdi:fit-to-screen-outline"></ha-icon></button>
+            <button type="button" class="mapbtn" data-zoom="in" data-tr-title="zoom_in" data-tr-aria="zoom_in"><ha-icon icon="mdi:plus"></ha-icon></button>
+            <button type="button" class="mapbtn" data-zoom="out" data-tr-title="zoom_out" data-tr-aria="zoom_out"><ha-icon icon="mdi:minus"></ha-icon></button>
+            <button type="button" class="mapbtn" data-zoom="fit" data-tr-title="fit_map" data-tr-aria="fit_map"><ha-icon icon="mdi:fit-to-screen-outline"></ha-icon></button>
             <span class="secbtns"></span>
           </div>
           <div class="mapnote" hidden><span class="spin"></span><span class="text"></span></div>
         </div>
         <div class="cover" hidden></div>
         <div class="errline" hidden></div>
-        <div class="panel"><div class="strip" role="group" aria-label="What to mow"></div><div class="hint" hidden></div><div class="controls"></div></div>
+        <div class="panel"><div class="strip" role="group" data-tr-aria="what_to_mow"></div><div class="hint" hidden></div><div class="controls"></div></div>
         <div class="editpanel" hidden></div>
         <div class="view worklog" hidden><div class="shead"></div><div class="sbody"></div></div>
         <div class="view schedules" hidden><div class="shead"></div><div class="sbody"></div></div>
@@ -2836,7 +2883,7 @@ class DreameMowerCard extends HTMLElement {
       const button = e.target.closest("[data-clear-error]");
       if (!button || this._busy) return;
       // Cleared, the mower goes on with its task or drives home.
-      this._beforeDrive("continue").then((ready) => ready && this._call(DOMAIN, "clear_error", {}, { success: "Error cleared" }));
+      this._beforeDrive("continue").then((ready) => ready && this._call(DOMAIN, "clear_error", {}, { success: tr("error_cleared") }));
     });
     this._el.edithead.addEventListener("click", (e) => {
       const button = e.target.closest("button");
@@ -2884,7 +2931,7 @@ class DreameMowerCard extends HTMLElement {
   _invalidate(...parts) {
     for (const part of parts) {
       if (part === "all") {
-        for (const p of ["theme", "header", "toolbar", "aspect", "view", "base", "trail", "dyn", "msg", "picker", "actions", "settings", "log", "photo", "maps", "maint", "schedules"]) {
+        for (const p of ["theme", "header", "toolbar", "aspect", "view", "base", "trail", "dyn", "msg", "picker", "actions", "settings", "log", "photo", "maps", "maint", "schedules", "labels"]) {
           this._dirty.add(p);
         }
       } else {
@@ -2905,6 +2952,7 @@ class DreameMowerCard extends HTMLElement {
     const dirty = this._dirty;
     this._dirty = new Set();
     if (dirty.has("theme")) this._renderTheme();
+    if (dirty.has("labels")) applyLabels(this._root);
     if (dirty.has("header")) this._renderHeader();
     if (dirty.has("toolbar")) this._renderToolbar();
     if (dirty.has("aspect")) this._renderAspect();
@@ -2988,7 +3036,7 @@ class DreameMowerCard extends HTMLElement {
     const tabs = TABS.map(
       (t) =>
         `<button type="button" class="${t.id === tab ? "on" : ""}" data-tab="${t.id}" aria-pressed="${t.id === tab}">` +
-        `<ha-icon icon="${t.icon}"></ha-icon>${esc(t.label)}</button>`,
+        `<ha-icon icon="${t.icon}"></ha-icon>${esc(tr(`tab_${t.id}`))}</button>`,
     ).join("");
     this._setHtml("tabs", this._el.tabs, tabs);
     const mow = tab === "mow";
@@ -3041,7 +3089,7 @@ class DreameMowerCard extends HTMLElement {
       }
       // Tapping Settings again leads back from one of its pages to the list.
       if (tab === "settings" && this._settings && this._settings.inline) {
-        if (!Object.keys(this._settings.draft).length || window.confirm("Leave without saving the changes?")) this._closeSettings();
+        if (!Object.keys(this._settings.draft).length || window.confirm(tr("leave_unsaved"))) this._closeSettings();
       } else if (tab === "settings" && this._maint && this._maint.page && !this._edit && !this._mapList) {
         this._settingsPage(null);
       }
@@ -3050,7 +3098,7 @@ class DreameMowerCard extends HTMLElement {
     }
     if (this._edit && !this._closeEditor()) return;
     if (this._settings && this._settings.inline) {
-      if (Object.keys(this._settings.draft).length && !window.confirm("Leave the mowing settings without saving the changes?")) return;
+      if (Object.keys(this._settings.draft).length && !window.confirm(tr("leave_mowing_settings_unsaved"))) return;
       this._settings = null;
       this._invalidate("settings");
     }
@@ -3075,7 +3123,7 @@ class DreameMowerCard extends HTMLElement {
     const title = this._config.title;
     this._el.caption.hidden = !title;
     this._el.caption.textContent = title || "";
-    this._el.state.textContent = mower.available ? mower.text || humanize(mower.status || mower.activity) : "Unavailable";
+    this._el.state.textContent = mower.available ? mower.text || humanize(mower.status || mower.activity) : tr("unavailable");
     const sub = [];
     if (mower.battery !== null && mower.battery !== undefined) {
       const charging = mower.charging === "charging";
@@ -3084,7 +3132,7 @@ class DreameMowerCard extends HTMLElement {
       // Tapping the level opens the history of the battery sensor.
       sub.push(
         this._batteryEntity()
-          ? `<button type="button" class="battery" data-action="battery-history" title="Battery history" aria-label="Battery history">${level}</button>`
+          ? `<button type="button" class="battery" data-action="battery-history" title="${esc(tr("battery_history"))}" aria-label="${esc(tr("battery_history"))}">${level}</button>`
           : level,
       );
     }
@@ -3103,7 +3151,7 @@ class DreameMowerCard extends HTMLElement {
     const returning = mower.activity === "returning";
     home.hidden = !controls;
     home.dataset.action = returning ? "stop-returning" : "recharge";
-    const homeTitle = returning ? "End Returning: stop where it is" : "Recharge: send the mower to its station";
+    const homeTitle = tr(returning ? "stop_returning_title" : "recharge_title");
     home.title = homeTitle;
     home.setAttribute("aria-label", homeTitle);
     this._setHtml("home", home, `<ha-icon icon="${returning ? "mdi:home-remove-outline" : "mdi:home-import-outline"}"></ha-icon>`);
@@ -3120,7 +3168,7 @@ class DreameMowerCard extends HTMLElement {
       this._el.error,
       mower.error
         ? `<ha-icon icon="mdi:alert-circle-outline"></ha-icon><span>${esc(mower.error)}</span>` +
-            `<button type="button" class="flat" data-clear-error ${this._busy ? "disabled" : ""}>Clear and continue</button>`
+            `<button type="button" class="flat" data-clear-error ${this._busy ? "disabled" : ""}>${esc(tr("clear_and_continue"))}</button>`
         : "",
     );
   }
@@ -3128,14 +3176,15 @@ class DreameMowerCard extends HTMLElement {
   // Where the mower is or what it is about, in a few words.
   _whereText(mower) {
     if (!mower.available) return "";
-    if (mower.activity === "returning") return "returning";
-    if (this._docked()) return "on the station";
+    if (mower.activity === "returning") return tr("where_returning");
+    if (this._docked()) return tr("where_docked");
     if (mower.session_active) {
       // "zone task in Lawn": what kind of task runs, and where.
       const current = this._status ? this._status.current_zone : null;
       const zone = this._shapes.zones.find((z) => z.id === current);
-      const kind = TASK_KINDS[mower.task_mode];
-      return `${kind ? `${kind} task` : "task"}${zone ? ` in ${zone.name}` : mower.activity === "mowing" ? "" : " paused"}`;
+      const task = tr(TASK_KINDS[mower.task_mode] || "task_other");
+      if (zone) return tr("task_in_zone", { task, zone: zone.name });
+      return mower.activity === "mowing" ? task : tr("task_paused", { task });
     }
     return "";
   }
@@ -3153,7 +3202,7 @@ class DreameMowerCard extends HTMLElement {
             .map(
               (mode) =>
                 `<button type="button" class="${mode.id === this._mode ? "on" : ""}" data-mode="${mode.id}" aria-pressed="${mode.id === this._mode}" ` +
-                `${this._busy || !mower.available ? "disabled" : ""}>${mode.glyph ? GLYPHS[mode.glyph] : `<ha-icon icon="${mode.icon}"></ha-icon>`}${esc(mode.label)}</button>`,
+                `${this._busy || !mower.available ? "disabled" : ""}>${mode.glyph ? GLYPHS[mode.glyph] : `<ha-icon icon="${mode.icon}"></ha-icon>`}${esc(tr(`mode_${mode.id}`))}</button>`,
             )
             .join("")
         : "";
@@ -3163,10 +3212,9 @@ class DreameMowerCard extends HTMLElement {
     let hint = "";
     if (!session && strip) {
       if (!kind) {
-        hint = "Mows the whole map. Pick Edges, Zones or Spots to mow only what you tap on the map.";
+        hint = tr("hint_all");
       } else {
         const picked = this._shapes[kind].filter((shape) => this._selected[kind].has(shape.id));
-        const noun = MODES.find((mode) => mode.kind === kind).noun;
         if (picked.length) {
           const area = (shape) => {
             const zone = kind === "zones" ? ((this._geometry && this._geometry.zones) || []).find((z) => z.id === shape.id) : null;
@@ -3174,9 +3222,9 @@ class DreameMowerCard extends HTMLElement {
           };
           hint =
             picked.map((shape) => `<b>${esc(shape.name)}</b>${esc(area(shape))}`).join(", ") +
-            esc(`. Tap more ${noun} to add them; tap one again to drop it.`);
+            esc(`. ${tr(`hint_more_${kind}`)}`);
         } else {
-          hint = esc(`Tap ${noun} on the map to pick them; tap one again to drop it.`);
+          hint = esc(tr(`hint_pick_${kind}`));
         }
       }
       if (!kind) hint = esc(hint);
@@ -3436,9 +3484,9 @@ class DreameMowerCard extends HTMLElement {
   _renderMsg() {
     const msg = this._el.msg;
     let text = "";
-    if (this._feedError) text = `Map unavailable: ${this._feedError}`;
-    else if (!this._geometry) text = "Loading map…";
-    else if (!this._hasMap()) text = "No map yet";
+    if (this._feedError) text = tr("map_unavailable", { error: this._feedError });
+    else if (!this._geometry) text = tr("loading_map");
+    else if (!this._hasMap()) text = tr("no_map_yet");
     msg.hidden = !text;
     msg.textContent = text;
   }
@@ -3453,7 +3501,7 @@ class DreameMowerCard extends HTMLElement {
     if (!switchable) this._picker = false;
     const chip = this._el.chip;
     if (g && g.map_id !== null && g.map_id !== undefined) {
-      const name = g.name || `Map ${g.map_id}`;
+      const name = g.name || tr("map_default_name", { id: g.map_id });
       const area = g.total_area ? `${num(g.total_area)} m²` : "";
       this._setHtml(
         "chip",
@@ -3462,7 +3510,7 @@ class DreameMowerCard extends HTMLElement {
           (switchable ? `<ha-icon icon="${this._picker ? "mdi:chevron-up" : "mdi:chevron-down"}"></ha-icon>` : ""),
       );
       chip.disabled = !switchable;
-      const label = `Map ${name}${area ? `, ${area}` : ""}${switchable ? "; choose another map" : ""}`;
+      const label = `${tr("map_chip", { name })}${area ? `, ${area}` : ""}${switchable ? `; ${tr("choose_another_map")}` : ""}`;
       chip.title = label;
       chip.setAttribute("aria-label", label);
     }
@@ -3476,17 +3524,17 @@ class DreameMowerCard extends HTMLElement {
     const maps = (this._status && this._status.maps) || [];
     const rows = maps
       .map((map) => {
-        const name = map.name || `Map ${map.id}`;
+        const name = map.name || tr("map_default_name", { id: map.id });
         const drawn = this._drawnMap(map.id);
         const count = drawn ? (drawn.zones || []).length : null;
         const facts = [`${num(map.area || 0)} m²`];
-        if (count !== null) facts.push(`${count} zone${count === 1 ? "" : "s"}`);
-        if (map.selected) facts.push("in use");
+        if (count !== null) facts.push(trCount("zone_count", count));
+        if (map.selected) facts.push(tr("in_use_lower"));
         return (
           `<div class="maprow">${this._mapOutline(map.id)}<span>${esc(name)}<small>${esc(facts.join(" · "))}</small></span>` +
           (map.selected
-            ? `<ha-icon icon="mdi:check" title="In use"></ha-icon>`
-            : `<button type="button" class="flat" data-use="${map.id}" ${off}>Use</button>`) +
+            ? `<ha-icon icon="mdi:check" title="${esc(tr("in_use"))}"></ha-icon>`
+            : `<button type="button" class="flat" data-use="${map.id}" ${off}>${esc(tr("use"))}</button>`) +
           `</div>`
         );
       })
@@ -3495,9 +3543,9 @@ class DreameMowerCard extends HTMLElement {
       "picker",
       el,
       `<div class="sheetbody"><div class="grip"></div>` +
-        `<div class="phead"><span>Maps</span><button type="button" class="iconbtn" data-close title="Close" aria-label="Close"><ha-icon icon="mdi:close"></ha-icon></button></div>` +
-        `<div>${rows || `<div class="note">No maps yet</div>`}</div>` +
-        `<p>Switching takes a moment and only works while no task runs. Renaming, backups and deleting are in Settings › Maps.</p></div>`,
+        `<div class="phead"><span>${esc(tr("maps"))}</span><button type="button" class="iconbtn" data-close title="${esc(tr("close"))}" aria-label="${esc(tr("close"))}"><ha-icon icon="mdi:close"></ha-icon></button></div>` +
+        `<div>${rows || `<div class="note">${esc(tr("no_maps_yet"))}</div>`}</div>` +
+        `<p>${esc(tr("picker_note"))}</p></div>`,
     );
   }
 
@@ -3512,8 +3560,8 @@ class DreameMowerCard extends HTMLElement {
     if (button.dataset.use) {
       const mapId = Number(button.dataset.use);
       const map = ((this._status && this._status.maps) || []).find((m) => m.id === mapId);
-      const name = map ? map.name || `Map ${map.id}` : `Map ${mapId}`;
-      if (await this._call(DOMAIN, "select_map", { map_id: mapId }, { success: `Switching to ${name}…` })) {
+      const name = map ? map.name || tr("map_default_name", { id: map.id }) : tr("map_default_name", { id: mapId });
+      if (await this._call(DOMAIN, "select_map", { map_id: mapId }, { success: tr("switching_to", { name }) })) {
         this._picker = false;
         this._invalidate("picker");
       }
@@ -3816,36 +3864,36 @@ class DreameMowerCard extends HTMLElement {
       `<button type="button" class="chip ${cls}" data-op="${op}" ${attrs}><ha-icon icon="${icon}"></ha-icon>${esc(label)}</button>`;
     const cards = maps
       .map((map) => {
-        const name = map.name || `Map ${map.id}`;
+        const name = map.name || tr("map_default_name", { id: map.id });
         const id = `data-map="${map.id}"`;
         let ops;
         if (list.renaming === map.id) {
           ops =
-            `<input type="text" maxlength="24" value="${esc(name)}" data-map-name aria-label="Map name">` +
-            `<button type="button" class="chip on" ${id} data-op="rename-save" ${off}>Save</button>` +
-            `<button type="button" class="chip" data-op="rename-cancel">Cancel</button>`;
+            `<input type="text" maxlength="24" value="${esc(name)}" data-map-name aria-label="${esc(tr("map_name"))}">` +
+            `<button type="button" class="chip on" ${id} data-op="rename-save" ${off}>${esc(tr("save"))}</button>` +
+            `<button type="button" class="chip" data-op="rename-cancel">${esc(tr("cancel"))}</button>`;
         } else if (map.selected) {
           ops =
-            chip("rename", "mdi:pencil-outline", "Rename", `${id} ${off}`) +
-            chip("backup", "mdi:content-save-outline", "Back up", `${id} ${off}`) +
-            chip("restore", "mdi:backup-restore", "Restore", `${id} ${map.has_backup ? off : "disabled"} title="${map.has_backup ? "" : "The mower holds no backup of this map"}"`) +
-            chip("delete", "mdi:delete-outline", "Delete", `${id} ${off}`, "danger");
+            chip("rename", "mdi:pencil-outline", tr("rename"), `${id} ${off}`) +
+            chip("backup", "mdi:content-save-outline", tr("back_up"), `${id} ${off}`) +
+            chip("restore", "mdi:backup-restore", tr("restore"), `${id} ${map.has_backup ? off : "disabled"} title="${map.has_backup ? "" : esc(tr("no_backup"))}"`) +
+            chip("delete", "mdi:delete-outline", tr("delete"), `${id} ${off}`, "danger");
         } else {
           ops =
-            chip("use", "mdi:swap-horizontal", "Use this map", `${id} ${off}`, "on") +
-            chip("rename", "mdi:pencil-outline", "Rename", `${id} ${off}`) +
-            chip("delete", "mdi:delete-outline", "Delete", `${id} ${off}`, "danger");
+            chip("use", "mdi:swap-horizontal", tr("use_this_map"), `${id} ${off}`, "on") +
+            chip("rename", "mdi:pencil-outline", tr("rename"), `${id} ${off}`) +
+            chip("delete", "mdi:delete-outline", tr("delete"), `${id} ${off}`, "danger");
         }
         const drawn = this._drawnMap(map.id);
         const zones = drawn ? (drawn.zones || []).length : null;
         const summary = [
           `${num(map.area || 0)} m²`,
-          zones !== null ? `${zones} zone${zones === 1 ? "" : "s"}` : "",
-          map.has_backup ? "backed up" : "",
+          zones !== null ? trCount("zone_count", zones) : "",
+          map.has_backup ? tr("backed_up") : "",
         ].filter(Boolean);
         return (
           `<div class="mapcard"><div class="top">${this._mapOutline(map.id)}<div class="info"><div class="name">${esc(name)}` +
-          `${map.selected ? '<span class="inuse">In use</span>' : ""}</div><div class="hint">${esc(summary.join(" · "))}</div></div></div>` +
+          `${map.selected ? `<span class="inuse">${esc(tr("in_use"))}</span>` : ""}</div><div class="hint">${esc(summary.join(" · "))}</div></div></div>` +
           `<div class="chips ops">${ops}</div></div>`
         );
       })
@@ -3854,25 +3902,24 @@ class DreameMowerCard extends HTMLElement {
     const deleted = ((this._status && this._status.deleted_maps) || [])
       .map(
         (slot) =>
-          `<div class="mapcard empty"><div class="info"><div class="name">Empty slot</div>` +
-          `<div class="hint">${esc(`Slot ${slot} holds the backup of a deleted map`)}</div></div>` +
-          `<button type="button" class="chip" data-slot="${esc(slot)}" data-op="restore-deleted" ${off}><ha-icon icon="mdi:backup-restore"></ha-icon>Restore</button></div>`,
+          `<div class="mapcard empty"><div class="info"><div class="name">${esc(tr("empty_slot"))}</div>` +
+          `<div class="hint">${esc(tr("slot_backup", { slot }))}</div></div>` +
+          `<button type="button" class="chip" data-slot="${esc(slot)}" data-op="restore-deleted" ${off}><ha-icon icon="mdi:backup-restore"></ha-icon>${esc(tr("restore"))}</button></div>`,
       )
       .join("");
     const slots = maps.length + ((this._status && this._status.deleted_maps) || []).length;
     this._setHtml(
       "mhead",
       this._el.mhead,
-      `<button type="button" class="iconbtn" data-op="close" title="Back" aria-label="Back"><ha-icon icon="mdi:chevron-left"></ha-icon></button>` +
-        `<span class="title">Maps</span><span class="muted">${esc(`${maps.length} map${maps.length === 1 ? "" : "s"}${slots > maps.length ? `, ${slots - maps.length} empty slot${slots - maps.length === 1 ? "" : "s"}` : ""}`)}</span>`,
+      `<button type="button" class="iconbtn" data-op="close" title="${esc(tr("back"))}" aria-label="${esc(tr("back"))}"><ha-icon icon="mdi:chevron-left"></ha-icon></button>` +
+        `<span class="title">${esc(tr("maps"))}</span><span class="muted">${esc(`${trCount("map_count", maps.length)}${slots > maps.length ? `, ${trCount("empty_slot_count", slots - maps.length)}` : ""}`)}</span>`,
     );
     const html =
       `<div class="cards">` +
       cards +
       deleted +
       (blocked ? `<div class="hint warn">${esc(blocked)}</div>` : "") +
-      `<div class="hint">None of these makes the mower drive, but switching, restoring and deleting only work while it does not mow or return. ` +
-      `Deleting asks twice. A restored map comes back without its name and schedules, and asks for a name. A new map is only made in the app, as the mower drives its boundary.</div></div>`;
+      `<div class="hint">${esc(tr("map_list_hint"))}</div></div>`;
     // The name field keeps what is being typed into it.
     const field = this._el.mbody.querySelector("[data-map-name]");
     if (field && field === this._root.activeElement && list.renaming !== null) return;
@@ -3882,7 +3929,7 @@ class DreameMowerCard extends HTMLElement {
   // Unsaved changes in the editor go when the map changes under them.
   _dropEditsFirst() {
     if (!this._edit || !this._editChanges().length) return true;
-    if (!window.confirm("Drop the unsaved changes in the editor?")) return false;
+    if (!window.confirm(tr("drop_editor_changes"))) return false;
     this._editSync(true);
     return true;
   }
@@ -3893,7 +3940,7 @@ class DreameMowerCard extends HTMLElement {
     if (!button || button.disabled || !list) return;
     const mapId = Number(button.dataset.map);
     const map = ((this._status && this._status.maps) || []).find((m) => m.id === mapId);
-    const name = map ? map.name || `Map ${map.id}` : "";
+    const name = map ? map.name || tr("map_default_name", { id: map.id }) : "";
     switch (button.dataset.op) {
       case "close":
         this._mapList = null;
@@ -3907,32 +3954,32 @@ class DreameMowerCard extends HTMLElement {
       case "rename-save": {
         const field = this._el.mbody.querySelector("[data-map-name]");
         const value = field ? field.value.trim() : "";
-        if (value && (await this._call(DOMAIN, "rename_map", { map_id: mapId, name: value }, { success: "Map renamed" }))) {
+        if (value && (await this._call(DOMAIN, "rename_map", { map_id: mapId, name: value }, { success: tr("map_renamed") }))) {
           list.renaming = null;
         }
         break;
       }
       case "use":
         if (!this._dropEditsFirst()) return;
-        await this._call(DOMAIN, "select_map", { map_id: mapId }, { success: `Switching to ${name}…` });
+        await this._call(DOMAIN, "select_map", { map_id: mapId }, { success: tr("switching_to", { name }) });
         break;
       case "backup":
-        if (!window.confirm(`Back ${name} up? Its earlier backup is replaced.`)) return;
-        await this._call(DOMAIN, "backup_map", {}, { success: "Map backed up" });
+        if (!window.confirm(tr("backup_confirm", { name }))) return;
+        await this._call(DOMAIN, "backup_map", {}, { success: tr("map_backed_up") });
         break;
       case "restore":
         if (!this._dropEditsFirst()) return;
-        if (!window.confirm(`Put ${name} back as its backup has it? Changes since, schedules and mowing settings may be lost.`)) return;
-        if (await this._call(DOMAIN, "restore_map", {}, { success: "Map restored" })) this._editSync(true);
+        if (!window.confirm(tr("restore_confirm", { name }))) return;
+        if (await this._call(DOMAIN, "restore_map", {}, { success: tr("map_restored") })) this._editSync(true);
         break;
       case "restore-deleted": {
         const slot = Number(button.dataset.slot);
         if (
-          !window.confirm(`Bring the deleted map of slot ${slot} back from its backup? It comes back without its name and schedules, and with the default mowing settings.`)
+          !window.confirm(tr("restore_deleted_confirm", { slot }))
         )
           return;
         const before = ((this._status && this._status.maps) || []).map((m) => m.id);
-        if (await this._call(DOMAIN, "restore_map", { slot }, { success: "Map restored; give it its name again" })) {
+        if (await this._call(DOMAIN, "restore_map", { slot }, { success: tr("map_restored_rename") })) {
           list.unnamedAmong = before;
           list.restoredAt = Date.now();
         }
@@ -3942,15 +3989,12 @@ class DreameMowerCard extends HTMLElement {
         if (!this._dropEditsFirst()) return;
         if (
           !window.confirm(
-            `Delete ${name} with all its zones and settings? ` +
-              (map && map.has_backup
-                ? "It can be brought back from its backup, without its name, schedules and mowing settings."
-                : "It has no backup: a new map has to be mapped in the app, driving the mower."),
+            `${tr("delete_map_confirm", { name })} ${tr(map && map.has_backup ? "delete_map_backup" : "delete_map_no_backup")}`,
           )
         )
           return;
-        if (!window.confirm(`Really delete ${name}?`)) return;
-        if (await this._call(DOMAIN, "delete_map", { map_id: mapId }, { success: "Map deleted" })) this._editSync(true);
+        if (!window.confirm(tr("delete_map_really", { name }))) return;
+        if (await this._call(DOMAIN, "delete_map", { map_id: mapId }, { success: tr("map_deleted") })) this._editSync(true);
         break;
       default:
         return;
@@ -4082,8 +4126,8 @@ class DreameMowerCard extends HTMLElement {
     };
     // The From and Until rows of a time window changed through an action.
     const windowRows = (setting, label, service) => [
-      row("From", "", `<input class="in" type="time" aria-label="${esc(label)} from" value="${formatClock(Math.min(setting.start, 1439))}" data-window="${esc(service)}" data-part="start" ${off ? "disabled" : ""}>`),
-      row("Until", "", `<input class="in" type="time" aria-label="${esc(label)} until" value="${formatClock(Math.min(setting.end, 1439))}" data-window="${esc(service)}" data-part="end" ${off ? "disabled" : ""}>`),
+      row(tr("from"), "", `<input class="in" type="time" aria-label="${esc(tr("window_from", { label }))}" value="${formatClock(Math.min(setting.start, 1439))}" data-window="${esc(service)}" data-part="start" ${off ? "disabled" : ""}>`),
+      row(tr("until"), "", `<input class="in" type="time" aria-label="${esc(tr("window_until", { label }))}" value="${formatClock(Math.min(setting.end, 1439))}" data-window="${esc(service)}" data-part="end" ${off ? "disabled" : ""}>`),
     ];
     return { hass, off, status, state, usable, shown, text, tile, row, link, sw, entitySwitch, actionSwitch, entitySelect, actionSelect, timeEntity, windowRows };
   }
@@ -4102,14 +4146,14 @@ class DreameMowerCard extends HTMLElement {
       const delay = entitySelect("rain_delay");
       const resumes = state(this._deviceEntity("sensor", "rain_protection_end"));
       const at = resumes && shown(resumes) ? new Date(resumes.state) : null;
-      const rows = [row("Rain protection", "Back to the station when it rains, and mowing waits", rain.control("Rain protection"))];
-      if (delay && rain.on) rows.push(row("After rain", "How long mowing waits once the rain stopped", delay.control("After rain")));
-      if (at && !Number.isNaN(at.getTime())) rows.push(row("Mowing resumes", "", `<span class="val">${esc(formatDay(at.getTime() / 1000))}</span>`));
-      const wait = delay && delay.value ? (/^\d+ h$/.test(delay.value) ? `waits ${delay.value} after rain` : delay.value) : "";
+      const rows = [row(tr("rain_protection"), tr("rain_protection_desc"), rain.control(tr("rain_protection")))];
+      if (delay && rain.on) rows.push(row(tr("after_rain"), tr("after_rain_desc"), delay.control(tr("after_rain"))));
+      if (at && !Number.isNaN(at.getTime())) rows.push(row(tr("mowing_resumes"), "", `<span class="val">${esc(formatDay(at.getTime() / 1000))}</span>`));
+      const wait = delay && delay.value ? (/^\d+ h$/.test(delay.value) ? tr("waits_after_rain", { delay: delay.value }) : delay.value) : "";
       pages.rain = {
-        title: "Rain protection",
+        title: tr("rain_protection"),
         icon: "mdi:weather-rainy",
-        summary: rain.on ? ["On", wait].filter(Boolean).join(" · ") : rain.known ? "Off" : "",
+        summary: rain.on ? [tr("on"), wait].filter(Boolean).join(" · ") : rain.known ? tr("off") : "",
         rows,
       };
     }
@@ -4118,12 +4162,12 @@ class DreameMowerCard extends HTMLElement {
     if (charging) {
       const from = shown(state(this._deviceEntity("time", "charging_period_start"))).slice(0, 5);
       const until = shown(state(this._deviceEntity("time", "charging_period_end"))).slice(0, 5);
-      const rows = [row("Charging period", "Charge fully only within these hours", charging.control("Charging period"))];
-      if (charging.on) rows.push(timeEntity("charging_period_start", "From"), timeEntity("charging_period_end", "Until"));
+      const rows = [row(tr("charging_period"), tr("charging_period_desc"), charging.control(tr("charging_period")))];
+      if (charging.on) rows.push(timeEntity("charging_period_start", tr("from")), timeEntity("charging_period_end", tr("until")));
       pages.charging = {
-        title: "Charging period",
+        title: tr("charging_period"),
         icon: "mdi:clock-outline",
-        summary: charging.on ? (from && until ? `${from} – ${until}` : "On") : charging.known ? "Off" : "",
+        summary: charging.on ? (from && until ? `${from} – ${until}` : tr("on")) : charging.known ? tr("off") : "",
         rows,
       };
     }
@@ -4134,94 +4178,89 @@ class DreameMowerCard extends HTMLElement {
       const rows = [];
       const parts = [];
       if (dnd) {
-        rows.push(row("Do Not Disturb", "No task starts; a running one pauses and the mower goes home", actionSwitch(dnd.enabled, "Do Not Disturb", "set_do_not_disturb")));
-        if (dnd.enabled) rows.push(...windowRows(dnd, "Do Not Disturb", "set_do_not_disturb"));
-        parts.push(dnd.enabled ? window(dnd) : "Off");
+        rows.push(row(tr("do_not_disturb"), tr("do_not_disturb_desc"), actionSwitch(dnd.enabled, tr("do_not_disturb"), "set_do_not_disturb")));
+        if (dnd.enabled) rows.push(...windowRows(dnd, tr("do_not_disturb"), "set_do_not_disturb"));
+        parts.push(dnd.enabled ? window(dnd) : tr("off"));
       }
       if (slow) {
         rows.push(
-          `<div class="group sep">Low speed at night</div>`,
-          row("Low speed at night", "The mower drives slowly in this window", actionSwitch(slow.enabled, "Low speed at night", "set_low_speed_at_night")),
+          `<div class="group sep">${esc(tr("low_speed_at_night"))}</div>`,
+          row(tr("low_speed_at_night"), tr("low_speed_at_night_desc"), actionSwitch(slow.enabled, tr("low_speed_at_night"), "set_low_speed_at_night")),
         );
-        if (slow.enabled) rows.push(...windowRows(slow, "Low speed at night", "set_low_speed_at_night"));
-        parts.push(`low speed at night ${slow.enabled ? window(slow) : "off"}`);
+        if (slow.enabled) rows.push(...windowRows(slow, tr("low_speed_at_night"), "set_low_speed_at_night"));
+        parts.push(slow.enabled ? tr("low_speed_on", { window: window(slow) }) : tr("low_speed_off"));
       }
-      pages.dnd = { title: dnd ? "Do Not Disturb" : "Low speed at night", icon: "mdi:weather-night", summary: parts.join(" · "), rows };
+      pages.dnd = { title: tr(dnd ? "do_not_disturb" : "low_speed_at_night"), icon: "mdi:weather-night", summary: parts.join(" · "), rows };
     }
 
     const stopPoint = status.stop_point_setting;
     if (stopPoint) {
       const rows = [
-        row("Start from the stop point", "A new task can go on where an unfinished one stopped", actionSwitch(stopPoint.enabled, "Start from the stop point", "set_start_from_stop_point")),
+        row(tr("start_from_stop_point"), tr("start_from_stop_point_desc"), actionSwitch(stopPoint.enabled, tr("start_from_stop_point"), "set_start_from_stop_point")),
       ];
       if (stopPoint.enabled) {
         const choices = [1, 2, 3, 4, 5, 6, 7];
         const days =
           (choices.includes(stopPoint.days) ? "" : `<option value="" disabled selected>–</option>`) +
-          choices.map((day) => `<option value="${day}" ${day === stopPoint.days ? "selected" : ""}>${day} day${day > 1 ? "s" : ""}</option>`).join("");
-        rows.push(row("Keep a stop point", "How long an unfinished task can be continued", `<select class="in" aria-label="Keep a stop point" data-days ${k.off ? "disabled" : ""}>${days}</select>`));
+          choices.map((day) => `<option value="${day}" ${day === stopPoint.days ? "selected" : ""}>${esc(trCount("day_count", day))}</option>`).join("");
+        rows.push(row(tr("keep_stop_point"), tr("keep_stop_point_desc"), `<select class="in" aria-label="${esc(tr("keep_stop_point"))}" data-days ${k.off ? "disabled" : ""}>${days}</select>`));
       }
-      const kept = stopPoint.days ? ` · a stop point is kept for ${stopPoint.days} day${stopPoint.days > 1 ? "s" : ""}` : "";
-      pages.stop_point = { title: "Start from the stop point", icon: "mdi:debug-step-over", summary: stopPoint.enabled ? `On${kept}` : "Off", rows };
+      const kept = stopPoint.days ? ` · ${trCount("stop_point_kept", stopPoint.days)}` : "";
+      pages.stop_point = { title: tr("start_from_stop_point"), icon: "mdi:debug-step-over", summary: stopPoint.enabled ? `${tr("on")}${kept}` : tr("off"), rows };
     }
 
     const light = status.light;
     if (light) {
-      const scenes = [["standby", "In standby"], ["working", "While working"], ["charging", "While charging"], ["error", "On errors"]];
-      const rows = [row("Light only in a period", "Otherwise the lights follow the states below all day", actionSwitch(light.custom_period, "Light only in a period", "set_light", "custom_period"))];
-      if (light.custom_period) rows.push(...windowRows(light, "Light period", "set_light"));
-      rows.push(`<div class="group sep">Light on</div>`);
-      for (const [scene, label] of scenes) rows.push(row(label, "", actionSwitch(light[scene], `Light ${label.toLowerCase()}`, "set_light", scene)));
+      const scenes = [["standby", tr("in_standby")], ["working", tr("while_working")], ["charging", tr("while_charging")], ["error", tr("on_errors")]];
+      const rows = [row(tr("light_period_only"), tr("light_period_only_desc"), actionSwitch(light.custom_period, tr("light_period_only"), "set_light", "custom_period"))];
+      if (light.custom_period) rows.push(...windowRows(light, tr("light_period"), "set_light"));
+      rows.push(`<div class="group sep">${esc(tr("light_on"))}</div>`);
+      for (const [scene, label] of scenes) rows.push(row(label, "", actionSwitch(light[scene], tr("light_scene", { scene: label.toLowerCase() }), "set_light", scene)));
       const on = scenes.filter(([scene]) => light[scene]).map(([, label]) => label.toLowerCase());
       pages.lights = {
-        title: "Lights",
+        title: tr("lights"),
         icon: "mdi:lightbulb-outline",
         tone: "o",
-        summary: `${light.custom_period ? window(light) : "All day"} · ${on.length ? on.join(", ") : "always off"}`,
+        summary: `${light.custom_period ? window(light) : tr("all_day")} · ${on.length ? on.join(", ") : tr("always_off")}`,
         rows,
       };
     }
 
-    const theft = [
-      ["lift_alarm", "Lift alarm", "Sounds when the mower is lifted", "lift alarm"],
-      ["off_map_alarm", "Off-map alarm", "Sounds when the mower is carried off the map", "off-map alarm"],
-      ["location_reporting", "Real-time location", "Reports where the mower is", "location"],
-      ["anti_theft_pin_check", "PIN before power-off", "Asks for the PIN before the mower is switched off", "PIN"],
-    ]
-      .map(([key, title, desc, short]) => ({ toggle: entitySwitch(key), title, desc, short }))
+    const theft = ["lift_alarm", "off_map_alarm", "location_reporting", "anti_theft_pin_check"]
+      .map((key) => ({ key, toggle: entitySwitch(key), title: tr(`theft_${key}`), desc: tr(`theft_${key}_desc`) }))
       .filter((item) => item.toggle);
     if (theft.length) {
       pages.anti_theft = {
-        title: "Anti-theft",
+        title: tr("anti_theft"),
         icon: "mdi:shield-outline",
         tone: "o",
-        summary: humanize(theft.filter((item) => item.toggle.known).map((item) => `${item.short} ${item.toggle.on ? "on" : "off"}`).join(" · ")),
+        summary: humanize(theft.filter((item) => item.toggle.known).map((item) => tr(`theft_${item.key}_${item.toggle.on ? "on" : "off"}`)).join(" · ")),
         rows: theft.map((item) => row(item.title, item.desc, item.toggle.control(item.title))),
       };
     }
 
     const presence = status.human_presence;
     if (presence) {
-      const rows = [row("Human presence alert", "Tells when the camera sees a person", actionSwitch(presence.enabled, "Human presence alert", "set_human_presence_alert"))];
+      const rows = [row(tr("human_presence"), tr("human_presence_desc"), actionSwitch(presence.enabled, tr("human_presence"), "set_human_presence_alert"))];
       if (presence.enabled) {
-        rows.push(row("Sensitivity", "", actionSelect("Sensitivity", "set_human_presence_alert", "sensitivity", [["low", "Low"], ["medium", "Medium"], ["high", "High"]], presence.sensitivity)));
-        rows.push(`<div class="group sep">Watch</div>`);
-        for (const [mode, label] of [["standby", "In standby"], ["mowing", "While mowing"], ["returning", "While returning"], ["patrolling", "While patrolling"]]) {
-          rows.push(row(label, "", actionSwitch(presence[mode], `Watch ${label.toLowerCase()}`, "set_human_presence_alert", mode)));
+        rows.push(row(tr("sensitivity"), "", actionSelect(tr("sensitivity"), "set_human_presence_alert", "sensitivity", [["low", tr("sensitivity_low")], ["medium", tr("sensitivity_medium")], ["high", tr("sensitivity_high")]], presence.sensitivity)));
+        rows.push(`<div class="group sep">${esc(tr("watch"))}</div>`);
+        for (const [mode, label] of [["standby", tr("in_standby")], ["mowing", tr("while_mowing")], ["returning", tr("while_returning")], ["patrolling", tr("while_patrolling")]]) {
+          rows.push(row(label, "", actionSwitch(presence[mode], tr("watch_mode", { mode: label.toLowerCase() }), "set_human_presence_alert", mode)));
         }
         rows.push(
-          `<div class="group sep">Then</div>`,
-          row("Speak and notify", "The mower speaks and a notification goes out", actionSwitch(presence.voice, "Speak and notify", "set_human_presence_alert", "voice")),
-          row("Take a photo", "A photo of the person goes to the app's album", actionSwitch(presence.photo, "Take a photo", "set_human_presence_alert", "photo")),
+          `<div class="group sep">${esc(tr("then"))}</div>`,
+          row(tr("speak_and_notify"), tr("speak_and_notify_desc"), actionSwitch(presence.voice, tr("speak_and_notify"), "set_human_presence_alert", "voice")),
+          row(tr("take_photo"), tr("take_photo_desc"), actionSwitch(presence.photo, tr("take_photo"), "set_human_presence_alert", "photo")),
         );
         if (presence.interval !== null && presence.interval !== undefined) {
-          rows.push(row("Alert at most every", "", actionSelect("Alert at most every", "set_human_presence_alert", "interval", [[3, "3 min"], [10, "10 min"], [20, "20 min"]], presence.interval)));
+          rows.push(row(tr("alert_at_most_every"), "", actionSelect(tr("alert_at_most_every"), "set_human_presence_alert", "interval", [[3, "3 min"], [10, "10 min"], [20, "20 min"]], presence.interval)));
         }
       }
       const parts = presence.enabled
-        ? ["On", presence.photo ? "photo" : "", presence.interval ? `at most every ${presence.interval} min` : ""].filter(Boolean)
-        : ["Off"];
-      pages.presence = { title: "Human presence alert", icon: "mdi:account-alert-outline", tone: "o", summary: parts.join(" · "), rows };
+        ? [tr("on"), presence.photo ? tr("photo") : "", presence.interval ? tr("at_most_every", { minutes: presence.interval }) : ""].filter(Boolean)
+        : [tr("off")];
+      pages.presence = { title: tr("human_presence"), icon: "mdi:account-alert-outline", tone: "o", summary: parts.join(" · "), rows };
     }
 
     const voice = status.robot_voice;
@@ -4229,23 +4268,23 @@ class DreameMowerCard extends HTMLElement {
       const rows = [];
       const parts = [];
       if (voice.language) {
-        rows.push(row("Voice language", "Changed in the app", `<span class="val">${esc(voice.language)}</span>`));
+        rows.push(row(tr("voice_language"), tr("voice_language_desc"), `<span class="val">${esc(voice.language)}</span>`));
         parts.push(voice.language);
       }
       if (voice.volume !== null && voice.volume !== undefined) {
         rows.push(
-          `<div class="row wrap">${k.text("Volume", `${voice.volume} %`)}` +
-            `<input type="range" min="0" max="100" step="5" value="${esc(voice.volume)}" aria-label="Robot volume" data-service="set_robot_voice" data-field="volume" ${k.off ? "disabled" : ""}></div>`,
+          `<div class="row wrap">${k.text(tr("volume"), `${voice.volume} %`)}` +
+            `<input type="range" min="0" max="100" step="5" value="${esc(voice.volume)}" aria-label="${esc(tr("robot_volume"))}" data-service="set_robot_voice" data-field="volume" ${k.off ? "disabled" : ""}></div>`,
         );
-        parts.push(`volume ${voice.volume} %`);
+        parts.push(tr("volume_summary", { volume: voice.volume }));
       }
       if (voice.prompts) {
-        const prompts = [["regular", "Regular notifications"], ["work_status", "Work status prompts"], ["special_status", "Special status prompts"], ["error_status", "Error prompts"]];
-        rows.push(`<div class="group sep">Prompts</div>`);
+        const prompts = [["regular", tr("prompts_regular")], ["work_status", tr("prompts_work_status")], ["special_status", tr("prompts_special_status")], ["error_status", tr("prompts_error_status")]];
+        rows.push(`<div class="group sep">${esc(tr("prompts"))}</div>`);
         for (const [kind, label] of prompts) rows.push(row(label, "", actionSwitch(voice.prompts[kind], label, "set_robot_voice", kind)));
-        parts.push(`${prompts.filter(([kind]) => voice.prompts[kind]).length} of ${prompts.length} prompts`);
+        parts.push(tr("prompts_summary", { on: prompts.filter(([kind]) => voice.prompts[kind]).length, total: prompts.length }));
       }
-      pages.voice = { title: "Robot voice", icon: "mdi:account-voice", tone: "n", summary: parts.join(" · "), rows };
+      pages.voice = { title: tr("robot_voice"), icon: "mdi:account-voice", tone: "n", summary: parts.join(" · "), rows };
     }
     return pages;
   }
@@ -4259,11 +4298,11 @@ class DreameMowerCard extends HTMLElement {
     const pages = this._settingsPages();
     const page = this._maint.page;
     const head = (title) =>
-      `<button type="button" class="iconbtn" data-page="" title="Back to the settings" aria-label="Back to the settings"><ha-icon icon="mdi:chevron-left"></ha-icon></button>` +
+      `<button type="button" class="iconbtn" data-page="" title="${esc(tr("back_to_settings"))}" aria-label="${esc(tr("back_to_settings"))}"><ha-icon icon="mdi:chevron-left"></ha-icon></button>` +
       `<span class="title">${esc(title)}</span>`;
     let html;
     if (page === "maintenance") {
-      this._setHtml("khead", this._el.khead, head("Maintenance"));
+      this._setHtml("khead", this._el.khead, head(tr("maintenance")));
       html = this._maintenancePage();
     } else if (page && pages[page]) {
       this._setHtml("khead", this._el.khead, head(pages[page].title));
@@ -4289,32 +4328,32 @@ class DreameMowerCard extends HTMLElement {
     // Map
     const maps = status.maps || [];
     const used = maps.find((map) => map.selected);
-    const others = maps.filter((map) => !map.selected).map((map) => map.name || `Map ${map.id}`);
+    const others = maps.filter((map) => !map.selected).map((map) => map.name || tr("map_default_name", { id: map.id }));
     const empty = (status.deleted_maps || []).length;
     const mapSummary = [
-      used ? `${used.name || `Map ${used.id}`} in use` : "",
+      used ? tr("map_in_use", { name: used.name || tr("map_default_name", { id: used.id }) }) : "",
       ...others,
-      empty ? `${empty} empty slot${empty > 1 ? "s" : ""} with a backup` : "",
+      empty ? trCount("empty_slots_with_backup", empty) : "",
     ]
       .filter(Boolean)
       .join(" · ");
     const mapRows = [
-      link("edit", "Map editor", "No-go zones, ignore areas, spot areas, maintenance points, zones", tile(EDIT_MAP_ICON), this._hasMap()),
-      link("maps", "Maps", mapSummary || "Rename, back up, restore, use or delete a map", tile("mdi:layers-outline")),
+      link("edit", tr("map_editor"), tr("map_editor_desc"), tile(EDIT_MAP_ICON), this._hasMap()),
+      link("maps", tr("maps"), mapSummary || tr("maps_desc"), tile("mdi:layers-outline")),
     ];
 
     // Mowing
     const mowing = [];
-    if (this._settingsFeed()) mowing.push(link("mowing", "Mowing settings", this._mowingSummary(), tile(GLYPHS.height, "g")));
+    if (this._settingsFeed()) mowing.push(link("mowing", tr("mowing_settings"), this._mowingSummary(), tile(GLYPHS.height, "g")));
     const points = ((this._geometry && this._geometry.maintenance_points) || []).length;
     const wear = (status.consumables || [])
       .filter((item) => item.item !== "robot")
-      .map((item) => `${{ blade: "blades", brush: "brush" }[item.item] || item.item} ${Math.floor(Math.max(0, Math.min(100, item.health)))} %`);
+      .map((item) => `${trOf({ blade: "wear_blade", brush: "wear_brush" }, item.item) || item.item} ${Math.floor(Math.max(0, Math.min(100, item.health)))} %`);
     mowing.push(
       link(
         "maintenance",
-        "Maintenance",
-        [`${points || "No"} maintenance point${points === 1 ? "" : "s"}`, ...wear].join(" · "),
+        tr("maintenance"),
+        [(points ? trCount("maintenance_point_count", points) : tr("no_maintenance_points")), ...wear].join(" · "),
         tile("mdi:wrench-outline", "g"),
       ),
     );
@@ -4328,11 +4367,11 @@ class DreameMowerCard extends HTMLElement {
     const functions = [
       page("rain"),
       page("charging"),
-      inline("frost_protection", "mdi:snowflake", "Frost protection", "Back to the station at 6 °C or below"),
-      inline("path_obstacle_avoidance", "mdi:routes", "Pathway obstacle avoidance", "Steers around obstacles on the paths between zones"),
-      navigation ? row("Navigation path", "The direct way, or a varying one that spares the lawn", navigation.control("Navigation path"), tile("mdi:map-marker-path")) : "",
-      inline("auto_recharge_standby", "mdi:home-lightning-bolt-outline", "Auto recharge", "Back to the station after an hour paused or idle outside it"),
-      inline("ai_obstacle_photos", "mdi:camera-outline", "Obstacle photos", "Tap an obstacle on the map to see its photo"),
+      inline("frost_protection", "mdi:snowflake", tr("frost_protection"), tr("frost_protection_desc")),
+      inline("path_obstacle_avoidance", "mdi:routes", tr("path_obstacle_avoidance"), tr("path_obstacle_avoidance_desc")),
+      navigation ? row(tr("navigation_path"), tr("navigation_path_desc"), navigation.control(tr("navigation_path")), tile("mdi:map-marker-path")) : "",
+      inline("auto_recharge_standby", "mdi:home-lightning-bolt-outline", tr("auto_recharge"), tr("auto_recharge_desc")),
+      inline("ai_obstacle_photos", "mdi:camera-outline", tr("obstacle_photos"), tr("obstacle_photos_desc")),
       page("dnd"),
       page("stop_point"),
     ];
@@ -4343,37 +4382,37 @@ class DreameMowerCard extends HTMLElement {
       page("lights"),
       page("anti_theft"),
       page("presence"),
-      childLock ? row("Child lock", "The control panel locks after five idle minutes", childLock.control("Child lock"), tile("mdi:lock-outline", "o")) : "",
+      childLock ? row(tr("child_lock"), tr("child_lock_desc"), childLock.control(tr("child_lock")), tile("mdi:lock-outline", "o")) : "",
     ];
 
     // General
     const general = [
       row(
-        "Find my robot",
-        "The mower calls out so you can find it by its sound",
-        `<button type="button" class="flat" data-find ${k.off ? "disabled" : ""}>Call</button>`,
+        tr("find_robot"),
+        tr("find_robot_desc"),
+        `<button type="button" class="flat" data-find ${k.off ? "disabled" : ""}>${esc(tr("call"))}</button>`,
         tile("mdi:bell-ring-outline", "n"),
       ),
       page("voice"),
-      status.time_zone ? row("Time zone", "", `<span class="val">${esc(status.time_zone)}</span>`, tile("mdi:earth", "n")) : "",
+      status.time_zone ? row(tr("time_zone"), "", `<span class="val">${esc(status.time_zone)}</span>`, tile("mdi:earth", "n")) : "",
     ];
     const update = state(this._deviceEntity("update", null));
     const link_module = status.link_module;
     if (update || link_module) {
       const installed = update ? update.attributes.installed_version : null;
       const latest = update ? update.attributes.latest_version : null;
-      const value = !update ? "" : update.state === "on" && latest ? `${latest} available` : update.state === "off" ? "Up to date" : "";
+      const value = !update ? "" : update.state === "on" && latest ? tr("version_available", { version: latest }) : update.state === "off" ? tr("up_to_date") : "";
       const module = link_module
-        ? `link module${link_module.plan_valid === false ? ", data plan expired" : link_module.plan_valid ? ", data plan valid" : ""}`
+        ? `${tr("link_module")}${link_module.plan_valid === false ? `, ${tr("data_plan_expired")}` : link_module.plan_valid ? `, ${tr("data_plan_valid")}` : ""}`
         : "";
-      general.push(row("Firmware", [installed, module].filter(Boolean).join(" · "), value ? `<span class="val">${esc(value)}</span>` : "", tile("mdi:chip", "n")));
+      general.push(row(tr("firmware"), [installed, module].filter(Boolean).join(" · "), value ? `<span class="val">${esc(value)}</span>` : "", tile("mdi:chip", "n")));
     }
     return (
-      group("Map", mapRows, true) +
-      group("Mowing", mowing) +
-      group("Functions", functions) +
-      group("Security", security) +
-      group("General", general)
+      group(tr("group_map"), mapRows, true) +
+      group(tr("group_mowing"), mowing) +
+      group(tr("group_functions"), functions) +
+      group(tr("group_security"), security) +
+      group(tr("group_general"), general)
     );
   }
 
@@ -4381,15 +4420,15 @@ class DreameMowerCard extends HTMLElement {
   _mowingSummary() {
     const feed = this._settingsFeed();
     const values = (feed && feed.areas && feed.areas["0"]) || {};
-    const each = DIRECTION_EACH_SESSION[values.mowing_direction_mode];
+    const each = trOf(DIRECTION_EACH_SESSION, values.mowing_direction_mode);
     const parts = [
-      feed && feed.mode === "per_zone" ? "Per zone" : "",
+      feed && feed.mode === "per_zone" ? tr("per_zone") : "",
       values.cutting_height !== undefined && values.cutting_height !== null ? `${values.cutting_height} cm` : "",
-      values.efficiency ? (EFFICIENCY_LABELS[values.efficiency] || humanize(values.efficiency)).toLowerCase() : "",
+      values.efficiency ? (trOf(EFFICIENCY_LABELS, values.efficiency) || humanize(values.efficiency)).toLowerCase() : "",
       values.mowing_direction !== undefined && values.mowing_direction !== null ? `${values.mowing_direction}°${each ? `, ${each}` : ""}` : "",
-      values.edge_mowing_auto ? "edges after" : "",
+      values.edge_mowing_auto ? tr("edges_after_lower") : "",
     ];
-    return parts.filter(Boolean).join(" · ") || "Height, direction, edges and obstacles";
+    return parts.filter(Boolean).join(" · ") || tr("mowing_settings_desc");
   }
 
   // The maintenance points to send the mower to, and how worn the blades,
@@ -4404,37 +4443,38 @@ class DreameMowerCard extends HTMLElement {
           .map(
             (point) =>
               `<div class="row"><span class="ricon g"><ha-icon icon="mdi:map-marker-outline"></ha-icon></span>` +
-              `<span class="rt"><span class="t">Point ${esc(point.id)}</span>` +
-              (point.heading !== null && point.heading !== undefined ? `<span class="d">Faces ${esc(Math.round(point.heading))}°</span>` : "") +
-              `</span><button type="button" class="flat" data-go="${esc(point.id)}" ${busy || mower.session_active ? "disabled" : ""}>Go there</button></div>`,
+              `<span class="rt"><span class="t">${esc(tr("point_name", { id: point.id }))}</span>` +
+              (point.heading !== null && point.heading !== undefined ? `<span class="d">${esc(tr("faces_angle", { angle: Math.round(point.heading) }))}</span>` : "") +
+              `</span><button type="button" class="flat" data-go="${esc(point.id)}" ${busy || mower.session_active ? "disabled" : ""}>${esc(tr("go_there"))}</button></div>`,
           )
           .join("")}</div>`
-      : `<div class="note">This map has no maintenance point. Place one in the map editor.</div>`;
+      : `<div class="note">${esc(tr("no_maintenance_point"))}</div>`;
     const consumables = status.consumables;
     const consumableRows = consumables
       ? `<div class="list">${consumables.map((item) => this._consumableRow(item, busy)).join("")}</div>`
-      : `<div class="note">Not read from the mower yet.</div>`;
+      : `<div class="note">${esc(tr("not_read_yet"))}</div>`;
     return (
-      `<div class="group">Maintenance point</div>${pointRows}` +
-      `<div class="hint">The mower drives to the point and waits there for cleaning or servicing. Keep its way clear. Points are placed in Settings › Map editor.</div>` +
-      `<div class="group sep">Consumables</div>${consumableRows}` +
-      (consumables ? `<div class="hint">Each button starts the count over after asking. The bar turns amber from 60 % down and red from 20 % down.</div>` : "")
+      `<div class="group">${esc(tr("edit_kind_maintenance"))}</div>${pointRows}` +
+      `<div class="hint">${esc(tr("maintenance_point_hint"))}</div>` +
+      `<div class="group sep">${esc(tr("consumables"))}</div>${consumableRows}` +
+      (consumables ? `<div class="hint">${esc(tr("consumables_hint"))}</div>` : "")
     );
   }
 
   _consumableRow(item, busy) {
-    const info = CONSUMABLES[item.item] || { label: item.item, done: "Replaced", icon: "mdi:wrench-outline" };
+    const info = CONSUMABLES[item.item] || { done: "consumable_replaced", icon: "mdi:wrench-outline" };
+    const label = CONSUMABLES[item.item] ? tr(`consumable_${item.item}`) : item.item;
     const health = Math.max(0, Math.min(100, item.health));
     const level = health > 60 ? "good" : health > 20 ? "soon" : "now";
     const left =
       item.item === "robot"
-        ? `needs maintenance in ${Math.round(item.remaining_hours)} h`
-        : `${item.remaining_hours} h left of ${item.total_hours} h`;
+        ? tr("needs_maintenance_in", { hours: Math.round(item.remaining_hours) })
+        : tr("hours_left", { left: item.remaining_hours, total: item.total_hours });
     return (
       `<div class="row"><span class="ricon o"><ha-icon icon="${info.icon}"></ha-icon></span>` +
-      `<span class="rt"><span class="t">${esc(info.label)}</span><span class="d">${esc(`${Math.floor(health)} % · ${left}`)}</span>` +
+      `<span class="rt"><span class="t">${esc(label)}</span><span class="d">${esc(`${Math.floor(health)} % · ${left}`)}</span>` +
       `<span class="meter"><i class="${level}" style="width:${health}%"></i></span></span>` +
-      `<button type="button" class="flat" data-reset="${esc(item.item)}" ${busy}>${esc(info.done)}</button></div>`
+      `<button type="button" class="flat" data-reset="${esc(item.item)}" ${busy}>${esc(tr(info.done))}</button></div>`
     );
   }
 
@@ -4458,26 +4498,25 @@ class DreameMowerCard extends HTMLElement {
       const value = button.dataset.on !== "1";
       const field = button.dataset.field || "enabled";
       if (button.dataset.service === "set_start_from_stop_point" && field === "enabled" && !value) {
-        if (!window.confirm("Switch off starting from the stop point? The stop points the mower holds are cleared.")) return;
+        if (!window.confirm(tr("stop_point_off_confirm"))) return;
       }
       await this._call(DOMAIN, button.dataset.service, { [field]: value });
       return;
     }
     if ("find" in button.dataset) {
-      await this._call(DOMAIN, "find_robot", {}, { success: "Calling the mower; listen for its sound" });
+      await this._call(DOMAIN, "find_robot", {}, { success: tr("calling_mower") });
       return;
     }
     if (button.dataset.go) {
       const id = Number(button.dataset.go);
-      if (!window.confirm(`Send the mower to maintenance point ${id}? It drives there and waits.`)) return;
+      if (!window.confirm(tr("go_to_point_confirm", { id }))) return;
       if (!(await this._beforeDrive("maintenance"))) return;
-      await this._call(DOMAIN, "go_to_maintenance_point", { point_id: id }, { success: "On its way to the maintenance point" });
+      await this._call(DOMAIN, "go_to_maintenance_point", { point_id: id }, { success: tr("on_way_to_point") });
       return;
     }
     if (button.dataset.reset) {
-      const info = CONSUMABLES[button.dataset.reset];
-      if (!window.confirm(`${info.confirm} Its count starts over.`)) return;
-      await this._call(DOMAIN, "reset_consumable", { item: button.dataset.reset }, { success: "Count started over" });
+      if (!window.confirm(tr("consumable_reset_confirm", { question: tr(`consumable_${button.dataset.reset}_confirm`) }))) return;
+      await this._call(DOMAIN, "reset_consumable", { item: button.dataset.reset }, { success: tr("count_started_over") });
     }
   }
 
@@ -4564,7 +4603,7 @@ class DreameMowerCard extends HTMLElement {
         const on = st.state === "on";
         const known = on || st.state === "off";
         const name = st.attributes.schedule_name || st.attributes.friendly_name || st.entity_id;
-        const summary = st.state === "unavailable" ? "Not on the map in use" : scheduleSummary(st.attributes.tasks);
+        const summary = st.state === "unavailable" ? tr("not_on_map_in_use") : scheduleSummary(st.attributes.tasks);
         return (
           `<div class="row"><span class="ricon o"><ha-icon icon="mdi:calendar-month-outline"></ha-icon></span>` +
           `<span class="rt"><span class="t">${esc(name)}</span><span class="d">${esc(summary)}</span></span>` +
@@ -4574,9 +4613,9 @@ class DreameMowerCard extends HTMLElement {
       .join("");
     const used = ((this._status && this._status.maps) || []).find((map) => map.selected);
     return (
-      `<div class="group${below ? " sep" : ""}">Robot schedules${used ? ` · ${esc(used.name || `Map ${used.id}`)}` : ""}</div>` +
-      (rows ? `<div class="list">${rows}</div>` : `<div class="note">The mower has no schedules.</div>`) +
-      `<div class="hint">The mower runs one of its own schedules at a time: switching one on switches the other off. Their tasks are set up in the app.</div>`
+      `<div class="group${below ? " sep" : ""}">${esc(tr("robot_schedules"))}${used ? ` · ${esc(used.name || tr("map_default_name", { id: used.id }))}` : ""}</div>` +
+      (rows ? `<div class="list">${rows}</div>` : `<div class="note">${esc(tr("no_schedules"))}</div>`) +
+      `<div class="hint">${esc(tr("schedules_hint"))}</div>`
     );
   }
 
@@ -4707,7 +4746,7 @@ class DreameMowerCard extends HTMLElement {
   // Leaves the map editor, after asking when it holds unsaved changes;
   // true once it is left.
   _closeEditor() {
-    if (this._editChanges().length && !window.confirm("Leave the map editor without saving the changes?")) return false;
+    if (this._editChanges().length && !window.confirm(tr("leave_editor_unsaved"))) return false;
     this._edit = null;
     this._turning = false;
     this._mapList = null;
@@ -4727,7 +4766,7 @@ class DreameMowerCard extends HTMLElement {
     if (!force && e.mapId === g.map_id && this._editChanges().length) return false;
     if (e.mapId !== null && e.mapId !== g.map_id) {
       e.zones = [];
-      if (this._editChanges().length) this._toast("The mower switched maps; the unsaved changes were dropped", true);
+      if (this._editChanges().length) this._toast(tr("maps_switched_dropped"), true);
     }
     e.mapId = g.map_id;
     e.geometry = g;
@@ -4899,8 +4938,8 @@ class DreameMowerCard extends HTMLElement {
   // Why the map cannot be changed now, or null.
   _editBlocked() {
     const mower = this._mower();
-    if (!mower.available) return "The mower is offline.";
-    if (mower.session_active || mower.activity === "returning") return "The map can be changed once the mower no longer mows or returns.";
+    if (!mower.available) return tr("mower_offline");
+    if (mower.session_active || mower.activity === "returning") return tr("map_change_blocked");
     return null;
   }
 
@@ -4986,67 +5025,66 @@ class DreameMowerCard extends HTMLElement {
       `<button type="button" class="chip ${(e.tool || "") === id ? "on" : ""}" data-tool="${id}" title="${esc(title)}" aria-pressed="${(e.tool || "") === id}" ${busy ? "disabled" : ""}>` +
       `<ha-icon icon="${icon}"></ha-icon>${esc(label)}</button>`;
     const tools =
-      chip("", "mdi:cursor-default-outline", "Select", "Tap something on the map to change it") +
-      EDIT_TOOLS.map((t) => chip(t.id, t.icon, t.label, t.hint)).join("");
+      chip("", "mdi:cursor-default-outline", tr("edit_select"), tr("edit_select_hint")) +
+      EDIT_TOOLS.map((t) => chip(t.id, t.icon, tr(`edit_tool_${t.id}`), tr(`edit_hint_${t.id}`))).join("");
     const flat = (op, label, cls = "", off = busy) => `<button type="button" class="flat ${cls}" data-edit="${op}" ${off ? "disabled" : ""}>${esc(label)}</button>`;
     let context = "";
     const selected = this._editSelected();
     if (tool && tool.id === "zones") {
-      const names = e.zones.map((id) => (this._shapes.zones.find((z) => z.id === id) || {}).name || `Zone ${id}`);
+      const names = e.zones.map((id) => (this._shapes.zones.find((z) => z.id === id) || {}).name || tr("zone_default_name", { id: id }));
       if (e.zones.length === 1) {
         context =
-          `<div><input type="text" maxlength="24" value="${esc(names[0])}" data-zone-name aria-label="Zone name">` +
-          (e.split ? `<br><span class="muted">Drag across the zone where it is to be split.</span>` : "") +
-          `</div><div class="acts">${flat("rename", "Rename", "", blocked || busy)}${flat("split", e.split ? "Cancel split" : "Split", "", blocked || busy)}</div>`;
+          `<div><input type="text" maxlength="24" value="${esc(names[0])}" data-zone-name aria-label="${esc(tr("zone_name"))}">` +
+          (e.split ? `<br><span class="muted">${esc(tr("split_hint"))}</span>` : "") +
+          `</div><div class="acts">${flat("rename", tr("rename"), "", blocked || busy)}${flat("split", tr(e.split ? "cancel_split" : "split"), "", blocked || busy)}</div>`;
       } else if (e.zones.length === 2) {
-        context = `<div><b>${esc(names.join(" + "))}</b><br><span class="muted">Neighbouring zones become one.</span></div>${flat("merge", "Merge", "", blocked || busy)}`;
+        context = `<div><b>${esc(names.join(" + "))}</b><br><span class="muted">${esc(tr("merge_hint"))}</span></div>${flat("merge", tr("merge"), "", blocked || busy)}`;
       } else {
-        context = `<div>${esc(tool.hint)}</div>`;
+        context = `<div>${esc(tr(`edit_hint_${tool.id}`))}</div>`;
       }
     } else if (selected) {
-      const label = EDIT_KIND_LABELS[selected.kind];
+      const label = tr(`edit_kind_${selected.kind}`);
       const size = editSizeText(selected);
       const note =
         selected.shape === "polygon"
-          ? "This shape can only be deleted here"
+          ? tr("shape_delete_only")
           : selected.kind === "maintenance"
-            ? "Drag to move it"
-            : `Drag it or its handles · Shift keeps it ${selected.shape === "line" ? "straight" : "square"}`;
+            ? tr("drag_to_move")
+            : tr(selected.shape === "line" ? "drag_handles_straight" : "drag_handles_square");
       let facing = "";
       if (selected.kind === "maintenance") {
         // Which way the mower faces there; it keeps what the map says until turned.
         const heading = selected.heading ?? null;
         const mower = this._status && this._status.mower;
         facing =
-          `<div class="facing"><span>Faces</span>` +
-          `<input type="range" min="0" max="355" step="5" value="${heading === null ? 0 : Math.round(heading / 5) * 5 % 360}" data-point-heading aria-label="Which way the mower faces there">` +
-          `<b data-heading-label>${heading === null ? "not known" : `${Math.round(heading)}°`}</b>` +
+          `<div class="facing"><span>${esc(tr("faces"))}</span>` +
+          `<input type="range" min="0" max="355" step="5" value="${heading === null ? 0 : Math.round(heading / 5) * 5 % 360}" data-point-heading aria-label="${esc(tr("faces_aria"))}">` +
+          `<b data-heading-label>${heading === null ? esc(tr("not_known")) : `${Math.round(heading)}°`}</b>` +
           (mower && mower.heading !== null && mower.heading !== undefined
-            ? `<button type="button" class="flat" data-edit="heading-mower" ${busy ? "disabled" : ""} title="Face the way the mower faces now">Like the mower</button>`
+            ? `<button type="button" class="flat" data-edit="heading-mower" ${busy ? "disabled" : ""} title="${esc(tr("like_mower_title"))}">${esc(tr("like_mower"))}</button>`
             : "") +
           `</div>`;
       }
       context =
-        `<div><b>${esc(label)}</b>${selected.id === null ? " (new)" : ""}${size ? ` · ${esc(size)}` : ""}<br><span class="muted">${esc(note)}</span></div>` +
-        flat("delete", "Delete", "danger") +
+        `<div><b>${esc(label)}</b>${selected.id === null ? ` (${esc(tr("new"))})` : ""}${size ? ` · ${esc(size)}` : ""}<br><span class="muted">${esc(note)}</span></div>` +
+        flat("delete", tr("delete"), "danger") +
         facing;
     } else {
       context =
-        `<div>${esc(tool ? tool.hint : "Pick what to draw, or tap something on the map to change it.")}` +
-        (tool && tool.shape !== "point" ? `<br><span class="muted">Shift keeps it square or straight.</span>` : "") +
+        `<div>${esc(tool ? tr(`edit_hint_${tool.id}`) : tr("edit_pick"))}` +
+        (tool && tool.shape !== "point" ? `<br><span class="muted">${esc(tr("shift_hint"))}</span>` : "") +
         `</div>`;
     }
     const count = changes.length;
     const html =
-      `<div class="tools" role="group" aria-label="Editor tools">${tools}</div>` +
+      `<div class="tools" role="group" aria-label="${esc(tr("editor_tools"))}">${tools}</div>` +
       `<div class="callout mid">${context}</div>` +
       (blocked ? `<div class="warn">${esc(blocked)}</div>` : "") +
-      `<div class="hint">Changes stay here until <b>Save</b>; none of them makes the mower drive. The mower takes them only while it is not mowing or returning. ` +
-      `A new zone, a path or a new map is only made in the app, as the mower drives the boundary.</div>` +
-      `<div class="save">${flat("discard", "Discard", "", !count || busy)}` +
-      `<button type="button" class="primary" data-edit="save" ${count && !busy && !blocked ? "" : "disabled"}>${count ? `Save ${count} change${count === 1 ? "" : "s"}` : "Save"}</button></div>`;
+      `<div class="hint">${esc(tr("editor_hint", { save: "\u0000" })).replace("\u0000", `<b>${esc(tr("save"))}</b>`)}</div>` +
+      `<div class="save">${flat("discard", tr("discard"), "", !count || busy)}` +
+      `<button type="button" class="primary" data-edit="save" ${count && !busy && !blocked ? "" : "disabled"}>${esc(count ? trCount("save_changes", count) : tr("save"))}</button></div>`;
     const unsaved = this._el.edithead.querySelector(".muted");
-    if (unsaved) unsaved.textContent = count ? `${count} unsaved change${count === 1 ? "" : "s"}` : "";
+    if (unsaved) unsaved.textContent = count ? trCount("unsaved_changes", count) : "";
     // The name field keeps what is being typed into it.
     const field = el.querySelector("[data-zone-name]");
     if (field && field === this._root.activeElement && this._html.editpanel && html.includes("data-zone-name")) return;
@@ -5101,15 +5139,15 @@ class DreameMowerCard extends HTMLElement {
       case "rename": {
         const field = this._el.editpanel.querySelector("[data-zone-name]");
         const name = field ? field.value.trim() : "";
-        if (name) await this._call(DOMAIN, "rename_zone", { zone_id: e.zones[0], name }, { success: "Zone renamed" });
+        if (name) await this._call(DOMAIN, "rename_zone", { zone_id: e.zones[0], name }, { success: tr("zone_renamed") });
         break;
       }
       case "split":
         e.split = !e.split;
         break;
       case "merge": {
-        if (!window.confirm("Merge the two zones into one? Their schedules may need to be set up again.")) return;
-        if (await this._call(DOMAIN, "merge_zones", { zone_ids: e.zones }, { success: "Zones merged" })) e.zones = [];
+        if (!window.confirm(tr("merge_confirm"))) return;
+        if (await this._call(DOMAIN, "merge_zones", { zone_ids: e.zones }, { success: tr("zones_merged") })) e.zones = [];
         break;
       }
       default:
@@ -5120,11 +5158,11 @@ class DreameMowerCard extends HTMLElement {
 
   async _splitZone(zoneId, line) {
     const e = this._edit;
-    if (!window.confirm("Split the zone along this line? The schedules that name it are dropped.")) {
+    if (!window.confirm(tr("split_confirm"))) {
       this._invalidate("dyn");
       return;
     }
-    const ok = await this._call(DOMAIN, "split_zone", { zone_id: zoneId, line: line.map((v) => Math.round(v)) }, { success: "Zone split" });
+    const ok = await this._call(DOMAIN, "split_zone", { zone_id: zoneId, line: line.map((v) => Math.round(v)) }, { success: tr("zone_split") });
     if (ok && this._edit === e) {
       e.zones = [];
       e.split = false;
@@ -5170,7 +5208,7 @@ class DreameMowerCard extends HTMLElement {
       if (!ok) break;
       done += 1;
     }
-    if (done === changes.length) this._toast(done === 1 ? "Change saved" : `${done} changes saved`);
+    if (done === changes.length) this._toast(trCount("changes_saved", done));
     this._invalidate("dyn", "actions");
   }
 
@@ -5287,70 +5325,70 @@ class DreameMowerCard extends HTMLElement {
 
     const zones = this._shapes.zones;
     const parts = [
-      `<div class="seg" role="group" aria-label="One set of settings for the map, or one per zone">` +
-        `<button type="button" class="${perZone ? "" : "on"}" data-mode="map_wide">Whole map</button>` +
-        `<button type="button" class="${perZone ? "on" : ""}" data-mode="per_zone">Per zone</button></div>`,
+      `<div class="seg" role="group" aria-label="${esc(tr("settings_mode_aria"))}">` +
+        `<button type="button" class="${perZone ? "" : "on"}" data-mode="map_wide">${esc(tr("whole_map"))}</button>` +
+        `<button type="button" class="${perZone ? "on" : ""}" data-mode="per_zone">${esc(tr("per_zone"))}</button></div>`,
       perZone
         ? field(
-            "Settings of the zone",
-            `<select class="in zone" aria-label="Zone">${zones
-              .map((zone) => `<option value="${zone.id}" ${zone.id === this._settingsZone() ? "selected" : ""}>${esc(zone.name || `Zone ${zone.id}`)}</option>`)
+            tr("zone_settings"),
+            `<select class="in zone" aria-label="${esc(tr("zone"))}">${zones
+              .map((zone) => `<option value="${zone.id}" ${zone.id === this._settingsZone() ? "selected" : ""}>${esc(zone.name || tr("zone_default_name", { id: zone.id }))}</option>`)
               .join("")}</select>`,
           )
         : "",
-      has("cutting_height") ? slider("cutting_height", "Cutting height", 3, feed.height_max || 7, 0.5, " cm", "height") : "",
+      has("cutting_height") ? slider("cutting_height", tr("cutting_height"), 3, feed.height_max || 7, 0.5, " cm", "height") : "",
       has("efficiency")
-        ? field("Efficiency", seg("efficiency", [["standard", "Standard"], ["efficient", "Efficient"]]), {
-            hint: value("efficiency") === "efficient" ? "Efficient is faster and takes less care around obstacles." : "",
+        ? field(tr("efficiency"), seg("efficiency", [["standard", tr("efficiency_standard")], ["efficient", tr("efficiency_efficient")]]), {
+            hint: value("efficiency") === "efficient" ? tr("efficiency_hint") : "",
           })
         : "",
       has("turning_method")
-        ? field("Turning", seg("turning_method", [["efficient", "Efficient"], ["lawn_care", "Lawn care"]]), {
-            hint: value("turning_method") === "lawn_care" ? "Wider turns that spare the lawn." : "",
+        ? field(tr("turning"), seg("turning_method", [["efficient", tr("turning_efficient")], ["lawn_care", tr("turning_lawn_care")]]), {
+            hint: value("turning_method") === "lawn_care" ? tr("turning_hint") : "",
           })
         : "",
       has("mowing_direction")
         ? field(
-            "Mowing direction",
+            tr("mowing_direction"),
             this._directionPreview(value("mowing_direction")) +
-              `<div class="range"><span>0°</span><input type="range" min="0" max="179" step="1" value="${esc(value("mowing_direction"))}" data-range="mowing_direction" data-unit="°" aria-label="Mowing direction"><span>179°</span></div>`,
+              `<div class="range"><span>0°</span><input type="range" min="0" max="179" step="1" value="${esc(value("mowing_direction"))}" data-range="mowing_direction" data-unit="°" aria-label="${esc(tr("mowing_direction"))}"><span>179°</span></div>`,
             { glyph: "angle", out: `<b data-out="mowing_direction">${esc(value("mowing_direction"))}°</b>` },
           )
         : "",
       has("mowing_direction_mode")
-        ? field("Each session", seg("mowing_direction_mode", [["fixed", "Same"], ["crisscross", "+45°"], ["chequerboard", "+90°"]]), {
-            hint: "Applies once the current cycle is complete.",
+        ? field(tr("each_session"), seg("mowing_direction_mode", [["fixed", tr("same_direction")], ["crisscross", "+45°"], ["chequerboard", "+90°"]]), {
+            hint: tr("each_session_hint"),
           })
         : "",
     ];
     const edges = [
-      toggle("edge_mowing_auto", "Mow edges after a task", "After all-area and zone mowing"),
-      toggle("edge_mowing_safe", "Safe edge mowing", "Keeps a buffer from the boundary"),
-      toggle("edge_blade_offset", "EdgeMaster", "Blade shifted to the side, two laps"),
+      toggle("edge_mowing_auto", tr("edge_mowing_auto"), tr("edge_mowing_auto_desc")),
+      toggle("edge_mowing_safe", tr("edge_mowing_safe"), tr("edge_mowing_safe_desc")),
+      toggle("edge_blade_offset", tr("edge_blade_offset"), tr("edge_blade_offset_desc")),
     ].join("");
     const lidar = value("lidar_obstacle_recognition");
     const ai = value("ai_obstacle_recognition") || [];
     const detects = lidar !== false || ai.length > 0;
-    const kinds = [["humans", "Humans"], ["animals", "Animals"], ["objects", "Objects"]];
+    const kinds = [["humans", tr("ai_humans")], ["animals", tr("ai_animals")], ["objects", tr("ai_objects")]];
     const obstacles = [
-      toggle("lidar_obstacle_recognition", "LiDAR recognition", "Off lets the mower clear tall grass"),
+      toggle("lidar_obstacle_recognition", tr("lidar_recognition"), tr("lidar_recognition_desc")),
       has("ai_obstacle_recognition")
         ? row(
-            "AI recognition",
+            tr("ai_recognition"),
             `<div class="chips">${kinds
-              .map(([kind, label]) => `<button type="button" class="chip ${ai.includes(kind) ? "on" : ""}" data-ai="${kind}" aria-pressed="${ai.includes(kind)}">${label}</button>`)
+              .map(([kind, label]) => `<button type="button" class="chip ${ai.includes(kind) ? "on" : ""}" data-ai="${kind}" aria-pressed="${ai.includes(kind)}">${esc(label)}</button>`)
               .join("")}</div>`,
             { cls: "wrap" },
           )
         : "",
-      toggle("edge_obstacle_avoidance", "Avoid on edges", "May leave grass uncut along the edges"),
+      toggle("edge_obstacle_avoidance", tr("avoid_on_edges"), tr("avoid_on_edges_desc")),
       has("obstacle_height")
-        ? row("Height above", seg("obstacle_height", [5, 10, 15, 20].map((cm) => [cm, `${cm}`])), { off: lidar === false, hint: "cm" })
+        ? row(tr("height_above"), seg("obstacle_height", [5, 10, 15, 20].map((cm) => [cm, `${cm}`])), { off: lidar === false, hint: "cm" })
         : "",
       has("obstacle_distance")
-        ? row("Distance", seg("obstacle_distance", [10, 15, 20].map((cm) => [cm, `${cm}`])), {
+        ? row(tr("distance"), seg("obstacle_distance", [10, 15, 20].map((cm) => [cm, `${cm}`])), {
             off: !detects,
-            hint: value("obstacle_distance") === 10 ? "cm; shorter may scrape obstacles" : "cm",
+            hint: value("obstacle_distance") === 10 ? tr("distance_short_hint") : "cm",
           })
         : "",
     ].join("");
@@ -5360,8 +5398,8 @@ class DreameMowerCard extends HTMLElement {
     this._setHtml(
       "shead",
       this._el.shead,
-      `<button type="button" class="iconbtn" data-close title="Back" aria-label="Back"><ha-icon icon="mdi:chevron-left"></ha-icon></button>` +
-        `<span class="title">Mowing settings</span><span class="muted">${esc(used ? used.name || `Map ${used.id}` : "")}</span>`,
+      `<button type="button" class="iconbtn" data-close title="${esc(tr("back"))}" aria-label="${esc(tr("back"))}"><ha-icon icon="mdi:chevron-left"></ha-icon></button>` +
+        `<span class="title">${esc(tr("mowing_settings"))}</span><span class="muted">${esc(used ? used.name || tr("map_default_name", { id: used.id }) : "")}</span>`,
     );
     // The picker keeps its element across renders unless the zones change.
     const picker = this._el.sbody.querySelector("select.zone");
@@ -5370,15 +5408,15 @@ class DreameMowerCard extends HTMLElement {
       "sbody",
       this._el.sbody,
       parts.join("") +
-        group("Edges", GLYPHS.border, edges) +
-        group("Obstacles", '<ha-icon icon="mdi:eye-outline" style="--mdc-icon-size:15px"></ha-icon>', obstacles),
+        group(tr("edges"), GLYPHS.border, edges) +
+        group(tr("obstacles"), '<ha-icon icon="mdi:eye-outline" style="--mdc-icon-size:15px"></ha-icon>', obstacles),
     );
     const changed = Object.keys(this._settings.draft).length > 0;
     const off = !changed || this._busy ? "disabled" : "";
     this._setHtml(
       "sfoot",
       this._el.sfoot,
-      `<button type="button" class="flat" data-discard ${off}>Discard</button><button type="button" class="primary" data-save ${off}>Save</button>`,
+      `<button type="button" class="flat" data-discard ${off}>${esc(tr("discard"))}</button><button type="button" class="primary" data-save ${off}>${esc(tr("save"))}</button>`,
     );
   }
 
@@ -5433,7 +5471,7 @@ class DreameMowerCard extends HTMLElement {
     if (!target || target.disabled || !this._settings) return;
     const data = target.dataset;
     if ("close" in data) {
-      if (Object.keys(this._settings.draft).length && !window.confirm("Leave without saving the changes?")) return;
+      if (Object.keys(this._settings.draft).length && !window.confirm(tr("leave_unsaved"))) return;
       this._closeSettings();
     } else if ("discard" in data) {
       this._settings.draft = {};
@@ -5459,7 +5497,7 @@ class DreameMowerCard extends HTMLElement {
     const picker = e.target.closest("select.zone");
     if (picker && done && this._settings) {
       const zone = Number(picker.value);
-      if (Object.keys(this._settings.draft).length && !window.confirm("Switch zones without saving the changes?")) {
+      if (Object.keys(this._settings.draft).length && !window.confirm(tr("switch_zones_unsaved"))) {
         picker.value = String(this._settings.zone);
         return;
       }
@@ -5488,7 +5526,7 @@ class DreameMowerCard extends HTMLElement {
     const zone = this._settingsZone();
     if (zone !== null) data.zone_id = zone;
     if (!Object.keys(draft).length) return;
-    const ok = await this._call(DOMAIN, "set_mowing_settings", data, { success: "Settings saved" });
+    const ok = await this._call(DOMAIN, "set_mowing_settings", data, { success: tr("settings_saved") });
     if (ok && this._settings) {
       this._settings.draft = {};
       this._invalidate("settings");
@@ -5500,10 +5538,10 @@ class DreameMowerCard extends HTMLElement {
     if ((mode === "per_zone") === this._perZone()) return;
     const question =
       mode === "per_zone"
-        ? "Give each zone its own settings? Zones without any start from the map's settings."
-        : "Use one set of settings for the whole map? The zones keep theirs for later.";
+        ? tr("per_zone_confirm")
+        : tr("map_wide_confirm");
     if (!window.confirm(question)) return;
-    const ok = await this._call(DOMAIN, "set_mowing_preference_mode", { mode }, { success: "Settings mode changed" });
+    const ok = await this._call(DOMAIN, "set_mowing_preference_mode", { mode }, { success: tr("settings_mode_changed") });
     if (ok && this._settings) {
       const zones = this._shapes.zones;
       this._settings = { zone: mode === "per_zone" && zones.length ? zones[0].id : null, draft: {}, inline: this._settings.inline };
@@ -5611,7 +5649,7 @@ class DreameMowerCard extends HTMLElement {
     this._invalidate("log");
     if (!entry.file) {
       detail.loading = false;
-      detail.error = "This task left no details";
+      detail.error = tr("no_details");
       this._invalidate("log");
       return;
     }
@@ -5676,8 +5714,8 @@ class DreameMowerCard extends HTMLElement {
       this._setHtml(
         "lhead",
         this._el.lhead,
-        `<button type="button" class="iconbtn" data-close title="Back to the list" aria-label="Back to the list"><ha-icon icon="mdi:chevron-left"></ha-icon></button>` +
-          `<span class="title">${esc(`${logTitle(entry)} mowing`)}</span><span class="muted">${esc(formatDay(entry.start))}</span>`,
+        `<button type="button" class="iconbtn" data-close title="${esc(tr("back_to_list"))}" aria-label="${esc(tr("back_to_list"))}"><ha-icon icon="mdi:chevron-left"></ha-icon></button>` +
+          `<span class="title">${esc(tr("log_detail_title", { title: logTitle(entry) }))}</span><span class="muted">${esc(formatDay(entry.start))}</span>`,
       );
       this._setHtml("lbody", this._el.lbody, this._workLogDetail(log.detail));
       const map = this._el.lbody.querySelector("svg.logmap");
@@ -5701,21 +5739,21 @@ class DreameMowerCard extends HTMLElement {
     this._setHtml("lhead", this._el.lhead, "");
     const empty = !log.entries.length && !log.totals;
     if (empty && (log.loading || log.refreshing || log.error)) {
-      this._setHtml("lbody", this._el.lbody, `<div class="note">${esc(log.error || "Loading…")}</div>`);
+      this._setHtml("lbody", this._el.lbody, `<div class="note">${esc(log.error || tr("loading"))}</div>`);
       return;
     }
     // The kept log shows while the cloud is read, and stays when it fails.
-    const status = log.refreshing ? "Updating…" : log.error ? `${log.error}; showing the kept tasks` : "";
+    const status = log.refreshing ? tr("updating") : log.error ? tr("showing_kept_tasks", { error: log.error }) : "";
     const totals = log.totals
-      ? `<div class="totals"><div><b>${esc(num(log.totals.area))}</b><small>m² mowed</small></div>` +
-        `<div><b>${esc(formatMinutes(log.totals.time))}</b><small>mowing</small></div>` +
-        `<div><b>${esc(log.totals.count)}</b><small>tasks</small></div></div>`
+      ? `<div class="totals"><div><b>${esc(num(log.totals.area))}</b><small>${esc(tr("totals_area"))}</small></div>` +
+        `<div><b>${esc(formatMinutes(log.totals.time))}</b><small>${esc(tr("totals_time"))}</small></div>` +
+        `<div><b>${esc(log.totals.count)}</b><small>${esc(tr("totals_count"))}</small></div></div>`
       : "";
-    const filters = [["all", "All"], ["complete", "Complete"], ["stopped", "Stopped"], ["incomplete", "Incomplete"]];
+    const filters = [["all", tr("filter_all")], ["complete", tr("filter_complete")], ["stopped", tr("filter_stopped")], ["incomplete", tr("filter_incomplete")]];
     const filter =
-      `<div class="chips filter" role="group" aria-label="Which tasks">` +
+      `<div class="chips filter" role="group" aria-label="${esc(tr("which_tasks"))}">` +
       filters
-        .map(([id, label]) => `<button type="button" class="chip ${log.filter === id ? "on" : ""}" data-filter="${id}" aria-pressed="${log.filter === id}">${label}</button>`)
+        .map(([id, label]) => `<button type="button" class="chip ${log.filter === id ? "on" : ""}" data-filter="${id}" aria-pressed="${log.filter === id}">${esc(label)}</button>`)
         .join("") +
       `</div>`;
     const entries = log.entries.filter((entry) => log.filter === "all" || entry.result === log.filter);
@@ -5728,8 +5766,8 @@ class DreameMowerCard extends HTMLElement {
         return (
           `<button type="button" class="row" data-entry="${esc(entry.start)}">` +
           `<ha-icon class="res ${result}" icon="${RESULT_ICONS[result]}"></ha-icon>` +
-          `<span class="rt"><span class="t">${esc(`${logTitle(entry)} · ${result}`)}</span><span class="d facts"><span>${esc(facts.filter(Boolean).join(" · "))}</span>${pill}</span></span>` +
-          (entry.photos ? `<span class="cam" title="Obstacles photographed"><ha-icon icon="mdi:camera"></ha-icon>${esc(entry.photos)}</span>` : "") +
+          `<span class="rt"><span class="t">${esc(`${logTitle(entry)} · ${tr(`result_${result}`)}`)}</span><span class="d facts"><span>${esc(facts.filter(Boolean).join(" · "))}</span>${pill}</span></span>` +
+          (entry.photos ? `<span class="cam" title="${esc(tr("obstacles_photographed"))}"><ha-icon icon="mdi:camera"></ha-icon>${esc(entry.photos)}</span>` : "") +
           `<ha-icon class="chev" icon="mdi:chevron-right"></ha-icon></button>`
         );
       })
@@ -5740,7 +5778,7 @@ class DreameMowerCard extends HTMLElement {
       (status ? `<div class="lognote">${esc(status)}</div>` : "") +
         totals +
         filter +
-        (rows ? `<div class="list loglist">${rows}</div>` : `<div class="note">No tasks</div>`),
+        (rows ? `<div class="list loglist">${rows}</div>` : `<div class="note">${esc(tr("no_tasks"))}</div>`),
     );
   }
 
@@ -5759,18 +5797,18 @@ class DreameMowerCard extends HTMLElement {
   // One task: its map with the lanes it mowed, where it stopped, and what
   // there is to know about it.
   _workLogDetail(detail) {
-    if (detail.loading || detail.error) return `<div class="note">${esc(detail.error || "Loading…")}</div>`;
+    if (detail.loading || detail.error) return `<div class="note">${esc(detail.error || tr("loading"))}</div>`;
     const data = detail.data;
     const map = this._workLogMap(data);
     const zoom = (op, icon, label) =>
-      `<button type="button" class="mapbtn" data-logzoom="${op}" title="${label}" aria-label="${label}"><ha-icon icon="${icon}"></ha-icon></button>`;
+      `<button type="button" class="mapbtn" data-logzoom="${op}" title="${esc(label)}" aria-label="${esc(label)}"><ha-icon icon="${icon}"></ha-icon></button>`;
     const parts = [];
     if (map) {
       parts.push(
         `<div class="logmapwrap">${map}<div class="mapbtns">` +
-          zoom("in", "mdi:plus", "Zoom in") +
-          zoom("out", "mdi:minus", "Zoom out") +
-          zoom("fit", "mdi:fit-to-screen-outline", "Fit the map") +
+          zoom("in", "mdi:plus", tr("zoom_in")) +
+          zoom("out", "mdi:minus", tr("zoom_out")) +
+          zoom("fit", "mdi:fit-to-screen-outline", tr("fit_map")) +
           `</div></div>`,
       );
     }
@@ -5779,31 +5817,31 @@ class DreameMowerCard extends HTMLElement {
     if (data.result === "stopped" || data.result === "incomplete") {
       const names = new Map(((this._geometry && this._geometry.zones) || []).map((zone) => [zone.id, zone.name]));
       const points = this._resumableStopPoints(detail.entry);
-      const head = `<b>${esc(RESULT_LABELS[data.result])}</b>`;
+      const head = `<b>${esc(tr(RESULT_LABELS[data.result]))}</b>`;
       if (points.length) {
-        const where = points.map((point) => `${point.progress.toFixed(2)} % in ${names.get(point.zone_id) || `Zone ${point.zone_id}`}`).join(", ");
+        const where = points.map((point) => tr("progress_in_zone", { progress: point.progress.toFixed(2), zone: names.get(point.zone_id) || tr("zone_default_name", { id: point.zone_id }) })).join(", ");
         parts.push(
-          `<div class="callout warn"><ha-icon icon="mdi:debug-step-over"></ha-icon><div>${head}${esc(`${data.result === "stopped" ? "" : " · stopped"} at ${where}`)}` +
-            `<br><span class="muted">The next start can go on from here.</span></div></div>`,
+          `<div class="callout warn"><ha-icon icon="mdi:debug-step-over"></ha-icon><div>${head}${esc(`${data.result === "stopped" ? " " : " · "}${tr(data.result === "stopped" ? "stopped_at" : "stopped_at_incomplete", { where })}`)}` +
+            `<br><span class="muted">${esc(tr("next_start_here"))}</span></div></div>`,
         );
       } else {
-        const mowed = data.area !== null && data.area !== undefined ? ` · ${data.area}${data.map_area ? ` of ${data.map_area}` : ""} m² mowed` : "";
+        const mowed = data.area !== null && data.area !== undefined ? ` · ${tr("area_mowed", { area: data.map_area ? tr("area_of", { area: data.area, total: data.map_area }) : data.area })}` : "";
         parts.push(`<div class="callout warn"><ha-icon icon="mdi:alert-circle-outline"></ha-icon><div>${head}${esc(mowed)}</div></div>`);
       }
     }
     const fact = (title, value) => (value ? `<div class="row short"><span class="rt"><span class="t">${esc(title)}</span></span><span class="val">${esc(value)}</span></div>` : "");
     const mowed = [
-      data.area !== null && data.area !== undefined ? `${data.area}${data.map_area ? ` of ${data.map_area}` : ""} m²` : "",
+      data.area !== null && data.area !== undefined ? `${data.map_area ? tr("area_of", { area: data.area, total: data.map_area }) : data.area} m²` : "",
       data.duration !== null && data.duration !== undefined ? formatMinutes(data.duration) : "",
     ].filter(Boolean);
-    const height = [data.height ? `${data.height} cm` : "", data.per_zone ? "per-zone settings" : (EFFICIENCY_LABELS[data.efficiency] || "").toLowerCase()].filter(Boolean);
+    const height = [data.height ? `${data.height} cm` : "", data.per_zone ? tr("per_zone_settings") : trOf(EFFICIENCY_LABELS, data.efficiency).toLowerCase()].filter(Boolean);
     const rows = [
-      fact("Mowed", mowed.join(" · ")),
-      fact("Cutting height", height.join(" · ")),
-      fact("Mowing direction", taskSetting(data, (values) => directionLabel(values))),
-      fact("Turning", taskSetting(data, (values) => TURNING_LABELS[values.turning_method] || "")),
-      fact("Started", START_LABELS[data.start_mode] || ""),
-      fact("Ended", data.end ? formatDay(data.end) : ""),
+      fact(tr("mowed"), mowed.join(" · ")),
+      fact(tr("cutting_height"), height.join(" · ")),
+      fact(tr("mowing_direction"), taskSetting(data, (values) => directionLabel(values))),
+      fact(tr("turning"), taskSetting(data, (values) => trOf(TURNING_LABELS, values.turning_method))),
+      fact(tr("started"), trOf(START_LABELS, data.start_mode)),
+      fact(tr("ended"), data.end ? formatDay(data.end) : ""),
     ];
     // The obstacles it met; a pin on the map, or a photo of the gallery,
     // opens the photo larger.
@@ -5813,9 +5851,9 @@ class DreameMowerCard extends HTMLElement {
       const recognised = obstacles.filter((obstacle) => obstacle.kind === "ai");
       const kinds = [...new Set(recognised.map((obstacle) => aiObstacleKind(obstacle.type).label.toLowerCase()))];
       const pictured = photographed(obstacles);
-      const desc = [kinds.length ? humanize(kinds.join(", ")) : `${obstacles.length} met`, pictured.length ? "tap a photo to see it larger" : ""].filter(Boolean).join(" · ");
+      const desc = [kinds.length ? humanize(kinds.join(", ")) : tr("obstacles_met", { count: obstacles.length }), pictured.length ? tr("tap_photo_larger") : ""].filter(Boolean).join(" · ");
       rows.push(
-        `<div class="row short"><span class="rt"><span class="t">Obstacles</span><span class="d">${esc(desc)}</span></span>` +
+        `<div class="row short"><span class="rt"><span class="t">${esc(tr("obstacles"))}</span><span class="d">${esc(desc)}</span></span>` +
           (pictured.length ? `<span class="cam"><ha-icon icon="mdi:camera"></ha-icon>${pictured.length}</span>` : `<span class="val">${obstacles.length}</span>`) +
           `</div>`,
       );
@@ -5961,14 +5999,14 @@ class DreameMowerCard extends HTMLElement {
   // position or did not, and the codes it starts to report.
   _announce(before, after) {
     if (!before || !after) return;
-    if (before.location === "relocating" && after.location === "located") this._toast("Positioning successful");
+    if (before.location === "relocating" && after.location === "located") this._toast(tr("positioning_successful"));
     if (before.location !== "locating_failed" && after.location === "locating_failed") {
-      this._toast("Positioning failed. Move the mower onto the lawn within the map, or back to its station", true);
+      this._toast(tr("positioning_failed"), true);
     }
     if (!before.codes || !after.codes) return;
     const known = new Set(before.codes);
     for (const code of after.codes) {
-      if (!known.has(code) && CODE_ALERTS[code]) this._toast(CODE_ALERTS[code]);
+      if (!known.has(code) && CODE_ALERTS[code]) this._toast(tr(CODE_ALERTS[code]));
     }
   }
 
@@ -6033,8 +6071,8 @@ class DreameMowerCard extends HTMLElement {
   async _ignoreObstacle() {
     const photo = this._photo;
     if (!photo || this._busy) return;
-    if (!window.confirm("Ignore this obstacle? The mower forgets it and its icon goes; this cannot be undone.")) return;
-    const done = await this._call(DOMAIN, "ignore_obstacle", { obstacle_id: photo.obstacle.id }, { success: "Obstacle ignored" });
+    if (!window.confirm(tr("ignore_obstacle_confirm"))) return;
+    const done = await this._call(DOMAIN, "ignore_obstacle", { obstacle_id: photo.obstacle.id }, { success: tr("obstacle_ignored") });
     if (done && this._photo === photo) {
       this._photo = null;
       this._invalidate("photo");
@@ -6055,7 +6093,7 @@ class DreameMowerCard extends HTMLElement {
     e.items.push(item);
     e.tool = null;
     e.selected = item.key;
-    this._toast("Adjust the no-go zone if needed, then Save");
+    this._toast(tr("adjust_no_go"));
     this._invalidate("toolbar", "base", "dyn", "actions");
   }
 
@@ -6105,7 +6143,7 @@ class DreameMowerCard extends HTMLElement {
     }
     const obstacle = photo.obstacle;
     const ai = obstacle.kind === "ai";
-    const kind = ai ? aiObstacleKind(obstacle.type) : { label: "Obstacle" };
+    const kind = ai ? aiObstacleKind(obstacle.type) : { label: tr("obstacle_obstacle") };
     let picture;
     if (!ai) {
       picture = "";
@@ -6117,28 +6155,28 @@ class DreameMowerCard extends HTMLElement {
           .map((box) => `<rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}" fill="none" stroke="#EE3C2F" stroke-width="3"/>`)
           .join("")}</svg></div>`;
     } else if (!obstacle.image) {
-      picture = `<div class="wait">The mower took no photo of this obstacle.</div>`;
+      picture = `<div class="wait">${esc(tr("no_photo"))}</div>`;
     } else if (photo.error) {
-      picture = `<div class="wait">${esc(photo.error)}<button type="button" class="flat" data-retry>Try again</button></div>`;
+      picture = `<div class="wait">${esc(photo.error)}<button type="button" class="flat" data-retry>${esc(tr("try_again"))}</button></div>`;
     } else {
       picture =
-        `<div class="wait"><ha-icon icon="mdi:image-sync-outline"></ha-icon>Loading the photo…` +
-        `<span>The mower sends it over its own connection, which can take a minute.</span></div>`;
+        `<div class="wait"><ha-icon icon="mdi:image-sync-outline"></ha-icon>${esc(tr("loading_photo"))}` +
+        `<span>${esc(tr("loading_photo_desc"))}</span></div>`;
     }
     this._setHtml(
       "photo",
       el,
       `<div class="sheetbody"><div class="grip"></div>` +
-        `<div class="phead"><span>${esc(kind.label)} <small>${obstacle.confidence ? `· ${esc(obstacle.confidence)} % sure` : ""}</small></span>` +
+        `<div class="phead"><span>${esc(kind.label)} <small>${obstacle.confidence ? esc(tr("confidence", { confidence: obstacle.confidence })) : ""}</small></span>` +
         (photo.others.length > 1
-          ? `<span class="pnav"><button type="button" class="iconbtn" data-step="-1" title="Previous photo" aria-label="Previous photo"><ha-icon icon="mdi:chevron-left"></ha-icon></button>` +
+          ? `<span class="pnav"><button type="button" class="iconbtn" data-step="-1" title="${esc(tr("previous_photo"))}" aria-label="${esc(tr("previous_photo"))}"><ha-icon icon="mdi:chevron-left"></ha-icon></button>` +
             `<span>${photo.others.indexOf(obstacle) + 1} / ${photo.others.length}</span>` +
-            `<button type="button" class="iconbtn" data-step="1" title="Next photo" aria-label="Next photo"><ha-icon icon="mdi:chevron-right"></ha-icon></button></span>`
+            `<button type="button" class="iconbtn" data-step="1" title="${esc(tr("next_photo"))}" aria-label="${esc(tr("next_photo"))}"><ha-icon icon="mdi:chevron-right"></ha-icon></button></span>`
           : "") +
-        `<button type="button" class="iconbtn" data-close title="Close" aria-label="Close"><ha-icon icon="mdi:close"></ha-icon></button></div>` +
+        `<button type="button" class="iconbtn" data-close title="${esc(tr("close"))}" aria-label="${esc(tr("close"))}"><ha-icon icon="mdi:close"></ha-icon></button></div>` +
         picture +
         `<p>${
-          ai ? "The mower recognised this obstacle with its camera and steers around it." : "The mower ran into this obstacle or saw it, and steers around it."
+          esc(tr(ai ? "obstacle_recognised" : "obstacle_met"))
         }</p>` +
         this._obstacleActions(photo) +
         `</div>`,
@@ -6179,9 +6217,9 @@ class DreameMowerCard extends HTMLElement {
   _obstacleActions(photo) {
     if (photo.fromLog) return "";
     const busy = this._busy ? "disabled" : "";
-    const buttons = [`<button type="button" class="big" data-no-go ${busy}><ha-icon icon="mdi:cancel"></ha-icon>No-go zone</button>`];
+    const buttons = [`<button type="button" class="big" data-no-go ${busy}><ha-icon icon="mdi:cancel"></ha-icon>${esc(tr("edit_kind_no_go"))}</button>`];
     if (photo.obstacle.kind === "ai" && photo.obstacle.ignorable && this._mower().activity !== "mowing") {
-      buttons.push(`<button type="button" class="big stop" data-ignore ${busy}><ha-icon icon="mdi:eye-off-outline"></ha-icon>Ignore</button>`);
+      buttons.push(`<button type="button" class="big stop" data-ignore ${busy}><ha-icon icon="mdi:eye-off-outline"></ha-icon>${esc(tr("ignore"))}</button>`);
     }
     return `<div class="bigrow">${buttons.join("")}</div>`;
   }
@@ -6258,7 +6296,7 @@ class DreameMowerCard extends HTMLElement {
       const figs = [];
       if (progress !== null) figs.push(`<span><b>${esc(progress.toFixed(progress < 10 ? 1 : 0))} %</b></span>`);
       if (typeof mower.mowed_area === "number") {
-        const total = typeof mower.total_area === "number" && mower.total_area ? ` of ${num(mower.total_area)} m²` : " m²";
+        const total = typeof mower.total_area === "number" && mower.total_area ? ` ${tr("of_total_area", { total: num(mower.total_area) })}` : " m²";
         figs.push(`<span><b>${esc(num(mower.mowed_area))}</b>${esc(total)}</span>`);
       }
       if (typeof mower.session_minutes === "number") {
@@ -6278,10 +6316,10 @@ class DreameMowerCard extends HTMLElement {
       // On its way home the mower can be stopped where it is instead.
       parts.push(
         `<div class="bigrow">` +
-          (mowing ? big("pause", "mdi:pause", "Pause", true, "pause") : big("start", "mdi:play", "Continue", true)) +
+          (mowing ? big("pause", "mdi:pause", tr("pause"), true, "pause") : big("start", "mdi:play", tr("continue"), true)) +
           (returning
-            ? big("stop-returning", "mdi:home-remove-outline", "End returning", true, "stop")
-            : big("end", "mdi:stop", "End", true, "stop")) +
+            ? big("stop-returning", "mdi:home-remove-outline", tr("end_returning"), true, "stop")
+            : big("end", "mdi:stop", tr("end"), true, "stop")) +
           `</div>`,
       );
       parts.push(this._settingsPill(true));
@@ -6294,11 +6332,10 @@ class DreameMowerCard extends HTMLElement {
       // first; the button says so.
       const stops = !kind || kind === "zones" ? this._pendingStopPoints(kind ? [...this._selected.zones] : null) : [];
       const least = stops.length ? Math.min(...stops.map((point) => point.progress)) : null;
-      const mode = MODES.find((m) => m.kind === kind);
-      const label = !kind ? "Mow all" : picked ? `Mow ${picked} ${picked === 1 ? mode.one : mode.noun}` : `Mow ${mode.noun}`;
+      const label = !kind ? tr("mow_all") : picked ? trCount(`mow_picked_${kind}`, picked) : tr(`mow_kind_${kind}`);
       let note = "";
-      if (stops.length) note = `can go on from ${Math.floor(least)} %`;
-      else if ((mower.codes || []).includes(RAIN_CODE)) note = "rain protection";
+      if (stops.length) note = tr("can_resume_from", { progress: Math.floor(least) });
+      else if ((mower.codes || []).includes(RAIN_CODE)) note = tr("rain_protection_lower");
       const enabled = !returning && (!kind || picked > 0);
       parts.push(
         `<button type="button" class="primary" data-action="start" ${enabled && !off ? "" : "disabled"}>` +
@@ -6308,9 +6345,9 @@ class DreameMowerCard extends HTMLElement {
     if (this._config.show_header === false && this._config.show_controls !== false) {
       // Without the status row, its buttons join the controls.
       const home = returning
-        ? big("stop-returning", "mdi:home-remove-outline", "End returning", true)
-        : big("recharge", "mdi:home-import-outline", "Recharge", !this._docked());
-      parts.push(`<div class="bigrow">${home}${big("find", "mdi:map-marker-radius", "Find my robot", true)}</div>`);
+        ? big("stop-returning", "mdi:home-remove-outline", tr("end_returning"), true)
+        : big("recharge", "mdi:home-import-outline", tr("recharge"), !this._docked());
+      parts.push(`<div class="bigrow">${home}${big("find", "mdi:map-marker-radius", tr("find_robot"), true)}</div>`);
     }
     this._setHtml("actions", el, parts.join(""));
   }
@@ -6327,15 +6364,15 @@ class DreameMowerCard extends HTMLElement {
     const items = [];
     if (values.cutting_height !== undefined && values.cutting_height !== null) items.push(`<span class="v">${GLYPHS.height}${esc(values.cutting_height)} cm</span>`);
     if (values.mowing_direction !== undefined && values.mowing_direction !== null) items.push(`<span class="v">${GLYPHS.angle}${esc(values.mowing_direction)}°</span>`);
-    if (values.efficiency) items.push(`<span class="v">${esc(EFFICIENCY_LABELS[values.efficiency] || humanize(values.efficiency))}</span>`);
-    if (values.edge_mowing_auto && !running) items.push(`<span class="v">${GLYPHS.border}Edges after</span>`);
-    if (!items.length) items.push(`<span class="v">Mowing settings</span>`);
+    if (values.efficiency) items.push(`<span class="v">${esc(trOf(EFFICIENCY_LABELS, values.efficiency) || humanize(values.efficiency))}</span>`);
+    if (values.edge_mowing_auto && !running) items.push(`<span class="v">${GLYPHS.border}${esc(tr("edges_after"))}</span>`);
+    if (!items.length) items.push(`<span class="v">${esc(tr("mowing_settings"))}</span>`);
     const name = zone !== null ? (this._shapes.zones.find((z) => z.id === zone) || {}).name : null;
-    const title = `Mowing settings${name ? ` of ${name}` : ""}${running ? "; set before the next task" : ""}`;
+    const title = `${name ? tr("mowing_settings_of", { name }) : tr("mowing_settings")}${running ? `; ${tr("set_before_next_task")}` : ""}`;
     return (
       `<button type="button" class="pill" data-action="settings" data-zone="${zone === null ? "" : zone}" title="${esc(title)}" aria-label="${esc(title)}" ${running || this._busy ? "disabled" : ""}>` +
       items.join('<span class="dot">·</span>') +
-      (running ? `<span class="later">set before the next task</span>` : "") +
+      (running ? `<span class="later">${esc(tr("set_before_next_task"))}</span>` : "") +
       `<ha-icon class="chev" icon="mdi:chevron-right"></ha-icon></button>`
     );
   }
@@ -6352,7 +6389,7 @@ class DreameMowerCard extends HTMLElement {
         break;
       case "end":
         // The task ends where the mower is; it keeps where each zone stopped.
-        if (window.confirm("End mowing? The mower stops where it is, and the next task can continue from there.")) {
+        if (window.confirm(tr("end_confirm"))) {
           await this._call(DOMAIN, "end_task");
         }
         break;
@@ -6372,7 +6409,7 @@ class DreameMowerCard extends HTMLElement {
         break;
       }
       case "find":
-        await this._call(DOMAIN, "find_robot", {}, { success: "Calling the mower; listen for its sound" });
+        await this._call(DOMAIN, "find_robot", {}, { success: tr("calling_mower") });
         break;
       case "settings":
         this._openSettings(button.dataset.zone === "" ? null : Number(button.dataset.zone));
@@ -6402,11 +6439,11 @@ class DreameMowerCard extends HTMLElement {
     const raining = (mower.codes || []).includes(RAIN_CODE);
     if (raining) {
       const choice = await this._choose(
-        "Rain protection is active",
-        "The mower stays home while it rains. Start mowing anyway? The rain protection is cleared first.",
+        tr("rain_active"),
+        tr("rain_active_desc"),
         [
-          { id: "anyway", label: "Clear it and start mowing" },
-          { id: "", label: "Not now", plain: true },
+          { id: "anyway", label: tr("rain_clear_and_mow") },
+          { id: "", label: tr("not_now"), plain: true },
         ],
       );
       if (choice !== "anyway") return;
@@ -6429,15 +6466,15 @@ class DreameMowerCard extends HTMLElement {
     }
     let ok;
     if (kind === "edges") {
-      ok = await this._call(DOMAIN, "start_edge_mowing", { contour_ids: picked.map((edge) => edge.contour) }, { success: "Edge mowing started" });
+      ok = await this._call(DOMAIN, "start_edge_mowing", { contour_ids: picked.map((edge) => edge.contour) }, { success: tr("edge_mowing_started") });
     } else if (kind === "spots") {
-      ok = await this._call(DOMAIN, "start_spot_mowing", { spot_area_ids: picked.map((spot) => spot.id) }, { success: "Spot mowing started" });
+      ok = await this._call(DOMAIN, "start_spot_mowing", { spot_area_ids: picked.map((spot) => spot.id) }, { success: tr("spot_mowing_started") });
     } else {
       ok = await this._call(
         DOMAIN,
         "start_zone_mowing",
         { zone_ids: picked.map((zone) => zone.id), ...fromStopPoint },
-        { success: "Zone mowing started" },
+        { success: tr("zone_mowing_started") },
       );
     }
     if (ok) {
@@ -6465,16 +6502,16 @@ class DreameMowerCard extends HTMLElement {
     if (!points.length) return undefined;
     const names = new Map(((this._geometry && this._geometry.zones) || []).map((zone) => [zone.id, zone.name]));
     const lines = points
-      .map((point) => esc(`${names.get(point.zone_id) || `Zone ${point.zone_id}`}: ${point.progress.toFixed(2)} % mowed on ${point.date}`))
+      .map((point) => esc(tr("stop_point_line", { zone: names.get(point.zone_id) || tr("zone_default_name", { id: point.zone_id }), progress: point.progress.toFixed(2), date: point.date })))
       .join("<br>");
     const asked = this._choose(
-      "Start from the stop point?",
-      "Only the rest of the unfinished zones is mowed; the other zones are mowed from the beginning.",
+      tr("resume_question"),
+      tr("resume_question_desc"),
       [
-        { id: "resume", label: "Start from the stop point" },
-        { id: "over", label: "Start from the beginning", plain: true },
+        { id: "resume", label: tr("start_from_stop_point") },
+        { id: "over", label: tr("start_from_beginning"), plain: true },
       ],
-      `<div class="cpreview"><div class="note">Loading what was mowed…</div></div><small class="cnote">${lines}</small>`,
+      `<div class="cpreview"><div class="note">${esc(tr("loading_mowed"))}</div></div><small class="cnote">${lines}</small>`,
     );
     this._previewStoppedTask(points);
     const choice = await asked;
@@ -6534,7 +6571,7 @@ class DreameMowerCard extends HTMLElement {
       el.innerHTML =
         `<div class="sheetbody"><div class="grip"></div>` +
         `<div class="phead"><span>${esc(title)}</span>` +
-        `<button type="button" class="iconbtn" data-choice="" title="Close" aria-label="Close"><ha-icon icon="mdi:close"></ha-icon></button></div>` +
+        `<button type="button" class="iconbtn" data-choice="" title="${esc(tr("close"))}" aria-label="${esc(tr("close"))}"><ha-icon icon="mdi:close"></ha-icon></button></div>` +
         `<p>${esc(text)}</p>` +
         extra +
         `<div class="pactions">${options
@@ -6569,18 +6606,7 @@ async function loadEntityPicker() {
 
 // The `colors` option as the editor lists it; every colour is the theme's
 // until set.
-const UI_FIELDS = [
-  ["accent", "Accent"],
-  ["on_accent", "Text on accent"],
-  ["text", "Text"],
-  ["muted", "Muted text"],
-  ["background", "Card background"],
-  ["divider", "Dividers"],
-  ["success", "Success"],
-  ["warning", "Warning"],
-  ["error", "Error"],
-  ["info", "Info"],
-];
+const UI_FIELDS = ["accent", "on_accent", "text", "muted", "background", "divider", "success", "warning", "error", "info"];
 
 class DreameMowerCardEditor extends HTMLElement {
   setConfig(config) {
@@ -6591,8 +6617,16 @@ class DreameMowerCardEditor extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    followTranslations(hass);
+    const translated = hass.localize !== this._localize;
+    this._localize = hass.localize;
+    if (translated) localize = hass.localize || null;
     this._render();
     if (this._picker) this._picker.hass = hass;
+    if (translated && this._built) {
+      this._labels();
+      this._syncValues();
+    }
     // The fields only show the config and the theme's colours: states coming
     // in leave them as they are.
     if (this._synced && hass.themes === this._themes) return;
@@ -6645,8 +6679,8 @@ class DreameMowerCardEditor extends HTMLElement {
     this._built = true;
     this.attachShadow({ mode: "open" });
     const ui = UI_FIELDS.map(
-      ([key, label]) =>
-        `<label class="row">${esc(label)}<span class="pair"><input type="text" data-colors="${key}" spellcheck="false" placeholder="theme"><input type="color" data-cpicker="${key}"></span></label>`,
+      (key) =>
+        `<label class="row"><span data-tr="color_${key}"></span><span class="pair"><input type="text" data-colors="${key}" spellcheck="false"><input type="color" data-cpicker="${key}"></span></label>`,
     ).join("");
     this.shadowRoot.innerHTML = `<style>
       :host { display: block; }
@@ -6661,9 +6695,9 @@ class DreameMowerCardEditor extends HTMLElement {
       .hint { margin: 12px 0 0; font-size: .85em; color: var(--secondary-text-color); }
     </style><div class="root">
       <div class="entity"></div>
-      <label class="row">Style<select data-select="style"></select></label>
-      <details><summary>Interface</summary>
-        <p class="hint">Colours of the tabs, buttons and lists. Empty follows the Home Assistant theme.</p>
+      <label class="row"><span data-tr="editor_style"></span><select data-select="style"></select></label>
+      <details><summary data-tr="editor_interface"></summary>
+        <p class="hint" data-tr="editor_interface_hint"></p>
         ${ui}
       </details>
     </div>`;
@@ -6671,13 +6705,18 @@ class DreameMowerCardEditor extends HTMLElement {
     this.shadowRoot.addEventListener("input", (e) => this._onInput(e));
     this.shadowRoot.addEventListener("change", (e) => this._onInput(e));
     this._buildEntity();
+    this._labels();
+  }
+
+  _labels() {
+    applyLabels(this.shadowRoot);
+    if (this._picker) this._picker.label = tr("editor_entity");
   }
 
   _buildEntity() {
     const box = this._entityBox;
     if (customElements.get("ha-entity-picker")) {
       this._picker = document.createElement("ha-entity-picker");
-      this._picker.label = "Entity";
       this._picker.includeDomains = ["lawn_mower"];
       this._picker.hass = this._hass;
       this._picker.addEventListener("value-changed", (e) => this._setEntity(e.detail.value));
@@ -6693,7 +6732,7 @@ class DreameMowerCardEditor extends HTMLElement {
         return `<option value="${esc(id)}">${esc(name)} (${esc(id)})</option>`;
       })
       .join("");
-    box.innerHTML = `<label>Entity<select data-select="entity">${options}</select></label>`;
+    box.innerHTML = `<label><span data-tr="editor_entity"></span><select data-select="entity">${options}</select></label>`;
     this._fallback = box.querySelector("select");
   }
 
@@ -6716,8 +6755,8 @@ class DreameMowerCardEditor extends HTMLElement {
     if (select !== active) {
       const wanted = typeof this._config.style === "string" && this._config.style !== "standard" ? this._config.style : "";
       const styles = STYLE_TYPES.map((t) => [t.id, t.label]);
-      if (wanted && !styles.some(([id]) => id === wanted)) styles.push([wanted, `${wanted} (not loaded)`]);
-      select.innerHTML = [["", "Standard"], ...styles].map(([id, label]) => `<option value="${esc(id)}">${esc(label)}</option>`).join("");
+      if (wanted && !styles.some(([id]) => id === wanted)) styles.push([wanted, tr("style_not_loaded", { style: wanted })]);
+      select.innerHTML = [["", tr("style_standard")], ...styles].map(([id, label]) => `<option value="${esc(id)}">${esc(label)}</option>`).join("");
       select.value = wanted;
     }
     const colors = this._config.colors || {};
@@ -6726,7 +6765,7 @@ class DreameMowerCardEditor extends HTMLElement {
       if (input !== active) input.value = colors[key] || "";
       const picker = root.querySelector(`[data-cpicker="${key}"]`);
       const shown = this._hex(colors[key] || this._uiDefault(key));
-      input.placeholder = shown || "theme";
+      input.placeholder = shown || tr("theme_placeholder");
       if (shown) picker.value = shown;
     }
   }
