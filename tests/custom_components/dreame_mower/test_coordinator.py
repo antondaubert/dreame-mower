@@ -1116,7 +1116,7 @@ async def test_session_starts_asking_for_the_position(hass: HomeAssistant, minim
     assert parameters == [{"siid": 1, "piid": 4}]
 
     async_fire_time_changed(hass, dt_util.utcnow() + POSE_COVERAGE_REQUEST_INTERVAL + timedelta(seconds=1))
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert coordinator.device.cloud_device.get_properties.call_count == 2
 
     # Asking again while it already runs starts nothing new.
@@ -1136,7 +1136,7 @@ async def test_a_running_session_reads_the_obstacles_again_now_and_then(hass: Ho
     coordinator.async_refresh_map_extras.assert_not_called()
 
     async_fire_time_changed(hass, dt_util.utcnow() + POSE_COVERAGE_REQUEST_INTERVAL + timedelta(seconds=1))
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
 
     coordinator.async_refresh_map_extras.assert_awaited_once_with(dock=False, stop_points=False)
     coordinator.async_stop_pose_keepalive()
@@ -1150,7 +1150,7 @@ async def test_session_end_stops_asking_for_the_position(hass: HomeAssistant, mi
     coordinator.device.mowing_session_active = False
     coordinator.async_update_pose_keepalive()
     async_fire_time_changed(hass, dt_util.utcnow() + POSE_COVERAGE_REQUEST_INTERVAL + timedelta(seconds=1))
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
 
     coordinator.device.cloud_device.get_properties.assert_called_once()
 
@@ -1182,7 +1182,7 @@ async def test_unanswered_position_request_keeps_asking(hass: HomeAssistant, min
     coordinator.async_update_pose_keepalive()
     await hass.async_block_till_done()
     async_fire_time_changed(hass, dt_util.utcnow() + POSE_COVERAGE_REQUEST_INTERVAL + timedelta(seconds=1))
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
 
     assert coordinator.device.cloud_device.get_properties.call_count == 2
     coordinator.async_stop_pose_keepalive()
@@ -1463,7 +1463,7 @@ async def test_back_in_the_station_the_position_is_no_longer_asked_for(hass: Hom
     coordinator.device.robot_state = {"docking": "in_station", "location": "idle"}
     coordinator.async_update_pose_keepalive()
     async_fire_time_changed(hass, dt_util.utcnow() + POSE_COVERAGE_REQUEST_INTERVAL + timedelta(seconds=1))
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
 
     assert _asked_for_position(coordinator) == 1
     assert coordinator._pose_keepalive is None
@@ -1479,7 +1479,7 @@ async def test_a_mower_going_offline_on_its_way_home_is_no_longer_asked(hass: Ho
     coordinator.device.online = False
     coordinator.async_update_pose_keepalive()
     async_fire_time_changed(hass, dt_util.utcnow() + POSE_COVERAGE_REQUEST_INTERVAL + timedelta(seconds=1))
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
 
     assert _asked_for_position(coordinator) == 1
     assert coordinator._pose_keepalive is None
