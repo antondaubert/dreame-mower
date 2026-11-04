@@ -23,7 +23,7 @@ Provided "as-is" under the MIT License for personal, non-commercial use with dev
 - **Mower settings** - rain protection, charging period, frost protection, Do Not Disturb, lights, anti-theft alarms, child lock, robot voice and more, each where the mower offers it.
 - **Schedules** - the mower's own schedules of the active map, switched on and off.
 - **Maintenance** - wear of the blades, the station brush and the mower, with resets; send the mower to a maintenance point.
-- **Entities** - battery, state, current task, charging, progress, device codes and every setting above as sensors, switches, selects and times, for automations.
+- **Entities** - battery, state, current task, charging, progress (with the mower's position and heading as attributes), device codes and every setting above as sensors, switches, selects and times, for automations.
 
 ## Installation
 

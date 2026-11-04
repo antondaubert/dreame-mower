@@ -351,6 +351,16 @@ class DreameMowerCoordinator(DataUpdateCoordinator[None]):
         return self.device.total_area_sqm
 
     @property
+    def mower_coordinates(self) -> tuple[int, int] | None:
+        """Return where the mower is as (x, y) in map units (mm, y up), if known."""
+        return self.device.mower_coordinates
+
+    @property
+    def mower_heading(self) -> float | None:
+        """Return the direction the mower faces in degrees, if known."""
+        return self.device.mower_heading
+
+    @property
     def zones(self) -> list[dict]:
         """Return available mowing zones (id, name, area) from vector map."""
         return self.device.zones

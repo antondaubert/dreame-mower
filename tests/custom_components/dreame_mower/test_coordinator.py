@@ -184,6 +184,20 @@ async def test_coordinator_delegates_cutting_height_calls_to_the_device(
     assert coordinator.async_update_listeners.call_count == 3
 
 
+async def test_coordinator_reports_the_mower_position_and_heading(
+    hass: HomeAssistant, minimal_config_entry
+):
+    """The mowing progress sensor reads the position and heading from the coordinator."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    device = MagicMock()
+    device.mower_coordinates = (12340, -5670)
+    device.mower_heading = 87.5
+    coordinator.device = device
+
+    assert coordinator.mower_coordinates == (12340, -5670)
+    assert coordinator.mower_heading == 87.5
+
+
 async def test_coordinator_cutting_height_defaults_to_the_current_map_and_whole_map(
     hass: HomeAssistant, minimal_config_entry
 ):

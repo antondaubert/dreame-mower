@@ -295,12 +295,19 @@ class DreameMowerProgressSensor(DreameMowerEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return extra state attributes."""
+        """Return the areas, and where the mower is and which way it faces.
+
+        x and y are map units (mm, y up), as the map card draws them.
+        """
         progress = self.coordinator.mowing_progress_percent
+        coordinates = self.coordinator.mower_coordinates
         return {
             "current_area_sqm": self.coordinator.current_area_sqm,
             "total_area_sqm": self.coordinator.total_area_sqm,
             "progress_percent": round(progress, 1) if progress is not None else None,
+            "x": coordinates[0] if coordinates else None,
+            "y": coordinates[1] if coordinates else None,
+            "heading": self.coordinator.mower_heading,
         }
 
 
