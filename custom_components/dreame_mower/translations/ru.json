@@ -788,7 +788,7 @@
     "can_resume_from": "можно продолжить с {progress} %",
     "cancel": "Отмена",
     "cancel_split": "Отменить разделение",
-    "changes_saved_one": "Сохранено изменений: {count}",
+    "changes_saved_one": "Изменения сохранены",
     "changes_saved_other": "Сохранено изменений: {count}",
     "changes_saved_few": "Сохранено изменений: {count}",
     "changes_saved_many": "Сохранено изменений: {count}",

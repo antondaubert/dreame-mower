@@ -788,7 +788,7 @@
     "can_resume_from": "можна продовжити з {progress} %",
     "cancel": "Скасувати",
     "cancel_split": "Скасувати розділення",
-    "changes_saved_one": "Збережено змін: {count}",
+    "changes_saved_one": "Зміни збережено",
     "changes_saved_other": "Збережено змін: {count}",
     "changes_saved_few": "Збережено змін: {count}",
     "changes_saved_many": "Збережено змін: {count}",
