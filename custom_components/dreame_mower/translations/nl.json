@@ -827,6 +827,8 @@
     "data_plan_valid": "databundel geldig",
     "day_count_one": "{count} dag",
     "day_count_other": "{count} dagen",
+    "day_date": "{weekday} {day} {month}",
+    "day_date_year": "{weekday} {day} {month} {year}",
     "delete": "Verwijderen",
     "delete_map_backup": "Ze kan uit haar back-up worden teruggehaald, zonder naam, schema’s en maai-instellingen.",
     "delete_map_confirm": "{name} met alle zones en instellingen verwijderen?",

@@ -994,12 +994,16 @@ function monthName(index) {
   return MONTH_NAMES[index] ? tr(`month_${MONTH_NAMES[index].toLowerCase()}`) : "";
 }
 
-// A day as "Thu 16 Oct", with its year when it is not this one.
+// A day as "Thu 16 Oct", with its year when it is not this one, in the
+// language's order ("Do., 16. Okt." in German).
 function formatDayOf(d) {
-  const year = d.getFullYear() === new Date().getFullYear() ? "" : ` ${d.getFullYear()}`;
-  const weekday = tr(`weekday_${WEEKDAY_NAMES[d.getDay()].toLowerCase()}`);
-  const month = monthName(d.getMonth());
-  return `${weekday} ${d.getDate()} ${month}${year}`;
+  const values = {
+    weekday: tr(`weekday_${WEEKDAY_NAMES[d.getDay()].toLowerCase()}`),
+    day: String(d.getDate()),
+    month: monthName(d.getMonth()),
+    year: String(d.getFullYear()),
+  };
+  return tr(d.getFullYear() === new Date().getFullYear() ? "day_date" : "day_date_year", values);
 }
 
 // A unix time as "Thu 16 Oct, 09:12", in the viewer's time zone.

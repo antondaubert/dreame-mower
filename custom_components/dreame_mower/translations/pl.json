@@ -831,6 +831,8 @@
     "day_count_few": "{count} dni",
     "day_count_many": "{count} dni",
     "day_count_other": "{count} dnia",
+    "day_date": "{weekday} {day} {month}",
+    "day_date_year": "{weekday} {day} {month} {year}",
     "delete": "Usuń",
     "delete_map_backup": "Można ją przywrócić z kopii zapasowej, bez nazwy, harmonogramów i ustawień koszenia.",
     "delete_map_confirm": "Usunąć mapę {name} ze wszystkimi strefami i ustawieniami?",

@@ -827,6 +827,8 @@
     "data_plan_valid": "plano de dados válido",
     "day_count_one": "{count} dia",
     "day_count_other": "{count} dias",
+    "day_date": "{weekday} {day} {month}",
+    "day_date_year": "{weekday} {day} {month} {year}",
     "delete": "Excluir",
     "delete_map_backup": "Ele pode ser restaurado do backup, sem o nome, os agendamentos e as configurações de corte.",
     "delete_map_confirm": "Excluir {name} com todas as zonas e configurações?",

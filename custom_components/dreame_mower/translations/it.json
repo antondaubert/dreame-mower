@@ -827,6 +827,8 @@
     "data_plan_valid": "piano dati valido",
     "day_count_one": "{count} giorno",
     "day_count_other": "{count} giorni",
+    "day_date": "{weekday} {day} {month}",
+    "day_date_year": "{weekday} {day} {month} {year}",
     "delete": "Elimina",
     "delete_map_backup": "Si può recuperare dal suo backup, senza nome, programmazioni e impostazioni di taglio.",
     "delete_map_confirm": "Eliminare {name} con tutte le sue zone e impostazioni?",

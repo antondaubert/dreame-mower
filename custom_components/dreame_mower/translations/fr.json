@@ -827,6 +827,8 @@
     "data_plan_valid": "forfait de données valide",
     "day_count_one": "{count} jour",
     "day_count_other": "{count} jours",
+    "day_date": "{weekday} {day} {month}",
+    "day_date_year": "{weekday} {day} {month} {year}",
     "delete": "Supprimer",
     "delete_map_backup": "Elle pourra être restaurée depuis sa sauvegarde, sans son nom, ses programmations ni ses réglages de tonte.",
     "delete_map_confirm": "Supprimer {name} avec toutes ses zones et tous ses réglages ?",

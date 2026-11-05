@@ -202,3 +202,20 @@ test("each language has the card's texts with the same placeholders", () => {
     }
   }
 });
+
+test("a date reads in the order and with the marks of the language", async () => {
+  const format = async (language, d) => {
+    const window = load("dreame-mower-card.js");
+    await mount(window, fakeHass({ language }));
+    return window.customElements.get("dreame-mower-card").helpers.formatDayOf(d);
+  };
+  const year = new Date().getFullYear();
+  const thisYear = new Date(year, 9, 16);
+  const lastYear = new Date(year - 1, 9, 16);
+  const weekday = (language, d) => translations(language).common[`weekday_${["sun", "mon", "tue", "wed", "thu", "fri", "sat"][d.getDay()]}`];
+  assert.equal(await format("en", thisYear), `${weekday("en", thisYear)} 16 Oct`);
+  assert.equal(await format("en", lastYear), `${weekday("en", lastYear)} 16 Oct ${year - 1}`);
+  assert.equal(await format("de", thisYear), `${weekday("de", thisYear)}., 16. Okt.`);
+  assert.equal(await format("hu", lastYear), `${year - 1}. okt. 16., ${weekday("hu", lastYear)}`);
+  assert.equal(await format("ru", thisYear), `${weekday("ru", thisYear)}, 16 окт.`);
+});
