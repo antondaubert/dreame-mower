@@ -133,3 +133,18 @@ export async function click(window, element) {
 export async function openTab(window, card, tab) {
   await click(window, $(card, `.tabs [data-tab="${tab}"]`));
 }
+
+// A mower on its station on a map, as the map feed sends it.
+export const GEOMETRY = { type: "geometry", map_id: 0, bounds: [0, 0, 10000, 8000] };
+export const DOCKED = {
+  type: "status",
+  dock: { x: 2000, y: 3000, angle: 0 },
+  docked: true,
+  state: { available: true, status: "Charging complete", session_active: false },
+};
+
+export async function sendFeed(window, hass, ...events) {
+  const [subscription] = subscribed(hass, "dreame_mower/map/subscribe");
+  for (const event of events) subscription.callback(event);
+  await settle(window);
+}
