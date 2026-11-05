@@ -827,6 +827,8 @@
     "data_plan_valid": "adatcsomag érvényes",
     "day_count_one": "{count} nap",
     "day_count_other": "{count} nap",
+    "day_date": "{month} {day}., {weekday}",
+    "day_date_year": "{year}. {month} {day}., {weekday}",
     "delete": "Törlés",
     "delete_map_backup": "Visszaállítható a mentéséből, de név, időzítések és nyírási beállítások nélkül.",
     "delete_map_confirm": "Törlöd ezt: {name}, az összes zónájával és beállításával együtt?",

@@ -827,6 +827,8 @@
     "data_plan_valid": "data plan valid",
     "day_count_one": "{count} day",
     "day_count_other": "{count} days",
+    "day_date": "{weekday} {day} {month}",
+    "day_date_year": "{weekday} {day} {month} {year}",
     "delete": "Delete",
     "delete_map_backup": "It can be brought back from its backup, without its name, schedules and mowing settings.",
     "delete_map_confirm": "Delete {name} with all its zones and settings?",

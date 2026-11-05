@@ -831,6 +831,8 @@
     "day_count_other": "{count} дня",
     "day_count_few": "{count} дня",
     "day_count_many": "{count} дней",
+    "day_date": "{weekday}, {day} {month}",
+    "day_date_year": "{weekday}, {day} {month} {year}",
     "delete": "Удалить",
     "delete_map_backup": "Её можно вернуть из резервной копии, но без имени, расписаний и настроек покоса.",
     "delete_map_confirm": "Удалить {name} со всеми зонами и настройками?",

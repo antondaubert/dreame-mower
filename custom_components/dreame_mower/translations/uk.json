@@ -831,6 +831,8 @@
     "day_count_other": "{count} дня",
     "day_count_few": "{count} дні",
     "day_count_many": "{count} днів",
+    "day_date": "{weekday}, {day} {month}",
+    "day_date_year": "{weekday}, {day} {month} {year}",
     "delete": "Видалити",
     "delete_map_backup": "Її можна повернути з резервної копії, але без назви, розкладів і налаштувань косіння.",
     "delete_map_confirm": "Видалити {name} з усіма зонами й налаштуваннями?",

@@ -827,6 +827,8 @@
     "data_plan_valid": "dataabonnemang giltigt",
     "day_count_one": "{count} dag",
     "day_count_other": "{count} dagar",
+    "day_date": "{weekday} {day} {month}",
+    "day_date_year": "{weekday} {day} {month} {year}",
     "delete": "Ta bort",
     "delete_map_backup": "Den kan hämtas tillbaka från sin säkerhetskopia, utan namn, scheman och klippinställningar.",
     "delete_map_confirm": "Ta bort {name} med alla zoner och inställningar?",

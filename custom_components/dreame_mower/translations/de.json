@@ -827,6 +827,8 @@
     "data_plan_valid": "Datentarif gültig",
     "day_count_one": "{count} Tag",
     "day_count_other": "{count} Tage",
+    "day_date": "{weekday}., {day}. {month}",
+    "day_date_year": "{weekday}., {day}. {month} {year}",
     "delete": "Löschen",
     "delete_map_backup": "Sie lässt sich aus ihrer Sicherung zurückholen, ohne Namen, Zeitpläne und Mäheinstellungen.",
     "delete_map_confirm": "{name} mit allen Zonen und Einstellungen löschen?",
