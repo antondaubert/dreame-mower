@@ -7,6 +7,7 @@
     "test": "node --test --test-timeout=20000 \"tests/frontend/*.test.mjs\""
   },
   "devDependencies": {
+    "intl-messageformat": "12.1.3",
     "jsdom": "30.1.1"
   }
 }
