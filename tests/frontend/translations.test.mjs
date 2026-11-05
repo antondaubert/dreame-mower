@@ -235,7 +235,10 @@ test("numbers follow the number format set in Home Assistant", async () => {
   assert.deepEqual([de(75.44), de(0.5, 2), de(1234.56)], ["75,4", "0,50", "1234,6"]);
   assert.equal((await format("de", "comma_decimal"))(75.44), "75.4");
   assert.equal((await format("en", "decimal_comma"))(75.44), "75,4");
-  assert.equal((await format("de", "none"))(75.44), "75.4");
+  const none = await format("de", "none");
+  assert.deepEqual([none(75.44), none(-0.04), none(-0.004, 2)], ["75.4", "0", "0.00"]);
   // Latin digits, as the card's other numbers.
   assert.equal((await format("fa"))(75.44), "75.4");
+  // A value that rounds to zero has no sign.
+  assert.deepEqual([de(-0.3), de(-0.04), de(-0.004, 2), de(-0.4, 0), en(-1.24), en(-Infinity)], ["-0,3", "0", "0,00", "0", "-1.2", "-∞"]);
 });

@@ -922,12 +922,15 @@ function numberLocaleOf(hass) {
 // A number shown as text, as the user's number format in Home Assistant
 // writes it ("75,4" in German): to one decimal, or to exactly `digits`
 // decimals; in Latin digits and without grouping, as the card's other numbers.
+// A value that rounds to zero reads "0", not "-0".
 function formatNumber(value, digits) {
-  const plain = () => (digits === undefined ? String(num(value)) : Number(value).toFixed(digits));
+  const plain = () => (digits === undefined ? String(num(value)) : Number(value).toFixed(digits).replace(/^-(?=[0.]*$)/, ""));
   if (numberLocale === null) return plain();
   const options = digits === undefined ? { maximumFractionDigits: 1 } : { minimumFractionDigits: digits, maximumFractionDigits: digits };
   try {
-    return new Intl.NumberFormat(numberLocale, { ...options, useGrouping: false, numberingSystem: "latn" }).format(value);
+    const parts = new Intl.NumberFormat(numberLocale, { ...options, useGrouping: false, numberingSystem: "latn" }).formatToParts(value);
+    const zero = parts.some((part) => part.type === "integer") && parts.every((part) => (part.type !== "integer" && part.type !== "fraction") || /^0+$/.test(part.value));
+    return parts.filter((part) => !(zero && part.type === "minusSign")).map((part) => part.value).join("");
   } catch {
     return plain();
   }
