@@ -1376,3 +1376,44 @@ test("the editor lists the styles and sets or drops the card's style", async () 
   select.dispatchEvent(new window.Event("change", { bubbles: true, composed: true }));
   assert.deepEqual(changes.at(-1), { entity: MOWER });
 });
+
+test("a task counts the obstacles it met in the viewer's language", async () => {
+  const window = load("dreame-mower-card.js");
+  let obstacles = [];
+  const hass = fakeHass({
+    language: "fr",
+    ws: (m) => (m.type === "dreame_mower/work_log/details" ? { result: "complete", area: 68.4, obstacles, faults: [] } : {}),
+  });
+  const card = await mount(window, hass);
+  await openTab(window, card, "history");
+  const met = async (count) => {
+    obstacles = Array.from({ length: count }, (_, i) => ({ kind: "obstacle", type: 0, id: i, x: i, y: i }));
+    card._logDetails.clear();
+    await sendWorkLog(window, hass, { totals: null, entries: [TASK], refreshing: false, error: null });
+    await click(window, $(card, `.loglist [data-entry="${TASK.start}"]`));
+    const text = $(card, ".view.worklog .row.short .d").textContent;
+    await click(window, $(card, ".view.worklog [data-close]"));
+    return text;
+  };
+  assert.equal(await met(1), "1 rencontré");
+  assert.equal(await met(2), "2 rencontrés");
+});
+
+test("a task names the obstacles it recognised as a sentence does in the viewer's language", async () => {
+  const kinds = async (language) => {
+    const window = load("dreame-mower-card.js");
+    const obstacles = [1, 2, 6].map((type) => ({ kind: "ai", type, x: type, y: type, image: null }));
+    const hass = fakeHass({
+      language,
+      ws: (m) => (m.type === "dreame_mower/work_log/details" ? { result: "complete", area: 68.4, obstacles, faults: [] } : {}),
+    });
+    const card = await mount(window, hass);
+    await openTab(window, card, "history");
+    await sendWorkLog(window, hass, { totals: null, entries: [TASK], refreshing: false, error: null });
+    await click(window, $(card, `.loglist [data-entry="${TASK.start}"]`));
+    return $(card, ".view.worklog .row.short .d").textContent;
+  };
+  assert.equal(await kinds("en"), "Cat, dog, dog waste");
+  // German nouns keep their capital.
+  assert.equal(await kinds("de"), "Katze, Hund, Hundekot");
+});
