@@ -820,14 +820,24 @@ ha-card.glow { --mower-glow-color: var(--mower-brand); }
 const TRANSLATION_PREFIX = `component.${DOMAIN}.common.`;
 let localize = null;
 let translationsLanguage = null;
+let textLanguage = "en";
+// After a failed load, the next try waits this long (ms) instead of coming
+// with the next state change.
+const TRANSLATIONS_RETRY_MS = 60000;
+let translationsRetryAt = 0;
+let translationsFailed = null;
 let pluralRules = new Intl.PluralRules("en");
 
 function tr(key, values) {
   return (localize && localize(TRANSLATION_PREFIX + key, values)) || "";
 }
 
+// A text with a count, in the plural form the language takes for it: `_one`
+// and `_other` in every language, `_two`, `_few` and the like where it has them.
 function trCount(key, count, values = {}) {
-  return tr(`${key}_${pluralRules.select(count) === "one" ? "one" : "other"}`, { count, ...values });
+  const form = pluralRules.select(count);
+  const args = { count, ...values };
+  return (form !== "one" && form !== "other" && tr(`${key}_${form}`, args)) || tr(`${key}_${form === "one" ? "one" : "other"}`, args);
 }
 
 function trOf(keys, value) {
@@ -835,7 +845,10 @@ function trOf(keys, value) {
 }
 
 function followTranslations(hass) {
-  if (!hass || translationsLanguage === hass.language) return;
+  if (!hass) return;
+  textLanguage = hass.language || "en";
+  if (translationsLanguage === hass.language) return;
+  if (translationsFailed === hass.language && Date.now() < translationsRetryAt) return;
   translationsLanguage = hass.language;
   try {
     pluralRules = new Intl.PluralRules(hass.language || "en");
@@ -845,7 +858,27 @@ function followTranslations(hass) {
   if (typeof hass.loadBackendTranslation !== "function") return;
   Promise.resolve(hass.loadBackendTranslation("common", DOMAIN)).catch(() => {
     translationsLanguage = null;
+    translationsFailed = hass.language;
+    translationsRetryAt = Date.now() + TRANSLATIONS_RETRY_MS;
   });
+}
+
+// What the card's texts read like: changes once they load or the language
+// changes, but not when Home Assistant loads translations of its own.
+function textsVersion(hass) {
+  return `${hass.language}|${tr("tab_mow")}|${tr("tab_settings")}`;
+}
+
+// A label within a sentence, its first letter lowercased: "While mowing" in
+// "Light while mowing".
+function inSentence(text) {
+  return text.charAt(0).toLowerCase() + text.slice(1);
+}
+
+// A noun within a sentence ("Standard" among the efficiencies too); German
+// nouns keep their capital.
+function nounInSentence(text) {
+  return /^de\b/.test(textLanguage) ? text : inSentence(text);
 }
 
 function applyLabels(root) {
@@ -956,11 +989,16 @@ function formatClock(minutes) {
 const WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+// A month's short name, by its index (0 for January).
+function monthName(index) {
+  return MONTH_NAMES[index] ? tr(`month_${MONTH_NAMES[index].toLowerCase()}`) : "";
+}
+
 // A day as "Thu 16 Oct", with its year when it is not this one.
 function formatDayOf(d) {
   const year = d.getFullYear() === new Date().getFullYear() ? "" : ` ${d.getFullYear()}`;
   const weekday = tr(`weekday_${WEEKDAY_NAMES[d.getDay()].toLowerCase()}`);
-  const month = tr(`month_${MONTH_NAMES[d.getMonth()].toLowerCase()}`);
+  const month = monthName(d.getMonth());
   return `${weekday} ${d.getDate()} ${month}${year}`;
 }
 
@@ -2294,9 +2332,10 @@ class DreameMowerCard extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     followTranslations(hass);
-    if (hass.localize !== this._localize) {
-      this._localize = hass.localize;
-      localize = hass.localize || null;
+    localize = hass.localize || null;
+    const texts = textsVersion(hass);
+    if (texts !== this._texts) {
+      this._texts = texts;
       this._buildShapes();
       this._invalidate("all");
     }
@@ -4215,8 +4254,8 @@ class DreameMowerCard extends HTMLElement {
       const rows = [row(tr("light_period_only"), tr("light_period_only_desc"), actionSwitch(light.custom_period, tr("light_period_only"), "set_light", "custom_period"))];
       if (light.custom_period) rows.push(...windowRows(light, tr("light_period"), "set_light"));
       rows.push(`<div class="group sep">${esc(tr("light_on"))}</div>`);
-      for (const [scene, label] of scenes) rows.push(row(label, "", actionSwitch(light[scene], tr("light_scene", { scene: label.toLowerCase() }), "set_light", scene)));
-      const on = scenes.filter(([scene]) => light[scene]).map(([, label]) => label.toLowerCase());
+      for (const [scene, label] of scenes) rows.push(row(label, "", actionSwitch(light[scene], tr("light_scene", { scene: inSentence(label) }), "set_light", scene)));
+      const on = scenes.filter(([scene]) => light[scene]).map(([, label]) => inSentence(label));
       pages.lights = {
         title: tr("lights"),
         icon: "mdi:lightbulb-outline",
@@ -4246,7 +4285,7 @@ class DreameMowerCard extends HTMLElement {
         rows.push(row(tr("sensitivity"), "", actionSelect(tr("sensitivity"), "set_human_presence_alert", "sensitivity", [["low", tr("sensitivity_low")], ["medium", tr("sensitivity_medium")], ["high", tr("sensitivity_high")]], presence.sensitivity)));
         rows.push(`<div class="group sep">${esc(tr("watch"))}</div>`);
         for (const [mode, label] of [["standby", tr("in_standby")], ["mowing", tr("while_mowing")], ["returning", tr("while_returning")], ["patrolling", tr("while_patrolling")]]) {
-          rows.push(row(label, "", actionSwitch(presence[mode], tr("watch_mode", { mode: label.toLowerCase() }), "set_human_presence_alert", mode)));
+          rows.push(row(label, "", actionSwitch(presence[mode], tr("watch_mode", { mode: inSentence(label) }), "set_human_presence_alert", mode)));
         }
         rows.push(
           `<div class="group sep">${esc(tr("then"))}</div>`,
@@ -4424,7 +4463,7 @@ class DreameMowerCard extends HTMLElement {
     const parts = [
       feed && feed.mode === "per_zone" ? tr("per_zone") : "",
       values.cutting_height !== undefined && values.cutting_height !== null ? `${values.cutting_height} cm` : "",
-      values.efficiency ? (trOf(EFFICIENCY_LABELS, values.efficiency) || humanize(values.efficiency)).toLowerCase() : "",
+      values.efficiency ? nounInSentence(trOf(EFFICIENCY_LABELS, values.efficiency) || humanize(values.efficiency)) : "",
       values.mowing_direction !== undefined && values.mowing_direction !== null ? `${values.mowing_direction}°${each ? `, ${each}` : ""}` : "",
       values.edge_mowing_auto ? tr("edges_after_lower") : "",
     ];
@@ -5834,7 +5873,7 @@ class DreameMowerCard extends HTMLElement {
       data.area !== null && data.area !== undefined ? `${data.map_area ? tr("area_of", { area: data.area, total: data.map_area }) : data.area} m²` : "",
       data.duration !== null && data.duration !== undefined ? formatMinutes(data.duration) : "",
     ].filter(Boolean);
-    const height = [data.height ? `${data.height} cm` : "", data.per_zone ? tr("per_zone_settings") : trOf(EFFICIENCY_LABELS, data.efficiency).toLowerCase()].filter(Boolean);
+    const height = [data.height ? `${data.height} cm` : "", data.per_zone ? tr("per_zone_settings") : nounInSentence(trOf(EFFICIENCY_LABELS, data.efficiency))].filter(Boolean);
     const rows = [
       fact(tr("mowed"), mowed.join(" · ")),
       fact(tr("cutting_height"), height.join(" · ")),
@@ -5849,9 +5888,9 @@ class DreameMowerCard extends HTMLElement {
     let gallery = "";
     if (obstacles.length) {
       const recognised = obstacles.filter((obstacle) => obstacle.kind === "ai");
-      const kinds = [...new Set(recognised.map((obstacle) => aiObstacleKind(obstacle.type).label.toLowerCase()))];
+      const kinds = [...new Set(recognised.map((obstacle) => nounInSentence(aiObstacleKind(obstacle.type).label)))];
       const pictured = photographed(obstacles);
-      const desc = [kinds.length ? humanize(kinds.join(", ")) : tr("obstacles_met", { count: obstacles.length }), pictured.length ? tr("tap_photo_larger") : ""].filter(Boolean).join(" · ");
+      const desc = [kinds.length ? humanize(kinds.join(", ")) : trCount("obstacles_met", obstacles.length), pictured.length ? tr("tap_photo_larger") : ""].filter(Boolean).join(" · ");
       rows.push(
         `<div class="row short"><span class="rt"><span class="t">${esc(tr("obstacles"))}</span><span class="d">${esc(desc)}</span></span>` +
           (pictured.length ? `<span class="cam"><ha-icon icon="mdi:camera"></ha-icon>${pictured.length}</span>` : `<span class="val">${obstacles.length}</span>`) +
@@ -6618,9 +6657,10 @@ class DreameMowerCardEditor extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     followTranslations(hass);
-    const translated = hass.localize !== this._localize;
-    this._localize = hass.localize;
-    if (translated) localize = hass.localize || null;
+    localize = hass.localize || null;
+    const texts = textsVersion(hass);
+    const translated = texts !== this._texts;
+    this._texts = texts;
     this._render();
     if (this._picker) this._picker.hass = hass;
     if (translated && this._built) {
@@ -6814,6 +6854,9 @@ DreameMowerCard.helpers = Object.freeze({
   RESUBSCRIBE_DELAYS,
   GLYPHS,
   MONTH_NAMES,
+  tr,
+  trCount,
+  monthName,
   esc,
   humanize,
   num,
