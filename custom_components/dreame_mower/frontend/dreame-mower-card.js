@@ -821,6 +821,9 @@ const TRANSLATION_PREFIX = `component.${DOMAIN}.common.`;
 let localize = null;
 let translationsLanguage = null;
 let textLanguage = "en";
+// The locale numbers are written in, after the user's number format in Home
+// Assistant; null for none, undefined for the browser's.
+let numberLocale = "en";
 // After a failed load, the next try waits this long (ms) instead of coming
 // with the next state change.
 const TRANSLATIONS_RETRY_MS = 60000;
@@ -847,6 +850,7 @@ function trOf(keys, value) {
 function followTranslations(hass) {
   if (!hass) return;
   textLanguage = hass.language || "en";
+  numberLocale = numberLocaleOf(hass);
   if (translationsLanguage === hass.language) return;
   if (translationsFailed === hass.language && Date.now() < translationsRetryAt) return;
   translationsLanguage = hass.language;
@@ -863,10 +867,11 @@ function followTranslations(hass) {
   });
 }
 
-// What the card's texts read like: changes once they load or the language
-// changes, but not when Home Assistant loads translations of its own.
+// What the card's texts read like: changes once they load or the language or
+// number format changes, but not when Home Assistant loads translations of
+// its own.
 function textsVersion(hass) {
-  return `${hass.language}|${tr("tab_mow")}|${tr("tab_settings")}`;
+  return `${hass.language}|${String(numberLocale)}|${tr("tab_mow")}|${tr("tab_settings")}`;
 }
 
 // A label within a sentence, its first letter lowercased: "While mowing" in
@@ -902,6 +907,30 @@ function humanize(value) {
 
 function num(value) {
   return Math.round(value * 10) / 10;
+}
+
+// The locales Home Assistant writes each of its number formats in.
+const NUMBER_FORMAT_LOCALES = { comma_decimal: "en-US", decimal_comma: "de", space_comma: "fr" };
+
+function numberLocaleOf(hass) {
+  const format = hass.locale && hass.locale.number_format;
+  if (format === "none") return null;
+  if (format === "system") return undefined;
+  return NUMBER_FORMAT_LOCALES[format] || hass.language || "en";
+}
+
+// A number shown as text, as the user's number format in Home Assistant
+// writes it ("75,4" in German): to one decimal, or to exactly `digits`
+// decimals; in Latin digits and without grouping, as the card's other numbers.
+function formatNumber(value, digits) {
+  const plain = () => (digits === undefined ? String(num(value)) : Number(value).toFixed(digits));
+  if (numberLocale === null) return plain();
+  const options = digits === undefined ? { maximumFractionDigits: 1 } : { minimumFractionDigits: digits, maximumFractionDigits: digits };
+  try {
+    return new Intl.NumberFormat(numberLocale, { ...options, useGrouping: false, numberingSystem: "latn" }).format(value);
+  } catch {
+    return plain();
+  }
 }
 
 function errorMessage(err) {
@@ -1064,7 +1093,7 @@ function batteryRecharges(samples) {
 function batteryLegs(samples, recharges) {
   const parts = [];
   const leg = (first, last) => {
-    if (last > first) parts.push(`${num(samples[first][1])} → ${num(samples[last][1])} %`);
+    if (last > first) parts.push(`${formatNumber(samples[first][1])} → ${formatNumber(samples[last][1])} %`);
   };
   let at = 0;
   for (const [first, last] of recharges) {
@@ -1084,9 +1113,9 @@ function batteryBlock(battery, summary) {
   const facts = [];
   const legs = samples ? batteryLegs(samples, recharges) : "";
   if (legs) facts.push(legs);
-  facts.push(tr("battery_used", { value: `${approx}${num(battery.used)}` }));
-  if (battery.per_sqm !== null && battery.per_sqm !== undefined) facts.push(`${approx}${battery.per_sqm.toFixed(2)} %/m²`);
-  if (summary && summary.usual) facts.push(tr("battery_usual", { value: summary.usual.toFixed(2) }));
+  facts.push(tr("battery_used", { value: `${approx}${formatNumber(battery.used)}` }));
+  if (battery.per_sqm !== null && battery.per_sqm !== undefined) facts.push(`${approx}${formatNumber(battery.per_sqm, 2)} %/m²`);
+  if (summary && summary.usual) facts.push(tr("battery_usual", { value: formatNumber(summary.usual, 2) }));
   const head = `<div class="bhead"><b>${esc(tr("battery"))}</b><span>${esc(facts.join(" · "))}</span></div>`;
   return `<div class="battery-course">${head}${samples ? batteryChart(samples, recharges) : ""}</div>`;
 }
@@ -1124,12 +1153,12 @@ function batteryPill(entry) {
   if (!battery || battery.per_sqm === null || battery.per_sqm === undefined || !(entry.area >= BATTERY_MIN_AREA)) return "";
   const rating = BATTERY_RATINGS[battery.rating] ? battery.rating : "";
   const approx = battery.source === "statistics" ? "~" : "";
-  const title = [tr("battery_pill", { value: `${approx}${num(battery.used)}` })];
+  const title = [tr("battery_pill", { value: `${approx}${formatNumber(battery.used)}` })];
   if (rating && battery.usual) {
     const more = Math.round((battery.per_sqm / battery.usual - 1) * 100);
-    title.push(`${tr(BATTERY_RATINGS[rating])} (${battery.usual.toFixed(2)} %/m², ${more >= 0 ? "+" : ""}${more} %)`);
+    title.push(`${tr(BATTERY_RATINGS[rating])} (${formatNumber(battery.usual, 2)} %/m², ${more >= 0 ? "+" : ""}${more} %)`);
   }
-  return `<span class="bat ${rating}" title="${esc(title.join(" · "))}">${approx}${battery.per_sqm.toFixed(2)} %/m²</span>`;
+  return `<span class="bat ${rating}" title="${esc(title.join(" · "))}">${approx}${formatNumber(battery.per_sqm, 2)} %/m²</span>`;
 }
 
 // A setting a task was mowed with, as `label` gives it for a record of the
@@ -1725,7 +1754,7 @@ function svgFacing(tf, point, heading, color, px) {
 // The size of a shape: width × height, length or width across; "" for
 // one without a size of its own.
 function editSizeText(item) {
-  const m = (mm) => `${(mm / 1000).toFixed(1)} m`;
+  const m = (mm) => `${formatNumber(mm / 1000, 1)} m`;
   if (item.shape === "rectangle") return `${m(Math.abs(item.rect[2] - item.rect[0]))} × ${m(Math.abs(item.rect[3] - item.rect[1]))}`;
   if (item.shape === "line") return m(Math.hypot(item.line[2] - item.line[0], item.line[3] - item.line[1]));
   if (item.shape === "circle") return `⌀ ${m(2 * item.circle[2])}`;
@@ -3261,7 +3290,7 @@ class DreameMowerCard extends HTMLElement {
         if (picked.length) {
           const area = (shape) => {
             const zone = kind === "zones" ? ((this._geometry && this._geometry.zones) || []).find((z) => z.id === shape.id) : null;
-            return zone && zone.area ? ` · ${num(zone.area)} m²` : "";
+            return zone && zone.area ? ` · ${formatNumber(zone.area)} m²` : "";
           };
           hint =
             picked.map((shape) => `<b>${esc(shape.name)}</b>${esc(area(shape))}`).join(", ") +
@@ -3545,7 +3574,7 @@ class DreameMowerCard extends HTMLElement {
     const chip = this._el.chip;
     if (g && g.map_id !== null && g.map_id !== undefined) {
       const name = g.name || tr("map_default_name", { id: g.map_id });
-      const area = g.total_area ? `${num(g.total_area)} m²` : "";
+      const area = g.total_area ? `${formatNumber(g.total_area)} m²` : "";
       this._setHtml(
         "chip",
         chip,
@@ -3570,7 +3599,7 @@ class DreameMowerCard extends HTMLElement {
         const name = map.name || tr("map_default_name", { id: map.id });
         const drawn = this._drawnMap(map.id);
         const count = drawn ? (drawn.zones || []).length : null;
-        const facts = [`${num(map.area || 0)} m²`];
+        const facts = [`${formatNumber(map.area || 0)} m²`];
         if (count !== null) facts.push(trCount("zone_count", count));
         if (map.selected) facts.push(tr("in_use_lower"));
         return (
@@ -3930,7 +3959,7 @@ class DreameMowerCard extends HTMLElement {
         const drawn = this._drawnMap(map.id);
         const zones = drawn ? (drawn.zones || []).length : null;
         const summary = [
-          `${num(map.area || 0)} m²`,
+          `${formatNumber(map.area || 0)} m²`,
           zones !== null ? trCount("zone_count", zones) : "",
           map.has_backup ? tr("backed_up") : "",
         ].filter(Boolean);
@@ -4466,7 +4495,7 @@ class DreameMowerCard extends HTMLElement {
     const each = trOf(DIRECTION_EACH_SESSION, values.mowing_direction_mode);
     const parts = [
       feed && feed.mode === "per_zone" ? tr("per_zone") : "",
-      values.cutting_height !== undefined && values.cutting_height !== null ? `${values.cutting_height} cm` : "",
+      values.cutting_height !== undefined && values.cutting_height !== null ? `${formatNumber(values.cutting_height)} cm` : "",
       values.efficiency ? nounInSentence(trOf(EFFICIENCY_LABELS, values.efficiency) || humanize(values.efficiency)) : "",
       values.mowing_direction !== undefined && values.mowing_direction !== null ? `${values.mowing_direction}°${each ? `, ${each}` : ""}` : "",
       values.edge_mowing_auto ? tr("edges_after_lower") : "",
@@ -4512,7 +4541,7 @@ class DreameMowerCard extends HTMLElement {
     const left =
       item.item === "robot"
         ? tr("needs_maintenance_in", { hours: Math.round(item.remaining_hours) })
-        : tr("hours_left", { left: item.remaining_hours, total: item.total_hours });
+        : tr("hours_left", { left: formatNumber(item.remaining_hours), total: formatNumber(item.total_hours) });
     return (
       `<div class="row"><span class="ricon o"><ha-icon icon="${info.icon}"></ha-icon></span>` +
       `<span class="rt"><span class="t">${esc(label)}</span><span class="d">${esc(`${Math.floor(health)} % · ${left}`)}</span>` +
@@ -5362,7 +5391,7 @@ class DreameMowerCard extends HTMLElement {
         `<div class="range"><span>${esc(`${min}${unit.trim() === "°" ? "°" : ""}`)}</span>` +
           `<input type="range" min="${min}" max="${max}" step="${step}" value="${esc(value(key))}" data-range="${key}" data-unit="${unit}" aria-label="${esc(label)}">` +
           `<span>${esc(`${max}${unit.trim() === "°" ? "°" : ""}`)}</span></div>`,
-        { glyph, out: `<b data-out="${key}">${esc(value(key))}${unit}</b>` },
+        { glyph, out: `<b data-out="${key}">${esc(typeof value(key) === "number" ? formatNumber(value(key)) : value(key))}${unit}</b>` },
       );
     const group = (title, glyph, rows) => (rows ? `<div class="group">${glyph}${esc(title)}</div><div class="list">${rows}</div>` : "");
 
@@ -5552,7 +5581,7 @@ class DreameMowerCard extends HTMLElement {
     if (!input || !this._settings) return;
     const key = input.dataset.range;
     const out = this._el.settings.querySelector(`[data-out="${key}"]`);
-    if (out) out.textContent = `${input.value}${input.dataset.unit || ""}`;
+    if (out) out.textContent = `${formatNumber(Number(input.value))}${input.dataset.unit || ""}`;
     const stripes = key === "mowing_direction" ? this._el.settings.querySelector("svg.preview pattern") : null;
     if (stripes) stripes.setAttribute("patternTransform", this._stripeTransform(input.value));
     if (!done) return;
@@ -5788,7 +5817,7 @@ class DreameMowerCard extends HTMLElement {
     // The kept log shows while the cloud is read, and stays when it fails.
     const status = log.refreshing ? tr("updating") : log.error ? tr("showing_kept_tasks", { error: log.error }) : "";
     const totals = log.totals
-      ? `<div class="totals"><div><b>${esc(num(log.totals.area))}</b><small>${esc(tr("totals_area"))}</small></div>` +
+      ? `<div class="totals"><div><b>${esc(formatNumber(log.totals.area))}</b><small>${esc(tr("totals_area"))}</small></div>` +
         `<div><b>${esc(formatMinutes(log.totals.time))}</b><small>${esc(tr("totals_time"))}</small></div>` +
         `<div><b>${esc(log.totals.count)}</b><small>${esc(tr("totals_count"))}</small></div></div>`
       : "";
@@ -5803,7 +5832,7 @@ class DreameMowerCard extends HTMLElement {
     const rows = entries
       .map((entry) => {
         const result = RESULT_ICONS[entry.result] ? entry.result : "incomplete";
-        const facts = [formatDay(entry.start), entry.area !== null && entry.area !== undefined ? `${num(entry.area)} m²` : "", formatMinutes(entry.duration)];
+        const facts = [formatDay(entry.start), entry.area !== null && entry.area !== undefined ? `${formatNumber(entry.area)} m²` : "", formatMinutes(entry.duration)];
         // The battery use stays whole; the facts before it give way.
         const pill = batteryPill(entry);
         return (
@@ -5862,22 +5891,22 @@ class DreameMowerCard extends HTMLElement {
       const points = this._resumableStopPoints(detail.entry);
       const head = `<b>${esc(tr(RESULT_LABELS[data.result]))}</b>`;
       if (points.length) {
-        const where = points.map((point) => tr("progress_in_zone", { progress: point.progress.toFixed(2), zone: names.get(point.zone_id) || tr("zone_default_name", { id: point.zone_id }) })).join(", ");
+        const where = points.map((point) => tr("progress_in_zone", { progress: formatNumber(point.progress, 2), zone: names.get(point.zone_id) || tr("zone_default_name", { id: point.zone_id }) })).join(", ");
         parts.push(
           `<div class="callout warn"><ha-icon icon="mdi:debug-step-over"></ha-icon><div>${head}${esc(`${data.result === "stopped" ? " " : " · "}${tr(data.result === "stopped" ? "stopped_at" : "stopped_at_incomplete", { where })}`)}` +
             `<br><span class="muted">${esc(tr("next_start_here"))}</span></div></div>`,
         );
       } else {
-        const mowed = data.area !== null && data.area !== undefined ? ` · ${tr("area_mowed", { area: data.map_area ? tr("area_of", { area: data.area, total: data.map_area }) : data.area })}` : "";
+        const mowed = data.area !== null && data.area !== undefined ? ` · ${tr("area_mowed", { area: data.map_area ? tr("area_of", { area: formatNumber(data.area), total: formatNumber(data.map_area) }) : formatNumber(data.area) })}` : "";
         parts.push(`<div class="callout warn"><ha-icon icon="mdi:alert-circle-outline"></ha-icon><div>${head}${esc(mowed)}</div></div>`);
       }
     }
     const fact = (title, value) => (value ? `<div class="row short"><span class="rt"><span class="t">${esc(title)}</span></span><span class="val">${esc(value)}</span></div>` : "");
     const mowed = [
-      data.area !== null && data.area !== undefined ? `${data.map_area ? tr("area_of", { area: data.area, total: data.map_area }) : data.area} m²` : "",
+      data.area !== null && data.area !== undefined ? `${data.map_area ? tr("area_of", { area: formatNumber(data.area), total: formatNumber(data.map_area) }) : formatNumber(data.area)} m²` : "",
       data.duration !== null && data.duration !== undefined ? formatMinutes(data.duration) : "",
     ].filter(Boolean);
-    const height = [data.height ? `${data.height} cm` : "", data.per_zone ? tr("per_zone_settings") : nounInSentence(trOf(EFFICIENCY_LABELS, data.efficiency))].filter(Boolean);
+    const height = [data.height ? `${formatNumber(data.height)} cm` : "", data.per_zone ? tr("per_zone_settings") : nounInSentence(trOf(EFFICIENCY_LABELS, data.efficiency))].filter(Boolean);
     const rows = [
       fact(tr("mowed"), mowed.join(" · ")),
       fact(tr("cutting_height"), height.join(" · ")),
@@ -6337,10 +6366,10 @@ class DreameMowerCard extends HTMLElement {
         );
       }
       const figs = [];
-      if (progress !== null) figs.push(`<span><b>${esc(progress.toFixed(progress < 10 ? 1 : 0))} %</b></span>`);
+      if (progress !== null) figs.push(`<span><b>${esc(formatNumber(progress, progress < 10 ? 1 : 0))} %</b></span>`);
       if (typeof mower.mowed_area === "number") {
-        const total = typeof mower.total_area === "number" && mower.total_area ? ` ${tr("of_total_area", { total: num(mower.total_area) })}` : " m²";
-        figs.push(`<span><b>${esc(num(mower.mowed_area))}</b>${esc(total)}</span>`);
+        const total = typeof mower.total_area === "number" && mower.total_area ? ` ${tr("of_total_area", { total: formatNumber(mower.total_area) })}` : " m²";
+        figs.push(`<span><b>${esc(formatNumber(mower.mowed_area))}</b>${esc(total)}</span>`);
       }
       if (typeof mower.session_minutes === "number") {
         const minutes = mower.session_minutes;
@@ -6405,7 +6434,7 @@ class DreameMowerCard extends HTMLElement {
     const zone = feed.mode === "per_zone" && picked !== null ? picked : null;
     const values = (zone !== null && areas[String(zone)]) || areas["0"] || {};
     const items = [];
-    if (values.cutting_height !== undefined && values.cutting_height !== null) items.push(`<span class="v">${GLYPHS.height}${esc(values.cutting_height)} cm</span>`);
+    if (values.cutting_height !== undefined && values.cutting_height !== null) items.push(`<span class="v">${GLYPHS.height}${esc(formatNumber(values.cutting_height))} cm</span>`);
     if (values.mowing_direction !== undefined && values.mowing_direction !== null) items.push(`<span class="v">${GLYPHS.angle}${esc(values.mowing_direction)}°</span>`);
     if (values.efficiency) items.push(`<span class="v">${esc(trOf(EFFICIENCY_LABELS, values.efficiency) || humanize(values.efficiency))}</span>`);
     if (values.edge_mowing_auto && !running) items.push(`<span class="v">${GLYPHS.border}${esc(tr("edges_after"))}</span>`);
@@ -6545,7 +6574,7 @@ class DreameMowerCard extends HTMLElement {
     if (!points.length) return undefined;
     const names = new Map(((this._geometry && this._geometry.zones) || []).map((zone) => [zone.id, zone.name]));
     const lines = points
-      .map((point) => esc(tr("stop_point_line", { zone: names.get(point.zone_id) || tr("zone_default_name", { id: point.zone_id }), progress: point.progress.toFixed(2), date: point.date })))
+      .map((point) => esc(tr("stop_point_line", { zone: names.get(point.zone_id) || tr("zone_default_name", { id: point.zone_id }), progress: formatNumber(point.progress, 2), date: point.date })))
       .join("<br>");
     const asked = this._choose(
       tr("resume_question"),
@@ -6864,6 +6893,7 @@ DreameMowerCard.helpers = Object.freeze({
   esc,
   humanize,
   num,
+  formatNumber,
   pad2,
   formatTime,
   formatDayOf,
