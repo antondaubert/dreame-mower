@@ -196,10 +196,9 @@ test("each language has the card's texts with the same placeholders", () => {
     for (const [key, message] of Object.entries(common)) {
       const form = PLURAL_FORMS.find((name) => key.endsWith(`_${name}`) && !(key in english));
       const source = form ? `${key.slice(0, -form.length - 1)}_other` : key;
-      // A plural form may name its count where English does not ("Change saved").
-      const counted = source.endsWith("_one") && plurals.includes(source.slice(0, -"_one".length));
-      const names = (text) => argumentsOf(text).filter((name) => !(counted && name === "count"));
-      assert.deepEqual(names(message), names(english[source]), `${language}: ${key}`);
+      // Home Assistant drops a translation whose placeholders differ from the
+      // English ones, plural forms included.
+      assert.deepEqual(argumentsOf(message), argumentsOf(english[source]), `${language}: ${key}`);
     }
   }
 });
