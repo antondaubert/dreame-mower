@@ -536,3 +536,27 @@ test("a task names the obstacles it recognised as a sentence does in the viewer'
   // German nouns keep their capital.
   assert.equal(await kinds("de"), "Katze, Hund, Hundekot");
 });
+
+test("a task's area reads with the viewer's decimal mark", async () => {
+  const window = load("dreame-mower-card.js");
+  const hass = fakeHass({ language: "de" });
+  const card = await mount(window, hass);
+  await openTab(window, card, "history");
+  await sendWorkLog(window, hass, { totals: null, entries: [TASK], refreshing: false, error: null });
+  assert.match($(card, `.loglist [data-entry="${TASK.start}"]`).textContent, /68,4 m²/);
+});
+
+test("a task's details read their area with the viewer's decimal mark", async () => {
+  const window = load("dreame-mower-card.js");
+  const hass = fakeHass({
+    language: "de",
+    ws: (m) => (m.type === "dreame_mower/work_log/details" ? { result: "complete", area: 68.42, map_area: 75.4, obstacles: [], faults: [] } : {}),
+  });
+  const card = await mount(window, hass);
+  await openTab(window, card, "history");
+  await sendWorkLog(window, hass, { totals: null, entries: [TASK], refreshing: false, error: null });
+  await click(window, $(card, `.loglist [data-entry="${TASK.start}"]`));
+  const text = $(card, ".view.worklog").textContent;
+  assert.match(text, /68,4/);
+  assert.doesNotMatch(text, /\d\.\d/);
+});

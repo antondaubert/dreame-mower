@@ -1,7 +1,7 @@
 // Runs the card's modules in a fresh DOM, with a Home Assistant that records
 // what the card asks of it.
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { IntlMessageFormat } from "intl-messageformat";
 import { JSDOM } from "jsdom";
 
@@ -36,7 +36,10 @@ function flatten(value, prefix, into) {
 
 export function localizer(language) {
   const resources = {};
-  for (const source of new Set(["en", language])) flatten(translations(source), "component.dreame_mower", resources);
+  // A language without a file reads English, as in Home Assistant.
+  for (const source of new Set(["en", language])) {
+    if (existsSync(new URL(`${source}.json`, TRANSLATIONS))) flatten(translations(source), "component.dreame_mower", resources);
+  }
   return (key, values) => (key in resources ? String(new IntlMessageFormat(resources[key], language).format(values)) : "");
 }
 

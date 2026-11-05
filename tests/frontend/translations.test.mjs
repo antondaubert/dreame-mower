@@ -219,3 +219,23 @@ test("a date reads in the order and with the marks of the language", async () =>
   assert.equal(await format("hu", lastYear), `${year - 1}. okt. 16., ${weekday("hu", lastYear)}`);
   assert.equal(await format("ru", thisYear), `${weekday("ru", thisYear)}, 16 окт.`);
 });
+
+test("numbers follow the number format set in Home Assistant", async () => {
+  const format = async (language, numberFormat) => {
+    const window = load("dreame-mower-card.js");
+    const hass = fakeHass({ language });
+    if (numberFormat) hass.locale = { language, number_format: numberFormat };
+    await mount(window, hass);
+    return window.customElements.get("dreame-mower-card").helpers.formatNumber;
+  };
+  const en = await format("en");
+  assert.deepEqual([en(75.44), en(0.5, 2), en(1234.56)], ["75.4", "0.50", "1234.6"]);
+  // The language's own format, as Home Assistant's default "language" has it.
+  const de = await format("de", "language");
+  assert.deepEqual([de(75.44), de(0.5, 2), de(1234.56)], ["75,4", "0,50", "1234,6"]);
+  assert.equal((await format("de", "comma_decimal"))(75.44), "75.4");
+  assert.equal((await format("en", "decimal_comma"))(75.44), "75,4");
+  assert.equal((await format("de", "none"))(75.44), "75.4");
+  // Latin digits, as the card's other numbers.
+  assert.equal((await format("fa"))(75.44), "75.4");
+});

@@ -868,3 +868,30 @@ test("the editor lists the styles and sets or drops the card's style", async () 
   select.dispatchEvent(new window.Event("change", { bubbles: true, composed: true }));
   assert.deepEqual(changes.at(-1), { entity: MOWER });
 });
+
+test("the cutting height reads with the viewer's decimal mark, also while it is dragged", async () => {
+  const window = load("dreame-mower-card.js");
+  const hass = fakeHass({ language: "de" });
+  const card = await mount(window, hass);
+  await sendFeed(window, hass, GEOMETRY, { ...DOCKED, settings: { mode: "map", height_max: 7, areas: { 0: { cutting_height: 4.5 } } } });
+  await openTab(window, card, "settings");
+  await click(window, $(card, '[data-page="mowing"]'));
+  const out = $(card, '[data-out="cutting_height"]');
+  assert.equal(out.textContent, "4,5 cm");
+  const slider = $(card, 'input[data-range="cutting_height"]');
+  slider.value = "5.5";
+  slider.dispatchEvent(new window.Event("input", { bubbles: true }));
+  assert.equal($(card, '[data-out="cutting_height"]').textContent, "5,5 cm");
+});
+
+test("a change of the number format alone redraws the card", async () => {
+  const window = load("dreame-mower-card.js");
+  const hass = fakeHass({ language: "de" });
+  const card = await mount(window, hass);
+  await sendFeed(window, hass, GEOMETRY, { ...DOCKED, settings: { mode: "map", height_max: 7, areas: { 0: { cutting_height: 4.5 } } } });
+  await openTab(window, card, "settings");
+  await click(window, $(card, '[data-page="mowing"]'));
+  card.hass = { ...hass, locale: { language: "de", number_format: "comma_decimal" } };
+  await settle(window);
+  assert.equal($(card, '[data-out="cutting_height"]').textContent, "4.5 cm");
+});
