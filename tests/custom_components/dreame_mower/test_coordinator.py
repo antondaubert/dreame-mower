@@ -1238,20 +1238,62 @@ async def test_map_feeds_hear_when_the_entry_goes(hass: HomeAssistant, minimal_c
 async def test_map_extras_are_read_and_announced(hass: HomeAssistant, minimal_config_entry):
     coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
     coordinator.device = MagicMock()
+    coordinator.device.docked = False
     coordinator.device.refresh_dock_position = MagicMock(return_value=True)
     coordinator.device.refresh_mower_position = MagicMock(return_value=False)
     coordinator.device.refresh_obstacles = MagicMock(return_value=False)
     coordinator.device.refresh_stop_points = MagicMock(return_value=False)
-    listener = MagicMock()
-    coordinator.async_add_listener(listener)
+    with patch.object(
+        DreameMowerCoordinator, "stop_point_setting", new_callable=PropertyMock, return_value={"enabled": True}
+    ):
+        listener = MagicMock()
+        coordinator.async_add_listener(listener)
 
-    await coordinator.async_refresh_map_extras()
+        await coordinator.async_refresh_map_extras()
 
     coordinator.device.refresh_dock_position.assert_called_once_with()
     coordinator.device.refresh_mower_position.assert_called_once_with()
     coordinator.device.refresh_obstacles.assert_called_once_with()
     coordinator.device.refresh_stop_points.assert_called_once_with()
     listener.assert_called_once_with()
+
+
+async def test_map_extras_skip_mower_position_while_docked(hass: HomeAssistant, minimal_config_entry):
+    """MPOS times out (80001) while the mower is docked; its own position is already known."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.device.docked = True
+
+    await coordinator.async_refresh_map_extras()
+
+    coordinator.device.refresh_mower_position.assert_not_called()
+
+
+async def test_map_extras_skip_stop_points_when_the_setting_is_off(hass: HomeAssistant, minimal_config_entry):
+    """RGBPSTA times out (80001) when the stop point setting is off or unsupported."""
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.device.docked = False
+
+    with patch.object(
+        DreameMowerCoordinator, "stop_point_setting", new_callable=PropertyMock, return_value=None
+    ):
+        await coordinator.async_refresh_map_extras()
+
+    coordinator.device.refresh_stop_points.assert_not_called()
+
+
+async def test_map_extras_read_stop_points_when_the_setting_is_on(hass: HomeAssistant, minimal_config_entry):
+    coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
+    coordinator.device = MagicMock()
+    coordinator.device.docked = False
+
+    with patch.object(
+        DreameMowerCoordinator, "stop_point_setting", new_callable=PropertyMock, return_value={"enabled": True}
+    ):
+        await coordinator.async_refresh_map_extras()
+
+    coordinator.device.refresh_stop_points.assert_called_once_with()
 
 
 async def test_map_extras_read_only_what_is_asked(hass: HomeAssistant, minimal_config_entry):
