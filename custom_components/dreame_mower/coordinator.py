@@ -1375,11 +1375,18 @@ class DreameMowerCoordinator(DataUpdateCoordinator[None]):
         """Read where the station stands, the obstacles and the stop points of the active map."""
         if self.device_type == DEVICE_TYPE_SWBOT or not self.device_online:
             return
+        stop_point_setting = self.stop_point_setting
         for wanted, read, what in (
             (dock, self.device.refresh_dock_position, "station position"),
-            (dock, self.device.refresh_mower_position, "mower position"),
+            # MPOS times out (80001) while docked.
+            (dock and not self.device.docked, self.device.refresh_mower_position, "mower position"),
             (obstacles, self.device.refresh_obstacles, "obstacles"),
-            (obstacles and stop_points, self.device.refresh_stop_points, "stop points"),
+            # RGBPSTA times out (80001) when the setting is off or unsupported.
+            (
+                obstacles and stop_points and bool(stop_point_setting and stop_point_setting["enabled"]),
+                self.device.refresh_stop_points,
+                "stop points",
+            ),
         ):
             if not wanted:
                 continue
